@@ -129,10 +129,15 @@ field to drift.
 payment needs neither a nullable FK pair nor a polymorphic association. Student is reached
 through the purchase.
 
-**One payment settles one purchase.** If she ever sends one transfer covering two slots,
-a `payment_allocations` join table can be added additively. Her August document lists
-1200 (Wed) and 800 (Mon) as separate amounts, which is evidence she already settles
-per-slot. Revisit if the combined case appears in practice.
+**One payment settles one purchase. Decided — no allocations table.** When a single
+transfer covers two slots, she records two payment rows and places the amounts herself.
+Two consequences follow and must be honoured:
+
+1. `payment.amount` is **the amount applied to that purchase**, not the bank transaction
+   total. A NT$2,400 transfer covering two slots becomes two rows of 1200. Payment rows
+   therefore do not map one-to-one onto bank lines, and nothing may assume they do.
+2. Split rows legitimately **share a `reported_last5`**. The duplicate-detection heuristic
+   (§7.3) must not treat that as a double-post — see the split-aware rule there.
 
 **`attendance.purchase_id` is nullable, deliberately.** A makeup has no sale behind it —
 it is paid for by a credit. 允一's `無費用，補颱風假` row is exactly this shape.
@@ -376,8 +381,15 @@ honest product description is "draft capture plus fast confirmation", never "aut
 reconciliation". Invariant 4 encodes this in the schema.
 
 `帳後五碼` is a lookup hint for a human, not a receipt: five digits prove nothing about
-amount, date, or sender. No unique constraint on `reported_last5`; instead flag repeats as
-a likely double-post or copy-paste error.
+amount, date, or sender. No unique constraint on `reported_last5`.
+
+**Split-aware duplicate rule.** Because one transfer may be recorded as several payment
+rows (§3.2), a repeated `reported_last5` is only suspicious when it is *not* a split.
+Flag a repeat as a likely double-post or copy-paste error only when the rows belong to
+**different students**, or to the same student with **overlapping purchases** — that is,
+more than one row against the same `purchase_id`. Several rows for the same student on the
+same `paid_on`, against *distinct* purchases, is the deliberate split case and must be
+presented as "one transfer across N purchases", never as an error.
 
 ### 7.4 Tax threshold
 

@@ -429,6 +429,11 @@
         already knows. The invariant is that a <i>human action</i> is required, not that a claim step happened.</li>
       <li><b>Outstanding = Σ payable − Σ confirmed payments.</b> Unconfirmed claims are deliberately excluded,
         so "who still owes me" never counts money she hasn't actually seen.</li>
+      <li><b>One transfer may become several payment rows.</b> She places the amounts herself, so
+        <code>payment.amount</code> is the portion applied to <i>that</i> purchase, not the bank
+        transaction total — and split rows legitimately share a <code>reported_last5</code>. Duplicate
+        detection must therefore flag a repeat only across different students, or two rows against the
+        same purchase; same student, same date, distinct purchases is a split, not an error.</li>
       <li><b>A future <code>:ecpay</code> source could self-confirm.</b> A webhook-verified payment is
         machine-provable, so one ledger holds two source types at two trust levels — LINE claims stay
         human-confirmed.</li>
