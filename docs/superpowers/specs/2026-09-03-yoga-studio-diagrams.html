@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ganesha — Studio Ledger Design Diagrams</title>
+<style>
+  :root{
+    --bg:#0e1014; --panel:#15181f; --panel2:#1b1f28; --line:#2a3038;
+    --fg:#e7eaf0; --muted:#8b93a7; --dim:#5b6273;
+    --people:#f0b429; --schedule:#4c9aff; --booking:#35c48b;
+    --entitle:#b085f5; --money:#f2795f; --danger:#ff6b6b; --ok:#35c48b;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg)}
+  body{font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+       -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1120px;margin:0 auto;padding:32px 20px 80px}
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:23px;letter-spacing:-.02em;font-weight:650}
+  .sub{color:var(--muted);font-size:14px;margin:0}
+  .sub code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12.5px}
+  nav{display:flex;gap:6px;flex-wrap:wrap;margin:22px 0 20px}
+  nav button{background:var(--panel);color:var(--muted);border:1px solid var(--line);
+    padding:8px 14px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;
+    transition:.15s ease}
+  nav button:hover{color:var(--fg);border-color:#3a424e}
+  nav button[aria-selected=true]{background:var(--panel2);color:var(--fg);border-color:#49546a;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+  .panel{display:none}
+  .panel.active{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
+  h2{font-size:17px;margin:0 0 4px;font-weight:620;letter-spacing:-.01em}
+  .lede{color:var(--muted);font-size:13.5px;margin:0 0 18px;max-width:78ch}
+  svg{display:block;width:100%;height:auto;min-width:720px}
+  .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;padding-top:14px;
+    border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
+  .legend span{display:flex;align-items:center;gap:7px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .notes{margin:18px 0 0;padding:0;list-style:none;font-size:13.5px;color:var(--muted)}
+  .notes li{padding:7px 0 7px 16px;border-left:2px solid var(--line);margin-bottom:6px;
+    padding-left:14px}
+  .notes li b{color:var(--fg);font-weight:600}
+  .notes code,.tbl code{background:var(--panel2);padding:1px 5px;border-radius:4px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#cfd6e4}
+  .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+  .tbl th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;
+    text-transform:uppercase;letter-spacing:.05em;padding:0 12px 10px 0;border-bottom:1px solid var(--line)}
+  .tbl td{padding:12px 12px 12px 0;border-bottom:1px solid var(--line);vertical-align:top}
+  .tbl tr:last-child td{border-bottom:none}
+  .tbl a{color:#7fb0ff;text-decoration:none}
+  .tbl a:hover{text-decoration:underline}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;
+    font-weight:650;letter-spacing:.02em;white-space:nowrap}
+  .pill.blocked{background:rgba(255,107,107,.14);color:#ff8f8f}
+  .pill.ok{background:rgba(53,196,139,.14);color:#5fd6a4}
+  .pill.care{background:rgba(240,180,41,.15);color:#f5c65b}
+  /* svg text */
+  text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .ehdr{font-size:12.5px;font-weight:700;letter-spacing:.02em}
+  .efld{font-size:10.7px;fill:#aab3c5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .efld.nul{fill:#727b8e}
+  .elabel{font-size:10.5px;fill:var(--muted);font-style:italic}
+  .card-lbl{font-size:10px;fill:var(--dim);font-weight:700;letter-spacing:.08em}
+  .nodetext{font-size:12.5px;font-weight:600;fill:var(--fg)}
+  .nodesub{font-size:10.5px;fill:var(--muted);font-family:ui-monospace,Menlo,monospace}
+  .edge{fill:none;stroke:#3d4553;stroke-width:1.5}
+  .edge.dash{stroke-dasharray:5 4}
+  .edge.hot{stroke:#6c7891}
+  .anno{font-size:11px;fill:var(--muted)}
+  .anno b{fill:var(--fg)}
+  .gate{font-size:11px;font-weight:700;fill:#ff8f8f;letter-spacing:.04em}
+  g.entity,g.edgegrp{transition:opacity .16s ease}
+  g.faded{opacity:.16}
+  g.entity{cursor:default}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Ganesha — Studio Ledger Design</h1>
+  <p class="sub">Solo yoga studio · Taiwan · teacher-only phase 1 · derived from the August <code>上課、調課、補課名單</code> document</p>
+</header>
+
+<nav role="tablist">
+  <button role="tab" aria-selected="true"  data-p="p1">Domain model</button>
+  <button role="tab" aria-selected="false" data-p="p2">Credit lifecycle</button>
+  <button role="tab" aria-selected="false" data-p="p3">Payment trust boundary</button>
+  <button role="tab" aria-selected="false" data-p="p4">LINE ingestion</button>
+  <button role="tab" aria-selected="false" data-p="p5">Platform constraints</button>
+</nav>
+
+<!-- ================= P1 : DOMAIN MODEL ================= -->
+<section class="panel active" id="p1">
+  <div class="card">
+    <h2>Domain model</h2>
+    <p class="lede">Hover an entity to isolate its relationships. <b>Attendance</b> is the only table that puts a
+      name on a date — it is the roster row, and every kind of participation flows through it.</p>
+    <svg viewBox="0 0 940 800" role="img" aria-label="Entity relationship diagram">
+      <defs>
+        <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+        </marker>
+      </defs>
+
+      <!-- ---------- edges ---------- -->
+      <g class="edgegrp" data-a="slot" data-b="session">
+        <path class="edge" d="M320,83 H700" marker-end="url(#arw)"/>
+        <rect x="452" y="72" width="116" height="16" rx="4" fill="#15181f"/>
+        <text class="elabel" x="510" y="84" text-anchor="middle">generates 1..N</text>
+      </g>
+      <g class="edgegrp" data-a="slot" data-b="enrollment">
+        <path class="edge" d="M220,146 V210" marker-end="url(#arw)"/>
+        <rect x="226" y="170" width="92" height="16" rx="4" fill="#15181f"/>
+        <text class="elabel" x="230" y="182">sold monthly</text>
+      </g>
+      <g class="edgegrp" data-a="session" data-b="attendance">
+        <path class="edge" d="M800,146 V210" marker-end="url(#arw)"/>
+        <rect x="806" y="170" width="56" height="16" rx="4" fill="#15181f"/>
+        <text class="elabel" x="810" y="182">roster</text>
+      </g>
+      <g class="edgegrp" data-a="enrollment" data-b="attendance">
+        <path class="edge" d="M320,240 H700" marker-end="url(#arw)"/>
+        <rect x="428" y="229" width="164" height="16" rx="4" fill="#15181f"/>
+        <text class="elabel" x="510" y="241" text-anchor="middle">produces :enrolled rows</text>
+      </g>
+      <g class="edgegrp" data-a="enrollment" data-b="credit">
+        <path class="edge" d="M220,318 V400" marker-end="url(#arw)"/>
+        <rect x="226" y="349" width="118" height="16" rx="4" fill="#15181f"/>
+        <text class="elabel" x="230" y="361">grants exactly 1</text>
+      </g>
+      <g class="edgegrp" data-a="session" data-b="credit">
+        <path class="edge dash" d="M900,83 H920 V470 H320" marker-end="url(#arw)"/>
+        <rect x="596" y="459" width="188" height="16" rx="4" fill="#15181f"/>
+        <text class="elabel" x="690" y="471" text-anchor="middle">on :cancelled — 1 per enrolled</text>
+      </g>
+      <g class="edgegrp" data-a="student" data-b="enrollment">
+        <path class="edge" d="M400,320 H360 V280 H320" marker-end="url(#arw)"/>
+      </g>
+      <g class="edgegrp" data-a="student" data-b="attendance">
+        <path class="edge" d="M600,330 H650 V350 H700" marker-end="url(#arw)"/>
+      </g>
+      <g class="edgegrp" data-a="student" data-b="credit">
+        <path class="edge" d="M400,390 H360 V430 H320" marker-end="url(#arw)"/>
+      </g>
+      <g class="edgegrp" data-a="student" data-b="payment">
+        <path class="edge" d="M500,408 V500" marker-end="url(#arw)"/>
+      </g>
+      <g class="edgegrp" data-a="credit" data-b="attendance">
+        <path class="edge dash" d="M220,544 V780 H840 V390" marker-end="url(#arw)"/>
+        <rect x="386" y="769" width="188" height="16" rx="4" fill="#15181f"/>
+        <text class="elabel" x="480" y="781" text-anchor="middle">consumed by :makeup row</text>
+      </g>
+
+      <!-- ---------- SLOT ---------- -->
+      <g class="entity" data-id="slot">
+        <rect x="120" y="20" width="200" height="126" rx="9" fill="#171d28" stroke="#2f4b73" stroke-width="1.5"/>
+        <rect x="120" y="20" width="200" height="28" rx="9" fill="#1d2b40"/>
+        <rect x="120" y="40" width="200" height="8" fill="#1d2b40"/>
+        <text class="ehdr" x="132" y="39" fill="#8ec0ff">SLOT</text>
+        <text class="card-lbl" x="308" y="39" text-anchor="end">WEEKLY</text>
+        <text class="efld" x="132" y="66">weekday</text>
+        <text class="efld" x="132" y="84">start_time · end_time</text>
+        <text class="efld" x="132" y="102">default_style</text>
+        <text class="efld" x="132" y="120">label</text>
+        <text class="efld nul" x="132" y="138">active</text>
+      </g>
+
+      <!-- ---------- SESSION ---------- -->
+      <g class="entity" data-id="session">
+        <rect x="700" y="20" width="200" height="126" rx="9" fill="#171d28" stroke="#2f4b73" stroke-width="1.5"/>
+        <rect x="700" y="20" width="200" height="28" rx="9" fill="#1d2b40"/>
+        <rect x="700" y="40" width="200" height="8" fill="#1d2b40"/>
+        <text class="ehdr" x="712" y="39" fill="#8ec0ff">SESSION</text>
+        <text class="card-lbl" x="888" y="39" text-anchor="end">ONE DATE</text>
+        <text class="efld" x="712" y="66">slot_id →</text>
+        <text class="efld" x="712" y="84">date</text>
+        <text class="efld" x="712" y="102">style ⟵ overrides slot</text>
+        <text class="efld" x="712" y="120">state :scheduled|:cancelled</text>
+        <text class="efld nul" x="712" y="138">cancel_reason ?</text>
+      </g>
+
+      <!-- ---------- ENROLLMENT ---------- -->
+      <g class="entity" data-id="enrollment">
+        <rect x="120" y="210" width="200" height="108" rx="9" fill="#161f1c" stroke="#2b5b48" stroke-width="1.5"/>
+        <rect x="120" y="210" width="200" height="28" rx="9" fill="#193026"/>
+        <rect x="120" y="230" width="200" height="8" fill="#193026"/>
+        <text class="ehdr" x="132" y="229" fill="#6bdcae">ENROLLMENT</text>
+        <text class="card-lbl" x="308" y="229" text-anchor="end">MONTH PKG</text>
+        <text class="efld" x="132" y="256">student_id →  slot_id →</text>
+        <text class="efld" x="132" y="274">month  (day 1)</text>
+        <text class="efld" x="132" y="292">price  int TWD</text>
+        <text class="efld nul" x="132" y="310">1600/4 · 1200/3 · 900 · 800</text>
+      </g>
+
+      <!-- ---------- ATTENDANCE ---------- -->
+      <g class="entity" data-id="attendance">
+        <rect x="700" y="210" width="200" height="180" rx="9" fill="#161f1c" stroke="#2b5b48" stroke-width="1.5"/>
+        <rect x="700" y="210" width="200" height="28" rx="9" fill="#193026"/>
+        <rect x="700" y="230" width="200" height="8" fill="#193026"/>
+        <text class="ehdr" x="712" y="229" fill="#6bdcae">ATTENDANCE</text>
+        <text class="card-lbl" x="888" y="229" text-anchor="end">ROSTER</text>
+        <text class="efld" x="712" y="256">session_id →  student_id →</text>
+        <text class="efld" x="712" y="274">kind :enrolled :makeup</text>
+        <text class="efld" x="712" y="292">     :drop_in :trial</text>
+        <text class="efld nul" x="712" y="310">enrollment_id ?</text>
+        <text class="efld nul" x="712" y="328">credit_id ?</text>
+        <text class="efld" x="712" y="346">state :expected|:no_show</text>
+        <text class="efld nul" x="712" y="364">price ?   note ?</text>
+        <text class="efld" x="712" y="382" fill="#6bdcae">uniq (session_id, student)</text>
+      </g>
+
+      <!-- ---------- STUDENT ---------- -->
+      <g class="entity" data-id="student">
+        <rect x="400" y="300" width="200" height="108" rx="9" fill="#211d14" stroke="#6b5320" stroke-width="1.5"/>
+        <rect x="400" y="300" width="200" height="28" rx="9" fill="#302716"/>
+        <rect x="400" y="320" width="200" height="8" fill="#302716"/>
+        <text class="ehdr" x="412" y="319" fill="#f5c65b">STUDENT</text>
+        <text class="card-lbl" x="588" y="319" text-anchor="end">HUB</text>
+        <text class="efld" x="412" y="346">line_user_id ? uniq ⟵ key</text>
+        <text class="efld" x="412" y="364">display_name  (editable)</text>
+        <text class="efld" x="412" y="382">aliases[]  ⟵ parser match</text>
+        <text class="efld nul" x="412" y="400">active</text>
+      </g>
+
+      <!-- ---------- CREDIT ---------- -->
+      <g class="entity" data-id="credit">
+        <rect x="120" y="400" width="200" height="144" rx="9" fill="#1c1826" stroke="#4d3b73" stroke-width="1.5"/>
+        <rect x="120" y="400" width="200" height="28" rx="9" fill="#271f3a"/>
+        <rect x="120" y="420" width="200" height="8" fill="#271f3a"/>
+        <text class="ehdr" x="132" y="419" fill="#c3a4ff">CREDIT</text>
+        <text class="card-lbl" x="308" y="419" text-anchor="end">補課 / 調課</text>
+        <text class="efld" x="132" y="446">student_id →</text>
+        <text class="efld" x="132" y="464">source :package</text>
+        <text class="efld" x="132" y="482">       :cancellation</text>
+        <text class="efld nul" x="132" y="500">origin_enrollment_id ?</text>
+        <text class="efld nul" x="132" y="518">origin_session_id ?</text>
+        <text class="efld nul" x="132" y="536">expires_on ?  consumed_by ?</text>
+      </g>
+
+      <!-- ---------- PAYMENT ---------- -->
+      <g class="entity" data-id="payment">
+        <rect x="400" y="500" width="200" height="234" rx="9" fill="#241a17" stroke="#7a3d2c" stroke-width="1.5"/>
+        <rect x="400" y="500" width="200" height="28" rx="9" fill="#33211b"/>
+        <rect x="400" y="520" width="200" height="8" fill="#33211b"/>
+        <text class="ehdr" x="412" y="519" fill="#ff9d84">PAYMENT</text>
+        <text class="card-lbl" x="588" y="519" text-anchor="end">CLAIM</text>
+        <text class="efld" x="412" y="546">student_id →</text>
+        <text class="efld" x="412" y="564">month  (day 1)</text>
+        <text class="efld nul" x="412" y="582">amount ?  ⟵ null for barter</text>
+        <text class="efld" x="412" y="600">method :line_pay :line_bank</text>
+        <text class="efld" x="412" y="618">       :cash :barter :other</text>
+        <text class="efld" x="412" y="636">state :claimed :confirmed</text>
+        <text class="efld" x="412" y="654">      :disputed</text>
+        <text class="efld nul" x="412" y="672">reported_last5 ?  帳後五碼</text>
+        <text class="efld nul" x="412" y="690">enrollment_id ?  ⟵ hint only</text>
+        <text class="efld" x="412" y="708">source :manual|:line_draft</text>
+        <text class="efld" x="412" y="726" fill="#ff9d84">confirmed_at · confirmed_by</text>
+      </g>
+    </svg>
+
+    <div class="legend">
+      <span><i class="sw" style="background:#4c9aff"></i>Schedule</span>
+      <span><i class="sw" style="background:#35c48b"></i>Booking</span>
+      <span><i class="sw" style="background:#f0b429"></i>People</span>
+      <span><i class="sw" style="background:#b085f5"></i>Entitlement</span>
+      <span><i class="sw" style="background:#f2795f"></i>Money</span>
+      <span style="color:var(--dim)">dashed = event-driven, not structural</span>
+    </div>
+
+    <ul class="notes">
+      <li><b>Why <code>session.style</code> exists.</b> Her doc writes <code>*基礎8/26</code> on the Wednesday
+        流動 slot and <code>*流動8/28</code> on the Friday 基礎 slot. Style belongs to the date, not the slot.</li>
+      <li><b>Why price lives on the enrollment.</b> 1600/4堂, 1200/3堂, 900 for 2堂, 800 for 2堂 and 450 單堂 all
+        coexist in one month. A plain integer entered per enrollment beats any discount engine.</li>
+      <li><b>Why payment is keyed to (student, month).</b> The question she asks is monthly. One NT$2,400
+        transfer covering two slots then needs no allocation table; <code>enrollment_id</code> stays as a
+        display hint so her per-slot layout survives.</li>
+      <li><b>Why 調課 and 補課 share one mechanism.</b> Both are <code>kind: :makeup</code> consuming a credit.
+        宜群's <code>調8/21</code> and 蘭子's <code>補7/10颱風假</code> differ only in <code>credit.source</code>.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= P2 : CREDIT LIFECYCLE ================= -->
+<section class="panel" id="p2">
+  <div class="card">
+    <h2>Credit lifecycle</h2>
+    <p class="lede">Two sources, one consumption mechanism, two different lifespans. This replaces the
+      hand-maintained <code>備註：蘭子補課8/17 or 8/31</code> line.</p>
+    <svg viewBox="0 0 1040 400" role="img" aria-label="Credit lifecycle state machine">
+      <defs>
+        <marker id="arw2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+        </marker>
+      </defs>
+
+      <path class="edge" d="M220,87 H280" marker-end="url(#arw2)"/>
+      <path class="edge" d="M220,257 H280" marker-end="url(#arw2)"/>
+      <path class="edge" d="M490,87 H525 V172 H560" marker-end="url(#arw2)"/>
+      <path class="edge" d="M490,257 H525 V172 H560" marker-end="url(#arw2)"/>
+      <path class="edge" d="M720,155 H750 V92 H780" marker-end="url(#arw2)"/>
+      <path class="edge dash" d="M720,190 H750 V262 H780" marker-end="url(#arw2)"/>
+
+      <g>
+        <rect x="30" y="60" width="190" height="54" rx="8" fill="#161f1c" stroke="#2b5b48"/>
+        <text class="nodetext" x="46" y="83">Enrollment created</text>
+        <text class="nodesub" x="46" y="100">any month package</text>
+      </g>
+      <g>
+        <rect x="30" y="230" width="190" height="54" rx="8" fill="#171d28" stroke="#2f4b73"/>
+        <text class="nodetext" x="46" y="253">Session cancelled</text>
+        <text class="nodesub" x="46" y="270">颱風假 · teacher cancels</text>
+      </g>
+
+      <g>
+        <rect x="280" y="50" width="210" height="74" rx="8" fill="#1c1826" stroke="#4d3b73"/>
+        <text class="nodetext" x="296" y="74" fill="#c3a4ff">:package credit</text>
+        <text class="nodesub" x="296" y="92">exactly 1 per enrollment</text>
+        <text class="nodesub" x="296" y="109" fill="#f5c65b">expires_on = month end</text>
+      </g>
+      <g>
+        <rect x="280" y="220" width="210" height="74" rx="8" fill="#1c1826" stroke="#4d3b73"/>
+        <text class="nodetext" x="296" y="244" fill="#c3a4ff">:cancellation credit</text>
+        <text class="nodesub" x="296" y="262">1 per :enrolled attendance</text>
+        <text class="nodesub" x="296" y="279" fill="#5fd6a4">expires_on = NULL</text>
+      </g>
+
+      <g>
+        <rect x="560" y="135" width="160" height="74" rx="8" fill="#1b1f28" stroke="#49546a" stroke-width="1.5"/>
+        <text class="nodetext" x="576" y="160">available</text>
+        <text class="nodesub" x="576" y="178">consumed_by = NULL</text>
+        <text class="nodesub" x="576" y="195">portable across slots</text>
+      </g>
+
+      <g>
+        <rect x="780" y="60" width="220" height="64" rx="8" fill="#161f1c" stroke="#2b5b48"/>
+        <text class="nodetext" x="796" y="84" fill="#6bdcae">consumed</text>
+        <text class="nodesub" x="796" y="102">by a :makeup attendance</text>
+      </g>
+      <g>
+        <rect x="780" y="230" width="220" height="64" rx="8" fill="#241a17" stroke="#7a3d2c"/>
+        <text class="nodetext" x="796" y="254" fill="#ff9d84">expired</text>
+        <text class="nodesub" x="796" y="272">:package only, at month end</text>
+      </g>
+
+      <text class="anno" x="30" y="345">Guard on consumption — all three must hold, enforced in code:</text>
+      <text class="anno" x="30" y="366">1 · credit.student_id = attendance.student_id  ·  2 · consumed_by IS NULL  ·  3 · expires_on IS NULL OR ≥ session.date</text>
+      <text class="anno" x="30" y="387" fill="#f5c65b">Cancellation must be idempotent — re-running it may never mint duplicate credits.</text>
+    </svg>
+    <ul class="notes">
+      <li><b>Portability is real, not theoretical.</b> 蘭子 earned a Friday cancellation credit and could spend it
+        on Monday 8/17 or 8/31 — so credits are held by the student, never by the slot.</li>
+      <li><b>Why package credits expire but cancellation credits don't.</b> 宜群 swapped 8/21→8/17 inside August,
+        while July's 颱風假 credits were still being spent in August. The asymmetry is her actual behaviour.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= P3 : PAYMENT TRUST BOUNDARY ================= -->
+<section class="panel" id="p3">
+  <div class="card">
+    <h2>Payment trust boundary</h2>
+    <p class="lede">No API in Taiwan can tell this app that money landed. The bot captures a <b>claim</b>;
+      only a human can assert it is true. That boundary is enforced by the schema, not by a comment.</p>
+    <svg viewBox="0 0 1000 380" role="img" aria-label="Payment state machine with trust boundary">
+      <defs>
+        <marker id="arw3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+        </marker>
+      </defs>
+
+      <!-- trust boundary -->
+      <line x1="672" y1="20" x2="672" y2="300" stroke="#ff6b6b" stroke-width="1.5" stroke-dasharray="6 5" opacity=".65"/>
+      <text class="gate" x="682" y="34">TRUST BOUNDARY</text>
+      <text class="anno" x="682" y="52">code may never cross this line</text>
+
+      <path class="edge" d="M210,77 H250" marker-end="url(#arw3)"/>
+      <path class="edge" d="M430,77 H470" marker-end="url(#arw3)"/>
+      <path class="edge" d="M210,247 H250 V200 H470 V104" marker-end="url(#arw3)"/>
+      <path class="edge hot" d="M630,90 H740" marker-end="url(#arw3)"/>
+      <path class="edge dash" d="M630,110 H700 V247 H740" marker-end="url(#arw3)"/>
+
+      <g>
+        <rect x="30" y="50" width="180" height="54" rx="8" fill="#171d28" stroke="#2f4b73"/>
+        <text class="nodetext" x="46" y="73">LINE group message</text>
+        <text class="nodesub" x="46" y="90">「Lulu Line pay 1200」</text>
+      </g>
+      <g>
+        <rect x="250" y="50" width="180" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
+        <text class="nodetext" x="266" y="73">parser → draft</text>
+        <text class="nodesub" x="266" y="90">never rejects a message</text>
+      </g>
+      <g>
+        <rect x="30" y="220" width="180" height="54" rx="8" fill="#211d14" stroke="#6b5320"/>
+        <text class="nodetext" x="46" y="243">Manual entry</text>
+        <text class="nodesub" x="46" y="260">cash · barter · backlog</text>
+      </g>
+      <g>
+        <rect x="470" y="50" width="160" height="74" rx="8" fill="#241a17" stroke="#7a3d2c" stroke-width="1.5"/>
+        <text class="nodetext" x="486" y="74" fill="#ff9d84">:claimed</text>
+        <text class="nodesub" x="486" y="92">amount + last5</text>
+        <text class="nodesub" x="486" y="109">asserted by student</text>
+      </g>
+      <g>
+        <rect x="740" y="55" width="230" height="74" rx="8" fill="#161f1c" stroke="#35c48b" stroke-width="1.8"/>
+        <text class="nodetext" x="756" y="79" fill="#6bdcae">:confirmed</text>
+        <text class="nodesub" x="756" y="97">confirmed_at + confirmed_by</text>
+        <text class="nodesub" x="756" y="114" fill="#f5c65b">requires her eyes on the bank app</text>
+      </g>
+      <g>
+        <rect x="740" y="220" width="230" height="64" rx="8" fill="#241a17" stroke="#7a3d2c"/>
+        <text class="nodetext" x="756" y="244" fill="#ff9d84">:disputed</text>
+        <text class="nodesub" x="756" y="262">claim didn't match the bank</text>
+      </g>
+
+      <text class="anno" x="30" y="330" fill="#f5c65b">帳後五碼 is a lookup hint for a human, not a receipt — 5 digits prove nothing about amount, date, or sender.</text>
+      <text class="anno" x="30" y="352">So: no unique constraint on <tspan font-family="Menlo,monospace">reported_last5</tspan>; instead flag repeats as a likely double-post or copy-paste error.</text>
+    </svg>
+    <ul class="notes">
+      <li><b>Manual entry may go straight to <code>:confirmed</code></b> — she is the human, and for cash she
+        already knows. The invariant is that a <i>human action</i> is required, not that a claim step happened.</li>
+      <li><b>Barter needs a nullable amount.</b> 玉珊 and 欽玉 both paid by 按摩器代購. Forcing a number there
+        would be inventing revenue.</li>
+      <li><b>Future <code>:ecpay</code> source could self-confirm.</b> A webhook-verified payment is machine-provable,
+        so one ledger can hold two source types at two trust levels — LINE claims stay human-confirmed.</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= P4 : LINE INGESTION ================= -->
+<section class="panel" id="p4">
+  <div class="card">
+    <h2>LINE ingestion pipeline</h2>
+    <p class="lede">Phase 2. The bot is a passive listener: it reads the group, writes drafts, and replies to
+      nobody — with one legally required exception at join time.</p>
+    <svg viewBox="0 0 1000 640" role="img" aria-label="LINE ingestion pipeline">
+      <defs>
+        <marker id="arw4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+        </marker>
+      </defs>
+
+      <path class="edge" d="M180,74 V104" marker-end="url(#arw4)"/>
+      <path class="edge" d="M180,158 V188" marker-end="url(#arw4)"/>
+      <path class="edge" d="M180,242 V272" marker-end="url(#arw4)"/>
+      <path class="edge" d="M180,326 V356" marker-end="url(#arw4)"/>
+      <path class="edge" d="M180,410 V440" marker-end="url(#arw4)"/>
+      <path class="edge" d="M180,494 V524" marker-end="url(#arw4)"/>
+
+      <g><rect x="40" y="20" width="280" height="54" rx="8" fill="#171d28" stroke="#2f4b73"/>
+        <text class="nodetext" x="56" y="43">Student posts in the group</text>
+        <text class="nodesub" x="56" y="60">no @mention needed</text></g>
+
+      <g><rect x="40" y="104" width="280" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
+        <text class="nodetext" x="56" y="127">Verify x-line-signature</text>
+        <text class="nodesub" x="56" y="144">HMAC-SHA256 over RAW body</text></g>
+
+      <g><rect x="40" y="188" width="280" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
+        <text class="nodetext" x="56" y="211">Persist raw event</text>
+        <text class="nodesub" x="56" y="228">uniq webhook_event_id → idempotent</text></g>
+
+      <g><rect x="40" y="272" width="280" height="54" rx="8" fill="#161f1c" stroke="#35c48b" stroke-width="1.8"/>
+        <text class="nodetext" x="56" y="295" fill="#6bdcae">Return 200 — done</text>
+        <text class="nodesub" x="56" y="312">nothing else happens inline</text></g>
+
+      <g><rect x="40" y="356" width="280" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
+        <text class="nodetext" x="56" y="379">Async: resolve sender + parse</text>
+        <text class="nodesub" x="56" y="396">group member profile → aliases → draft</text></g>
+
+      <g><rect x="40" y="440" width="280" height="54" rx="8" fill="#211d14" stroke="#6b5320"/>
+        <text class="nodetext" x="56" y="463">She reviews drafts on her phone</text>
+        <text class="nodesub" x="56" y="480">tap to confirm · edit · discard</text></g>
+
+      <g><rect x="40" y="524" width="280" height="54" rx="8" fill="#241a17" stroke="#7a3d2c"/>
+        <text class="nodetext" x="56" y="547">Retention sweep</text>
+        <text class="nodesub" x="56" y="564">purge raw text + names ≤ 24h</text></g>
+
+      <!-- annotations -->
+      <line x1="330" y1="131" x2="380" y2="131" stroke="#3d4553" stroke-width="1.5"/>
+      <text class="anno" x="390" y="126"><tspan font-weight="700" fill="#e7eaf0">Raw body must be cached</tspan> before Plug.Parsers</text>
+      <text class="anno" x="390" y="144">runs — a body_reader plug on this route only.</text>
+
+      <line x1="330" y1="215" x2="380" y2="215" stroke="#3d4553" stroke-width="1.5"/>
+      <text class="anno" x="390" y="210"><tspan font-weight="700" fill="#e7eaf0">This is the only copy.</tspan> No API returns the</text>
+      <text class="anno" x="390" y="228">text later, and none reaches pre-join history.</text>
+
+      <line x1="330" y1="299" x2="380" y2="299" stroke="#3d4553" stroke-width="1.5"/>
+      <text class="anno" x="390" y="294"><tspan font-weight="700" fill="#ff8f8f">2 second budget.</tspan> Slower is logged as</text>
+      <text class="anno" x="390" y="312">request_timeout; repeated failure risks suspension.</text>
+
+      <line x1="330" y1="383" x2="380" y2="383" stroke="#3d4553" stroke-width="1.5"/>
+      <text class="anno" x="390" y="378"><tspan font-weight="700" fill="#e7eaf0">userId can be absent</tspan> (LINE for PC senders),</text>
+      <text class="anno" x="390" y="396">so an unattributed draft is a valid state.</text>
+
+      <line x1="330" y1="467" x2="380" y2="467" stroke="#3d4553" stroke-width="1.5"/>
+      <text class="anno" x="390" y="462"><tspan font-weight="700" fill="#e7eaf0">Low confidence is fine.</tspan> The parser never</text>
+      <text class="anno" x="390" y="480">rejects — it drafts, and she corrects.</text>
+
+      <line x1="330" y1="551" x2="380" y2="551" stroke="#3d4553" stroke-width="1.5"/>
+      <text class="anno" x="390" y="546"><tspan font-weight="700" fill="#f5c65b">Policy-driven, not an optimisation.</tspan> Confirmed</text>
+      <text class="anno" x="390" y="564">ledger facts + userId survive; raw chatter does not.</text>
+
+      <rect x="40" y="596" width="930" height="30" rx="7" fill="#1f1416" stroke="#7a3d2c"/>
+      <text class="anno" x="56" y="616"><tspan font-weight="700" fill="#ff8f8f">Also required:</tspan> handle <tspan font-family="Menlo,monospace">unsend</tspan> (delete text + derived draft) and <tspan font-family="Menlo,monospace">messageEdited</tspan> (re-parse). Both affect ledger correctness.</text>
+    </svg>
+  </div>
+</section>
+
+<!-- ================= P5 : CONSTRAINTS ================= -->
+<section class="panel" id="p5">
+  <div class="card">
+    <h2>Platform constraints &amp; verified findings</h2>
+    <p class="lede">Everything below was read from primary documentation. Items marked
+      <span class="pill blocked">BLOCKED</span> are documented absences, not unfinished research.</p>
+    <table class="tbl">
+      <thead><tr><th>Finding</th><th style="width:38%">Design consequence</th><th style="width:110px">Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Bot in a group receives a <code>message</code> event for every member message; no mention needed.
+            <a href="https://developers.line.biz/en/docs/messaging-api/group-chats/">docs</a></td>
+          <td>Passive firehose watching is supported. Students change nothing.</td>
+          <td><span class="pill ok">OK</span></td>
+        </tr>
+        <tr>
+          <td>Display names via <code>GET /v2/bot/group/{groupId}/member/{userId}</code> — works for non-friends on an unverified account.
+            <a href="https://developers.line.biz/en/reference/messaging-api/#get-group-member-profile">docs</a></td>
+          <td>Identity backbone. <code>userId</code> is the student key; names are display only.</td>
+          <td><span class="pill ok">OK</span></td>
+        </tr>
+        <tr>
+          <td>輕用量 plan NT$0/mo; <b>reply</b> messages consume no quota.
+            <a href="https://tw.linebiz.com/faq/oa-price/message-price-list/">TW pricing</a></td>
+          <td>Running cost is NT$0 forever, as long as the bot never pushes.</td>
+          <td><span class="pill ok">OK</span></td>
+        </tr>
+        <tr>
+          <td>Push counts <b>per recipient</b> — one group push = 25 of 200 free messages.
+            <a href="https://developers.line.biz/en/docs/messaging-api/pricing/">docs</a></td>
+          <td>Never push to the group. 1:1 pushes to her cost 1 unit if ever needed.</td>
+          <td><span class="pill care">CARE</span></td>
+        </tr>
+        <tr>
+          <td>Only <b>one</b> Official Account may be in a group at a time.
+            <a href="https://developers.line.biz/en/docs/messaging-api/group-chats/">docs</a></td>
+          <td>Must confirm no other bot sits in her group, or the design fails outright.</td>
+          <td><span class="pill care">VERIFY</span></td>
+        </tr>
+        <tr>
+          <td>No API reaches messages sent before the bot joined, and text can't be re-fetched.
+            <a href="https://developers.line.biz/en/docs/messaging-api/receiving-messages/#get-content-from-webhook">docs</a></td>
+          <td>Persist on first receipt. Manual entry required for the backlog.</td>
+          <td><span class="pill care">CARE</span></td>
+        </tr>
+        <tr>
+          <td>Storing message text/display names beyond 24h requires notifying users.
+            <a href="https://terms2.line.me/LINE_Developers_user_data_policy?lang=en">User Data Policy §3.2.3</a></td>
+          <td>One-time Chinese disclosure on join + a ≤24h purge job. Non-code deliverable.</td>
+          <td><span class="pill care">CARE</span></td>
+        </tr>
+        <tr>
+          <td>LINE Bank (824) publishes no API; absent from all three Taiwan open-banking phases.
+            <a href="https://www.fisc.com.tw/tc/business/detail.aspx?caid=219ca7b9-2ae0-4fee-aedb-510430c01771">FISC</a></td>
+          <td rowspan="4">Automated reconciliation is unavailable. Payments are human-confirmed claims — permanently, by design.</td>
+          <td><span class="pill blocked">BLOCKED</span></td>
+        </tr>
+        <tr>
+          <td>TSP status needs a registered company, per-bank contracts, TAF-accredited audit.
+            <a href="https://www.fisc.com.tw/TSP/">FISC TSP</a></td>
+          <td><span class="pill blocked">BLOCKED</span></td>
+        </tr>
+        <tr>
+          <td>No LINE Pay API reads P2P transfers — the surface is 10 merchant endpoints.
+            <a href="https://developers-pay.line.me/online-api-v3">LINE Pay</a></td>
+          <td><span class="pill blocked">BLOCKED</span></td>
+        </tr>
+        <tr>
+          <td>LINE Bank alerts come from <i>LINE Bank's own OA</i> into her private chat. One OA's bot cannot read another's.</td>
+          <td><span class="pill blocked">BLOCKED</span></td>
+        </tr>
+        <tr>
+          <td>LINE Pay merchant: no-統編 個人商店 barred from online except 餐飲 with a storefront; class packages are 遞延性商品; free QR tier gets no API keys.
+            <a href="https://pay.line.me/portal/tw/customer/faq?categoryId=regacct">LINE Pay FAQ</a></td>
+          <td>Merchant acceptance is not a realistic path for a sole practitioner.</td>
+          <td><span class="pill blocked">BLOCKED</span></td>
+        </tr>
+        <tr>
+          <td>ECPay 個人賣家 + ATM 虛擬帳號: 身分證 only, no 統編, documented server callback, sandbox available. ~NT$15.75/payment.
+            <a href="https://developers.ecpay.com.tw/?p=2878">ECPay docs</a></td>
+          <td>The one real automation path. Deferred — only if the verification glance proves painful.</td>
+          <td><span class="pill care">LATER</span></td>
+        </tr>
+        <tr>
+          <td>營業稅 threshold for 勞務 is NT$50,000/month (114年 onward); crossing it triggers 稅籍登記 retroactively.
+            <a href="https://www.mof.gov.tw/singlehtml/384fb3077bb349ea973e7fc6f13b6974?cntId=3b62d010b3ce4e3997ad920bbb27220d">財政部</a></td>
+          <td>Ledger warns as a month approaches NT$50k. Cheap, and genuinely protective.</td>
+          <td><span class="pill ok">FEATURE</span></td>
+        </tr>
+        <tr>
+          <td>Provider scoping: <code>userId</code> differs across providers, and cross-provider IDs silently no-op.
+            <a href="https://developers.line.biz/en/docs/messaging-api/getting-user-ids/">docs</a></td>
+          <td>Create every channel under <b>one</b> provider, once. Painful to reverse.</td>
+          <td><span class="pill care">CARE</span></td>
+        </tr>
+        <tr>
+          <td>No maintained Elixir LINE SDK — <code>line_bot</code> is archived, uses HTTPoison, and compares signatures non-constant-time.</td>
+          <td>Hand-roll with <code>:req</code> + one plug + one controller, <code>Plug.Crypto.secure_compare/2</code>.</td>
+          <td><span class="pill ok">DECIDED</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</div>
+<script>
+  const tabs = [...document.querySelectorAll('nav button')];
+  tabs.forEach(b => b.onclick = () => {
+    tabs.forEach(x => x.setAttribute('aria-selected', String(x === b)));
+    document.querySelectorAll('.panel').forEach(p =>
+      p.classList.toggle('active', p.id === b.dataset.p));
+  });
+
+  // hover isolation on the ER diagram
+  const ents = [...document.querySelectorAll('g.entity')];
+  const edges = [...document.querySelectorAll('g.edgegrp')];
+  ents.forEach(e => {
+    e.addEventListener('mouseenter', () => {
+      const id = e.dataset.id;
+      const keep = new Set([id]);
+      edges.forEach(g => {
+        if (g.dataset.a === id || g.dataset.b === id) { keep.add(g.dataset.a); keep.add(g.dataset.b); }
+      });
+      edges.forEach(g => g.classList.toggle('faded', !(g.dataset.a === id || g.dataset.b === id)));
+      ents.forEach(x => x.classList.toggle('faded', !keep.has(x.dataset.id)));
+    });
+    e.addEventListener('mouseleave', () => {
+      edges.forEach(g => g.classList.remove('faded'));
+      ents.forEach(x => x.classList.remove('faded'));
+    });
+  });
+</script>
+</body>
+</html>
