@@ -8,8 +8,6 @@
   :root{
     --bg:#0e1014; --panel:#15181f; --panel2:#1b1f28; --line:#2a3038;
     --fg:#e7eaf0; --muted:#8b93a7; --dim:#5b6273;
-    --people:#f0b429; --schedule:#4c9aff; --booking:#35c48b;
-    --entitle:#b085f5; --money:#f2795f; --danger:#ff6b6b; --ok:#35c48b;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--fg)}
@@ -19,58 +17,91 @@
   header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:24px}
   h1{margin:0 0 6px;font-size:23px;letter-spacing:-.02em;font-weight:650}
   .sub{color:var(--muted);font-size:14px;margin:0}
-  .sub code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12.5px}
+  .sub code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:12.5px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   nav{display:flex;gap:6px;flex-wrap:wrap;margin:22px 0 20px}
   nav button{background:var(--panel);color:var(--muted);border:1px solid var(--line);
-    padding:8px 14px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;
-    transition:.15s ease}
+    padding:8px 14px;border-radius:8px;font:inherit;font-size:13.5px;cursor:pointer;transition:.15s ease}
   nav button:hover{color:var(--fg);border-color:#3a424e}
-  nav button[aria-selected=true]{background:var(--panel2);color:var(--fg);border-color:#49546a;
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.03)}
+  nav button[aria-selected=true]{background:var(--panel2);color:var(--fg);border-color:#49546a}
   .panel{display:none}
   .panel.active{display:block}
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px;overflow-x:auto}
   h2{font-size:17px;margin:0 0 4px;font-weight:620;letter-spacing:-.01em}
   .lede{color:var(--muted);font-size:13.5px;margin:0 0 18px;max-width:80ch}
-  svg{display:block;width:100%;height:auto;min-width:720px}
   .legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;padding-top:14px;
     border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)}
   .legend span{display:flex;align-items:center;gap:7px}
   .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
   .notes{margin:18px 0 0;padding:0;list-style:none;font-size:13.5px;color:var(--muted)}
-  .notes li{padding:7px 0 7px 16px;border-left:2px solid var(--line);margin-bottom:6px;
-    padding-left:14px}
+  .notes li{padding:7px 0 7px 14px;border-left:2px solid var(--line);margin-bottom:6px}
   .notes li b{color:var(--fg);font-weight:600}
-  .notes code,.tbl code,.sub code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .notes code,.tbl code{background:var(--panel2);padding:1px 5px;border-radius:4px;
-    font-size:12px;color:#cfd6e4}
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:#cfd6e4}
   .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
-  .tbl th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;
-    text-transform:uppercase;letter-spacing:.05em;padding:0 12px 10px 0;border-bottom:1px solid var(--line)}
+  .tbl th{text-align:left;color:var(--muted);font-weight:600;font-size:12px;text-transform:uppercase;
+    letter-spacing:.05em;padding:0 12px 10px 0;border-bottom:1px solid var(--line)}
   .tbl td{padding:12px 12px 12px 0;border-bottom:1px solid var(--line);vertical-align:top}
   .tbl tr:last-child td{border-bottom:none}
   .tbl a{color:#7fb0ff;text-decoration:none}
   .tbl a:hover{text-decoration:underline}
-  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;
-    font-weight:650;letter-spacing:.02em;white-space:nowrap}
+  .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:650;white-space:nowrap}
   .pill.blocked{background:rgba(255,107,107,.14);color:#ff8f8f}
   .pill.ok{background:rgba(53,196,139,.14);color:#5fd6a4}
   .pill.care{background:rgba(240,180,41,.15);color:#f5c65b}
-  text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
-  .ehdr{font-size:12.5px;font-weight:700;letter-spacing:.02em}
-  .efld{font-size:10.7px;fill:#aab3c5;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  .efld.nul{fill:#727b8e}
-  .elabel{font-size:10.5px;fill:var(--muted);font-style:italic}
-  .card-lbl{font-size:10px;fill:var(--dim);font-weight:700;letter-spacing:.08em}
-  .nodetext{font-size:12.5px;font-weight:600;fill:var(--fg)}
-  .nodesub{font-size:10.5px;fill:var(--muted);font-family:ui-monospace,Menlo,monospace}
+
+  /* ---------- diagram scaffold: HTML boxes + SVG wires only ----------
+     Text lives in HTML, never in SVG <text>. An SVG <text> loses every glyph
+     if anything (e.g. find-in-page) injects an XHTML <mark> inside it. */
+  .dgm{position:relative}
+  .dgm > svg{position:absolute;left:0;top:0;width:100%;height:100%;overflow:visible;pointer-events:none}
   .edge{fill:none;stroke:#3d4553;stroke-width:1.5}
   .edge.dash{stroke-dasharray:5 4}
   .edge.hot{stroke:#6c7891}
-  .anno{font-size:11px;fill:var(--muted)}
-  .gate{font-size:11px;font-weight:700;fill:#ff8f8f;letter-spacing:.04em}
-  g.entity,g.edgegrp{transition:opacity .16s ease}
-  g.faded{opacity:.16}
+
+  .nd{position:absolute;border-radius:9px;border:1.5px solid;overflow:hidden;background:var(--panel)}
+  .nd .hd{display:flex;align-items:center;justify-content:space-between;gap:8px;height:28px;
+    padding:0 12px;font-size:12.5px;font-weight:700;letter-spacing:.02em}
+  .nd .hd .tg{font-size:10px;letter-spacing:.08em;color:var(--dim);font-weight:700;flex:none}
+  /* 5px not 8px: box-sizing:border-box makes the 1.5px borders consume 3px of the
+     content box, and each node's outer height (36 + 18n) is what the SVG wire
+     endpoints were computed against. Absorbing the 3px here keeps every path valid. */
+  .nd ul{margin:0;padding:0 12px 5px;list-style:none}
+  .nd li{font:10.7px/18px ui-monospace,SFMono-Regular,Menlo,monospace;color:#aab3c5;white-space:nowrap}
+  .nd li.d{color:#727b8e}
+  .nd li.g{color:#6bdcae}
+  .nd li.m{color:#ff9d84}
+
+  .c-people{border-color:#6b5320;background:#211d14}
+  .c-people>.hd{background:#302716;color:#f5c65b}
+  .c-sched{border-color:#2f4b73;background:#171d28}
+  .c-sched>.hd{background:#1d2b40;color:#8ec0ff}
+  .c-sale{border-color:#2b5b48;background:#161f1c}
+  .c-sale>.hd{background:#193026;color:#6bdcae}
+  .c-cred{border-color:#4d3b73;background:#1c1826}
+  .c-cred>.hd{background:#271f3a;color:#c3a4ff}
+  .c-money{border-color:#7a3d2c;background:#241a17}
+  .c-money>.hd{background:#33211b;color:#ff9d84}
+
+  .bx{position:absolute;border-radius:8px;border:1.5px solid;padding:8px 14px;background:var(--panel)}
+  .bx .t{font-size:12.5px;font-weight:600;line-height:18px}
+  .bx .s{font:10.5px/17px ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--muted);white-space:nowrap}
+  .bx .t.pu{color:#c3a4ff} .bx .t.gr{color:#6bdcae} .bx .t.co{color:#ff9d84}
+  .bx .s.gold{color:#f5c65b} .bx .s.grn{color:#5fd6a4}
+  .bx.strong{border-width:1.8px}
+
+  .lb{position:absolute;z-index:2;font-size:10.5px;font-style:italic;color:var(--muted);
+    background:var(--panel);padding:0 4px;line-height:14px;white-space:nowrap}
+  .an{position:absolute;font-size:11px;color:var(--muted);line-height:18px;white-space:nowrap}
+  .an b{color:var(--fg);font-weight:700}
+  .an.gold{color:#f5c65b} .an.red{color:#ff8f8f}
+  .an.wide{white-space:normal;width:590px}
+  .seclbl{position:absolute;font-size:10px;font-weight:700;letter-spacing:.08em}
+  .banner{position:absolute;border-radius:7px;background:#1f1416;border:1px solid #7a3d2c;
+    padding:6px 14px;font-size:11px;color:var(--muted);line-height:18px;white-space:nowrap}
+  .banner b{color:#ff8f8f}
+  .faded{opacity:.16;transition:opacity .16s ease}
+  .nd,.edgegrp,.lb{transition:opacity .16s ease}
 </style>
 </head>
 <body>
@@ -95,192 +126,138 @@
     <p class="lede">Hover an entity to isolate its relationships. <b>Purchase</b> is the money side of a sale;
       <b>Attendance</b> is the roster row that puts a name on a date. Splitting them is what lets one payment
       point at exactly one thing, and lets a free makeup exist with no sale behind it.</p>
-    <svg viewBox="0 0 840 700" role="img" aria-label="Entity relationship diagram">
-      <defs>
-        <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
-        </marker>
-      </defs>
 
-      <!-- ---------- edges ---------- -->
-      <g class="edgegrp" data-a="package" data-b="purchase">
-        <path class="edge" d="M230,93 H265 V240 H300" marker-end="url(#arw)"/>
-        <rect x="196" y="150" width="70" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="200" y="162">priced by</text>
-      </g>
-      <g class="edgegrp" data-a="slot" data-b="purchase">
-        <path class="edge" d="M230,273 H265 V300 H300" marker-end="url(#arw)"/>
-        <rect x="180" y="288" width="86" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="184" y="300">monthly only</text>
-      </g>
-      <g class="edgegrp" data-a="slot" data-b="session">
-        <path class="edge" d="M130,336 V390" marker-end="url(#arw)"/>
-        <rect x="136" y="355" width="72" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="140" y="367">generates</text>
-      </g>
-      <g class="edgegrp" data-a="student" data-b="purchase">
-        <path class="edge" d="M400,138 V200" marker-end="url(#arw)"/>
-        <rect x="406" y="160" width="46" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="410" y="172">buys</text>
-      </g>
-      <g class="edgegrp" data-a="purchase" data-b="attendance">
-        <path class="edge" d="M500,240 H600" marker-end="url(#arw)"/>
-        <rect x="504" y="222" width="94" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="508" y="234">seats 1..N</text>
-      </g>
-      <g class="edgegrp" data-a="session" data-b="attendance">
-        <path class="edge" d="M230,453 H265 V400 H560 V380" marker-end="url(#arw)"/>
-        <rect x="368" y="389" width="56" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="372" y="401">roster</text>
-      </g>
-      <g class="edgegrp" data-a="purchase" data-b="payment">
-        <path class="edge" d="M400,362 V430" marker-end="url(#arw)"/>
-        <rect x="406" y="388" width="88" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="410" y="400">settled by</text>
-      </g>
-      <g class="edgegrp" data-a="purchase" data-b="credit">
-        <path class="edge" d="M500,330 H570 V480 H600" marker-end="url(#arw)"/>
-        <rect x="490" y="466" width="108" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="494" y="478">grants included</text>
-      </g>
-      <g class="edgegrp" data-a="student" data-b="credit">
-        <path class="edge" d="M500,84 H815 V502 H800" marker-end="url(#arw)"/>
-        <rect x="742" y="90" width="52" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="746" y="102">holds</text>
-      </g>
-      <g class="edgegrp" data-a="credit" data-b="attendance">
-        <path class="edge dash" d="M700,430 V380" marker-end="url(#arw)"/>
-        <rect x="706" y="396" width="104" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="710" y="408">consumed by</text>
-      </g>
-      <g class="edgegrp" data-a="session" data-b="credit">
-        <path class="edge dash" d="M130,516 V670 H700 V574" marker-end="url(#arw)"/>
-        <rect x="290" y="659" width="196" height="16" rx="4" fill="#15181f"/>
-        <text class="elabel" x="388" y="671" text-anchor="middle">on :cancelled — 1 per enrolled</text>
-      </g>
+    <div class="dgm" id="d1" style="width:840px;height:700px;min-width:840px">
+      <svg viewBox="0 0 840 700" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+          </marker>
+        </defs>
+        <g class="edgegrp" data-a="package" data-b="purchase"><path class="edge" d="M230,93 H265 V240 H300" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="slot" data-b="purchase"><path class="edge" d="M230,273 H265 V300 H300" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="slot" data-b="session"><path class="edge" d="M130,336 V390" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="student" data-b="purchase"><path class="edge" d="M400,138 V200" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="purchase" data-b="attendance"><path class="edge" d="M500,240 H600" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="session" data-b="attendance"><path class="edge" d="M230,453 H265 V400 H560 V380" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="purchase" data-b="payment"><path class="edge" d="M400,362 V430" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="purchase" data-b="credit"><path class="edge" d="M500,330 H570 V480 H600" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="student" data-b="credit"><path class="edge" d="M500,84 H815 V502 H800" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="credit" data-b="attendance"><path class="edge dash" d="M700,430 V380" marker-end="url(#arw)"/></g>
+        <g class="edgegrp" data-a="session" data-b="credit"><path class="edge dash" d="M130,516 V670 H700 V574" marker-end="url(#arw)"/></g>
+      </svg>
 
-      <!-- ---------- PACKAGE ---------- -->
-      <g class="entity" data-id="package">
-        <rect x="30" y="30" width="200" height="126" rx="9" fill="#211d14" stroke="#6b5320" stroke-width="1.5"/>
-        <rect x="30" y="30" width="200" height="28" rx="9" fill="#302716"/>
-        <rect x="30" y="50" width="200" height="8" fill="#302716"/>
-        <text class="ehdr" x="42" y="49" fill="#f5c65b">PACKAGE</text>
-        <text class="card-lbl" x="218" y="49" text-anchor="end">PRICE LIST</text>
-        <text class="efld" x="42" y="76">name</text>
-        <text class="efld" x="42" y="94">kind :monthly :drop_in</text>
-        <text class="efld" x="42" y="112">     :trial</text>
-        <text class="efld" x="42" y="130">price_per_class</text>
-        <text class="efld" x="42" y="148">included_makeups</text>
-      </g>
+      <!-- edge labels (HTML, so a highlight can never erase them) -->
+      <div class="lb" data-a="package" data-b="purchase"   style="left:234px;top:130px">priced by</div>
+      <div class="lb" data-a="slot" data-b="purchase"      style="left:240px;top:279px">monthly</div>
+      <div class="lb" data-a="slot" data-b="session"       style="left:132px;top:353px">generates</div>
+      <div class="lb" data-a="student" data-b="purchase"   style="left:404px;top:158px">buys</div>
+      <div class="lb" data-a="purchase" data-b="attendance" style="left:502px;top:220px">seats 1..N</div>
+      <div class="lb" data-a="session" data-b="attendance" style="left:366px;top:387px">roster</div>
+      <div class="lb" data-a="purchase" data-b="payment"   style="left:404px;top:386px">settled by</div>
+      <div class="lb" data-a="purchase" data-b="credit"    style="left:506px;top:464px">grants included</div>
+      <div class="lb" data-a="student" data-b="credit"     style="left:740px;top:88px">holds</div>
+      <div class="lb" data-a="credit" data-b="attendance"  style="left:704px;top:394px">consumed by</div>
+      <div class="lb" data-a="session" data-b="credit"     style="left:288px;top:657px">on :cancelled — 1 per enrolled</div>
 
-      <!-- ---------- SLOT ---------- -->
-      <g class="entity" data-id="slot">
-        <rect x="30" y="210" width="200" height="126" rx="9" fill="#171d28" stroke="#2f4b73" stroke-width="1.5"/>
-        <rect x="30" y="210" width="200" height="28" rx="9" fill="#1d2b40"/>
-        <rect x="30" y="230" width="200" height="8" fill="#1d2b40"/>
-        <text class="ehdr" x="42" y="229" fill="#8ec0ff">SLOT</text>
-        <text class="card-lbl" x="218" y="229" text-anchor="end">WEEKLY</text>
-        <text class="efld" x="42" y="256">weekday</text>
-        <text class="efld" x="42" y="274">start_time · end_time</text>
-        <text class="efld" x="42" y="292">default_style</text>
-        <text class="efld" x="42" y="310">label</text>
-        <text class="efld nul" x="42" y="328">active</text>
-      </g>
+      <div class="nd c-people" data-id="package" style="left:30px;top:30px;width:200px;height:126px">
+        <div class="hd"><span>PACKAGE</span><span class="tg">PRICE LIST</span></div>
+        <ul>
+          <li>name</li>
+          <li>kind :monthly :drop_in</li>
+          <li>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:trial</li>
+          <li>price_per_class</li>
+          <li>included_makeups</li>
+        </ul>
+      </div>
 
-      <!-- ---------- SESSION ---------- -->
-      <g class="entity" data-id="session">
-        <rect x="30" y="390" width="200" height="126" rx="9" fill="#171d28" stroke="#2f4b73" stroke-width="1.5"/>
-        <rect x="30" y="390" width="200" height="28" rx="9" fill="#1d2b40"/>
-        <rect x="30" y="410" width="200" height="8" fill="#1d2b40"/>
-        <text class="ehdr" x="42" y="409" fill="#8ec0ff">SESSION</text>
-        <text class="card-lbl" x="218" y="409" text-anchor="end">ONE DATE</text>
-        <text class="efld" x="42" y="436">slot_id →</text>
-        <text class="efld" x="42" y="454">date</text>
-        <text class="efld" x="42" y="472">style ⟵ overrides slot</text>
-        <text class="efld" x="42" y="490">state :scheduled</text>
-        <text class="efld nul" x="42" y="508">      :cancelled + reason</text>
-      </g>
+      <div class="nd c-sched" data-id="slot" style="left:30px;top:210px;width:200px;height:126px">
+        <div class="hd"><span>SLOT</span><span class="tg">WEEKLY</span></div>
+        <ul>
+          <li>weekday</li>
+          <li>start_time · end_time</li>
+          <li>default_style</li>
+          <li>label</li>
+          <li class="d">active</li>
+        </ul>
+      </div>
 
-      <!-- ---------- STUDENT ---------- -->
-      <g class="entity" data-id="student">
-        <rect x="300" y="30" width="200" height="108" rx="9" fill="#211d14" stroke="#6b5320" stroke-width="1.5"/>
-        <rect x="300" y="30" width="200" height="28" rx="9" fill="#302716"/>
-        <rect x="300" y="50" width="200" height="8" fill="#302716"/>
-        <text class="ehdr" x="312" y="49" fill="#f5c65b">STUDENT</text>
-        <text class="card-lbl" x="488" y="49" text-anchor="end">HUB</text>
-        <text class="efld" x="312" y="76">line_user_id ? uniq</text>
-        <text class="efld" x="312" y="94">display_name</text>
-        <text class="efld" x="312" y="112">→ student_aliases[]</text>
-        <text class="efld nul" x="312" y="130">active</text>
-      </g>
+      <div class="nd c-sched" data-id="session" style="left:30px;top:390px;width:200px;height:126px">
+        <div class="hd"><span>SESSION</span><span class="tg">ONE DATE</span></div>
+        <ul>
+          <li>slot_id →</li>
+          <li>date</li>
+          <li>style ⟵ overrides slot</li>
+          <li>state :scheduled</li>
+          <li class="d">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:cancelled + reason</li>
+        </ul>
+      </div>
 
-      <!-- ---------- PURCHASE ---------- -->
-      <g class="entity" data-id="purchase">
-        <rect x="300" y="200" width="200" height="162" rx="9" fill="#161f1c" stroke="#2b5b48" stroke-width="1.5"/>
-        <rect x="300" y="200" width="200" height="28" rx="9" fill="#193026"/>
-        <rect x="300" y="220" width="200" height="8" fill="#193026"/>
-        <text class="ehdr" x="312" y="219" fill="#6bdcae">PURCHASE</text>
-        <text class="card-lbl" x="488" y="219" text-anchor="end">A SALE</text>
-        <text class="efld" x="312" y="246">student_id →  package_id →</text>
-        <text class="efld nul" x="312" y="264">slot_id ?  ⟵ monthly only</text>
-        <text class="efld" x="312" y="282">list_price   (snapshot)</text>
-        <text class="efld nul" x="312" y="300">custom_amount ?  ⟵ override</text>
-        <text class="efld nul" x="312" y="318">note ?</text>
-        <text class="efld" x="312" y="336" fill="#6bdcae">payable = custom ?? list</text>
-        <text class="efld nul" x="312" y="354">no month column — derived</text>
-      </g>
+      <div class="nd c-people" data-id="student" style="left:300px;top:30px;width:200px;height:108px">
+        <div class="hd"><span>STUDENT</span><span class="tg">HUB</span></div>
+        <ul>
+          <li>line_user_id ? uniq</li>
+          <li>display_name</li>
+          <li>→ student_aliases[]</li>
+          <li class="d">active</li>
+        </ul>
+      </div>
 
-      <!-- ---------- ATTENDANCE ---------- -->
-      <g class="entity" data-id="attendance">
-        <rect x="600" y="200" width="200" height="180" rx="9" fill="#161f1c" stroke="#2b5b48" stroke-width="1.5"/>
-        <rect x="600" y="200" width="200" height="28" rx="9" fill="#193026"/>
-        <rect x="600" y="220" width="200" height="8" fill="#193026"/>
-        <text class="ehdr" x="612" y="219" fill="#6bdcae">ATTENDANCE</text>
-        <text class="card-lbl" x="788" y="219" text-anchor="end">ROSTER</text>
-        <text class="efld" x="612" y="246">session_id → student_id →</text>
-        <text class="efld" x="612" y="264">kind :enrolled :makeup</text>
-        <text class="efld" x="612" y="282">     :drop_in :trial</text>
-        <text class="efld nul" x="612" y="300">purchase_id ?  ⟵ null=free</text>
-        <text class="efld nul" x="612" y="318">credit_id ?</text>
-        <text class="efld" x="612" y="336">state :expected|:no_show</text>
-        <text class="efld nul" x="612" y="354">note ?</text>
-        <text class="efld" x="612" y="372" fill="#6bdcae">uniq (session_id, student)</text>
-      </g>
+      <div class="nd c-sale" data-id="purchase" style="left:300px;top:200px;width:200px;height:162px">
+        <div class="hd"><span>PURCHASE</span><span class="tg">A SALE</span></div>
+        <ul>
+          <li>student_id → package_id →</li>
+          <li class="d">slot_id ? ⟵ monthly only</li>
+          <li>list_price (snapshot)</li>
+          <li class="d">custom_amount ? ⟵ override</li>
+          <li class="d">note ?</li>
+          <li class="g">payable = custom ?? list</li>
+          <li class="d">no month column — derived</li>
+        </ul>
+      </div>
 
-      <!-- ---------- CREDIT ---------- -->
-      <g class="entity" data-id="credit">
-        <rect x="600" y="430" width="200" height="144" rx="9" fill="#1c1826" stroke="#4d3b73" stroke-width="1.5"/>
-        <rect x="600" y="430" width="200" height="28" rx="9" fill="#271f3a"/>
-        <rect x="600" y="450" width="200" height="8" fill="#271f3a"/>
-        <text class="ehdr" x="612" y="449" fill="#c3a4ff">CREDIT</text>
-        <text class="card-lbl" x="788" y="449" text-anchor="end">補課 / 調課</text>
-        <text class="efld" x="612" y="476">student_id →</text>
-        <text class="efld" x="612" y="494">source :package</text>
-        <text class="efld" x="612" y="512">       :cancellation</text>
-        <text class="efld nul" x="612" y="530">origin_purchase_id ?</text>
-        <text class="efld nul" x="612" y="548">origin_session_id ?</text>
-        <text class="efld nul" x="612" y="566">expires_on ?  consumed_by ?</text>
-      </g>
+      <div class="nd c-sale" data-id="attendance" style="left:600px;top:200px;width:200px;height:180px">
+        <div class="hd"><span>ATTENDANCE</span><span class="tg">ROSTER</span></div>
+        <ul>
+          <li>session_id → student_id →</li>
+          <li>kind :enrolled :makeup</li>
+          <li>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:drop_in :trial</li>
+          <li class="d">purchase_id ? ⟵ null=free</li>
+          <li class="d">credit_id ?</li>
+          <li>state :expected|:no_show</li>
+          <li class="d">note ?</li>
+          <li class="g">uniq (session_id, student)</li>
+        </ul>
+      </div>
 
-      <!-- ---------- PAYMENT ---------- -->
-      <g class="entity" data-id="payment">
-        <rect x="300" y="430" width="200" height="216" rx="9" fill="#241a17" stroke="#7a3d2c" stroke-width="1.5"/>
-        <rect x="300" y="430" width="200" height="28" rx="9" fill="#33211b"/>
-        <rect x="300" y="450" width="200" height="8" fill="#33211b"/>
-        <text class="ehdr" x="312" y="449" fill="#ff9d84">PAYMENT</text>
-        <text class="card-lbl" x="488" y="449" text-anchor="end">CLAIM</text>
-        <text class="efld" x="312" y="476" fill="#ff9d84">purchase_id →  (only FK)</text>
-        <text class="efld" x="312" y="494">amount   int TWD, NOT NULL</text>
-        <text class="efld" x="312" y="512">method :line_pay</text>
-        <text class="efld" x="312" y="530">  :line_bank :cash :other</text>
-        <text class="efld" x="312" y="548">state :claimed :confirmed</text>
-        <text class="efld" x="312" y="566">      :disputed</text>
-        <text class="efld" x="312" y="584">paid_on   note ?</text>
-        <text class="efld nul" x="312" y="602">reported_last5 ? 帳後五碼</text>
-        <text class="efld" x="312" y="620">source :manual|:line_draft</text>
-        <text class="efld" x="312" y="638" fill="#ff9d84">confirmed_at · confirmed_by</text>
-      </g>
-    </svg>
+      <div class="nd c-cred" data-id="credit" style="left:600px;top:430px;width:200px;height:144px">
+        <div class="hd"><span>CREDIT</span><span class="tg">補課 / 調課</span></div>
+        <ul>
+          <li>student_id →</li>
+          <li>source :package</li>
+          <li>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:cancellation</li>
+          <li class="d">origin_purchase_id ?</li>
+          <li class="d">origin_session_id ?</li>
+          <li class="d">expires_on ? consumed_by ?</li>
+        </ul>
+      </div>
+
+      <div class="nd c-money" data-id="payment" style="left:300px;top:430px;width:200px;height:216px">
+        <div class="hd"><span>PAYMENT</span><span class="tg">CLAIM</span></div>
+        <ul>
+          <li class="m">purchase_id → (only FK)</li>
+          <li>amount int TWD, NOT NULL</li>
+          <li>method :line_pay</li>
+          <li>&nbsp;&nbsp;:line_bank :cash :other</li>
+          <li>state :claimed :confirmed</li>
+          <li>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;:disputed</li>
+          <li>paid_on&nbsp;&nbsp; note ?</li>
+          <li class="d">reported_last5 ? 帳後五碼</li>
+          <li>source :manual|:line_draft</li>
+          <li class="m">confirmed_at · confirmed_by</li>
+        </ul>
+      </div>
+    </div>
 
     <div class="legend">
       <span><i class="sw" style="background:#4c9aff"></i>Schedule</span>
@@ -292,19 +269,20 @@
     </div>
 
     <ul class="notes">
-      <li><b>The model now explains her two different 2-class prices.</b> 素容 paid 900 for 2堂 = 450×2, the
+      <li><b>The model explains her two different 2-class prices.</b> 素容 paid 900 for 2堂 = 450×2, the
         <i>drop-in</i> rate. 彩華 paid 800 for 2堂 = 400×2, the <i>package</i> rate. As a flat <code>price</code>
-        integer both were arbitrary numbers; as <code>PACKAGE</code> + session count they are structurally
-        different sales, and which one she used becomes visible.</li>
+        integer both were arbitrary numbers; as a package plus a session count they are structurally different
+        sales, and which one she used becomes visible.</li>
       <li><b><code>custom_amount</code> instead of a discount field.</b> Her doc records final agreed numbers —
         400, 800, 900, 1200 — never deltas. She types what was agreed; the system never asks her to compute a
-        difference. Adjustments can also go <i>up</i>, and "how much did I comp" is still derivable as
+        difference. Adjustments can also go <i>up</i>, and "how much did I comp" stays derivable as
         <code>list_price − payable</code>.</li>
       <li><b>按摩器代購 is <code>custom_amount = 0</code> plus a note</b>, not a null amount and not a fake
-        number. <code>payment.amount</code> stays <code>NOT NULL</code> — no nullable money in the schema.</li>
+        number. <code>payment.amount</code> is <code>NOT NULL</code> — no nullable money in the schema.</li>
       <li><b>No <code>month</code> column anywhere.</b> A purchase's period is derived from the dates of its
-        attendance rows. Cost: "August revenue" joins through <code>attendance → session</code>. Benefit: a
-        purchase spanning a month boundary needs no special case, and there is no denormalised field to drift.</li>
+        attendance rows. Cost: monthly reporting joins through <code>attendance → session</code>, and a purchase
+        with no attendance rows has no period. Benefit: nothing to drift, and month-spanning purchases need no
+        special case.</li>
       <li><b><code>purchase_id</code> is Payment's only foreign key.</b> Because a drop-in is also a purchase,
         payment needs no nullable FK pair and no polymorphic association. Student is reached via the purchase.</li>
       <li><b><code>attendance.purchase_id</code> is nullable, and that is the point.</b> A makeup has no sale
@@ -321,66 +299,51 @@
     <h2>Credit lifecycle</h2>
     <p class="lede">Two sources, one consumption mechanism, two different lifespans. This replaces the
       hand-maintained <code>備註：蘭子補課8/17 or 8/31</code> line.</p>
-    <svg viewBox="0 0 1040 400" role="img" aria-label="Credit lifecycle state machine">
-      <defs>
-        <marker id="arw2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
-        </marker>
-      </defs>
 
-      <path class="edge" d="M220,87 H280" marker-end="url(#arw2)"/>
-      <path class="edge" d="M220,257 H280" marker-end="url(#arw2)"/>
-      <path class="edge" d="M490,87 H525 V172 H560" marker-end="url(#arw2)"/>
-      <path class="edge" d="M490,257 H525 V172 H560" marker-end="url(#arw2)"/>
-      <path class="edge" d="M720,155 H750 V92 H780" marker-end="url(#arw2)"/>
-      <path class="edge dash" d="M720,190 H750 V262 H780" marker-end="url(#arw2)"/>
+    <div class="dgm" style="width:1040px;height:400px;min-width:1040px">
+      <svg viewBox="0 0 1040 400" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="arw2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+          </marker>
+        </defs>
+        <path class="edge" d="M220,87 H280" marker-end="url(#arw2)"/>
+        <path class="edge" d="M220,257 H280" marker-end="url(#arw2)"/>
+        <path class="edge" d="M490,87 H525 V172 H560" marker-end="url(#arw2)"/>
+        <path class="edge" d="M490,257 H525 V172 H560" marker-end="url(#arw2)"/>
+        <path class="edge" d="M720,155 H750 V92 H780" marker-end="url(#arw2)"/>
+        <path class="edge dash" d="M720,190 H750 V262 H780" marker-end="url(#arw2)"/>
+      </svg>
 
-      <g>
-        <rect x="30" y="60" width="190" height="54" rx="8" fill="#161f1c" stroke="#2b5b48"/>
-        <text class="nodetext" x="46" y="83">Monthly purchase</text>
-        <text class="nodesub" x="46" y="100">package.included_makeups</text>
-      </g>
-      <g>
-        <rect x="30" y="230" width="190" height="54" rx="8" fill="#171d28" stroke="#2f4b73"/>
-        <text class="nodetext" x="46" y="253">Session cancelled</text>
-        <text class="nodesub" x="46" y="270">颱風假 · teacher cancels</text>
-      </g>
+      <div class="bx c-sale" style="left:30px;top:60px;width:190px;height:54px">
+        <div class="t">Monthly purchase</div><div class="s">package.included_makeups</div></div>
+      <div class="bx c-sched" style="left:30px;top:230px;width:190px;height:54px">
+        <div class="t">Session cancelled</div><div class="s">颱風假 · teacher cancels</div></div>
 
-      <g>
-        <rect x="280" y="50" width="210" height="74" rx="8" fill="#1c1826" stroke="#4d3b73"/>
-        <text class="nodetext" x="296" y="74" fill="#c3a4ff">:package credit</text>
-        <text class="nodesub" x="296" y="92">1 for :monthly, 0 otherwise</text>
-        <text class="nodesub" x="296" y="109" fill="#f5c65b">expires_on = month end</text>
-      </g>
-      <g>
-        <rect x="280" y="220" width="210" height="74" rx="8" fill="#1c1826" stroke="#4d3b73"/>
-        <text class="nodetext" x="296" y="244" fill="#c3a4ff">:cancellation credit</text>
-        <text class="nodesub" x="296" y="262">1 per :enrolled attendance</text>
-        <text class="nodesub" x="296" y="279" fill="#5fd6a4">expires_on = NULL</text>
-      </g>
+      <div class="bx c-cred" style="left:280px;top:50px;width:210px;height:74px">
+        <div class="t pu">:package credit</div>
+        <div class="s">1 for :monthly, 0 otherwise</div>
+        <div class="s gold">expires_on = month end</div></div>
+      <div class="bx c-cred" style="left:280px;top:220px;width:210px;height:74px">
+        <div class="t pu">:cancellation credit</div>
+        <div class="s">1 per :enrolled attendance</div>
+        <div class="s grn">expires_on = NULL</div></div>
 
-      <g>
-        <rect x="560" y="135" width="160" height="74" rx="8" fill="#1b1f28" stroke="#49546a" stroke-width="1.5"/>
-        <text class="nodetext" x="576" y="160">available</text>
-        <text class="nodesub" x="576" y="178">consumed_by = NULL</text>
-        <text class="nodesub" x="576" y="195">portable across slots</text>
-      </g>
+      <div class="bx strong" style="left:560px;top:135px;width:160px;height:74px;border-color:#49546a;background:#1b1f28">
+        <div class="t">available</div>
+        <div class="s">consumed_by = NULL</div>
+        <div class="s">portable across slots</div></div>
 
-      <g>
-        <rect x="780" y="60" width="220" height="64" rx="8" fill="#161f1c" stroke="#2b5b48"/>
-        <text class="nodetext" x="796" y="84" fill="#6bdcae">consumed</text>
-        <text class="nodesub" x="796" y="102">by a :makeup attendance</text>
-      </g>
-      <g>
-        <rect x="780" y="230" width="220" height="64" rx="8" fill="#241a17" stroke="#7a3d2c"/>
-        <text class="nodetext" x="796" y="254" fill="#ff9d84">expired</text>
-        <text class="nodesub" x="796" y="272">:package only, at month end</text>
-      </g>
+      <div class="bx c-sale" style="left:780px;top:60px;width:220px;height:64px">
+        <div class="t gr">consumed</div><div class="s">by a :makeup attendance</div></div>
+      <div class="bx c-money" style="left:780px;top:230px;width:220px;height:64px">
+        <div class="t co">expired</div><div class="s">:package only, at month end</div></div>
 
-      <text class="anno" x="30" y="345">Guard on consumption — all three must hold, enforced in code:</text>
-      <text class="anno" x="30" y="366">1 · same student  ·  2 · consumed_by IS NULL  ·  3 · expires_on IS NULL OR ≥ session.date</text>
-      <text class="anno" x="30" y="387" fill="#f5c65b">Cancellation must be idempotent — re-running it may never mint duplicate credits.</text>
-    </svg>
+      <div class="an" style="left:30px;top:328px">Guard on consumption — all three must hold, enforced in code:</div>
+      <div class="an" style="left:30px;top:349px">1 · same student &nbsp;·&nbsp; 2 · consumed_by IS NULL &nbsp;·&nbsp; 3 · expires_on IS NULL OR ≥ session.date</div>
+      <div class="an gold" style="left:30px;top:370px">Cancellation must be idempotent — re-running it may never mint duplicate credits.</div>
+    </div>
+
     <ul class="notes">
       <li><b>Portability is real, not theoretical.</b> 蘭子 earned a Friday cancellation credit and could spend it
         on Monday 8/17 or 8/31 — so credits are held by the student, never by the slot.</li>
@@ -388,6 +351,9 @@
         while July's 颱風假 credits were still being spent in August. The asymmetry is her actual behaviour.</li>
       <li><b>The count is configuration, not a constant.</b> <code>included_makeups</code> lives on the package:
         1 for 月課程, 0 for 單堂 and 體驗. Changing the policy later is a data edit, not a migration.</li>
+      <li><b>Expiry is minted at session assignment, not purchase creation.</b> A purchase has no month of its
+        own, so expiry is the last day of the calendar month of its <i>earliest</i> session, in
+        <code>Asia/Taipei</code>.</li>
     </ul>
   </div>
 </section>
@@ -398,83 +364,71 @@
     <h2>Money flow — price, override, claim, confirm</h2>
     <p class="lede">The package suggests a number; she may override it outright. Payment is then a
       <b>claim</b> until a human confirms it, because no API in Taiwan can tell this app that money landed.</p>
-    <svg viewBox="0 0 1000 470" role="img" aria-label="Pricing and payment state machine">
-      <defs>
-        <marker id="arw3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
-        </marker>
-      </defs>
 
-      <text class="card-lbl" x="30" y="26" fill="#f5c65b">1 · HOW THE NUMBER IS REACHED</text>
-      <path class="edge" d="M215,72 H250" marker-end="url(#arw3)"/>
-      <path class="edge" d="M420,72 H455" marker-end="url(#arw3)"/>
-      <path class="edge" d="M615,72 H650" marker-end="url(#arw3)"/>
-      <path class="edge" d="M820,72 H855" marker-end="url(#arw3)"/>
+    <div class="dgm" style="width:1000px;height:470px;min-width:1000px">
+      <svg viewBox="0 0 1000 470" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="arw3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+          </marker>
+        </defs>
+        <path class="edge" d="M215,72 H250" marker-end="url(#arw3)"/>
+        <path class="edge" d="M420,72 H455" marker-end="url(#arw3)"/>
+        <path class="edge" d="M615,72 H650" marker-end="url(#arw3)"/>
+        <path class="edge" d="M820,72 H855" marker-end="url(#arw3)"/>
+        <line x1="30" y1="128" x2="985" y2="128" stroke="#2a3038"/>
+        <line x1="672" y1="168" x2="672" y2="410" stroke="#ff6b6b" stroke-width="1.5" stroke-dasharray="6 5" opacity=".65"/>
+        <path class="edge" d="M210,225 H250" marker-end="url(#arw3)"/>
+        <path class="edge" d="M430,225 H470" marker-end="url(#arw3)"/>
+        <path class="edge" d="M210,345 H250 V300 H470 V252" marker-end="url(#arw3)"/>
+        <path class="edge hot" d="M630,238 H740" marker-end="url(#arw3)"/>
+        <path class="edge dash" d="M630,258 H700 V345 H740" marker-end="url(#arw3)"/>
+      </svg>
 
-      <g><rect x="30" y="44" width="185" height="56" rx="8" fill="#211d14" stroke="#6b5320"/>
-        <text class="nodetext" x="44" y="67">package</text>
-        <text class="nodesub" x="44" y="85">price_per_class 400</text></g>
-      <g><rect x="250" y="44" width="170" height="56" rx="8" fill="#1b1f28" stroke="#49546a"/>
-        <text class="nodetext" x="264" y="67">× sessions bought</text>
-        <text class="nodesub" x="264" y="85">4 dates in August</text></g>
-      <g><rect x="455" y="44" width="160" height="56" rx="8" fill="#161f1c" stroke="#2b5b48"/>
-        <text class="nodetext" x="469" y="67">list_price</text>
-        <text class="nodesub" x="469" y="85">1600  (snapshot)</text></g>
-      <g><rect x="650" y="44" width="170" height="56" rx="8" fill="#1c1826" stroke="#4d3b73"/>
-        <text class="nodetext" x="664" y="67">custom_amount ?</text>
-        <text class="nodesub" x="664" y="85">1200 · 「友情價」</text></g>
-      <g><rect x="855" y="44" width="130" height="56" rx="8" fill="#241a17" stroke="#7a3d2c" stroke-width="1.5"/>
-        <text class="nodetext" x="869" y="67" fill="#ff9d84">payable</text>
-        <text class="nodesub" x="869" y="85">1200</text></g>
+      <div class="seclbl" style="left:30px;top:12px;color:#f5c65b">1 · HOW THE NUMBER IS REACHED</div>
+      <div class="bx c-people" style="left:30px;top:44px;width:185px;height:56px">
+        <div class="t">package</div><div class="s">price_per_class 400</div></div>
+      <div class="bx" style="left:250px;top:44px;width:170px;height:56px;border-color:#49546a;background:#1b1f28">
+        <div class="t">× sessions bought</div><div class="s">4 dates in August</div></div>
+      <div class="bx c-sale" style="left:455px;top:44px;width:160px;height:56px">
+        <div class="t">list_price</div><div class="s">1600 (snapshot)</div></div>
+      <div class="bx c-cred" style="left:650px;top:44px;width:170px;height:56px">
+        <div class="t">custom_amount ?</div><div class="s">1200 · 「友情價」</div></div>
+      <div class="bx c-money strong" style="left:855px;top:44px;width:130px;height:56px">
+        <div class="t co">payable</div><div class="s">1200</div></div>
 
-      <line x1="30" y1="128" x2="985" y2="128" stroke="#2a3038"/>
-      <text class="card-lbl" x="30" y="152" fill="#ff9d84">2 · HOW IT BECOMES TRUE</text>
+      <div class="seclbl" style="left:30px;top:138px;color:#ff9d84">2 · HOW IT BECOMES TRUE</div>
+      <div class="an red" style="left:682px;top:170px;font-weight:700;letter-spacing:.04em">TRUST BOUNDARY</div>
+      <div class="an" style="left:682px;top:189px">code may never cross this line</div>
 
-      <line x1="672" y1="168" x2="672" y2="410" stroke="#ff6b6b" stroke-width="1.5" stroke-dasharray="6 5" opacity=".65"/>
-      <text class="gate" x="682" y="182">TRUST BOUNDARY</text>
-      <text class="anno" x="682" y="200">code may never cross this line</text>
+      <div class="bx c-sched" style="left:30px;top:198px;width:180px;height:54px">
+        <div class="t">LINE group message</div><div class="s">「Lulu Line pay 1200」</div></div>
+      <div class="bx" style="left:250px;top:198px;width:180px;height:54px;border-color:#49546a;background:#1b1f28">
+        <div class="t">parser → draft</div><div class="s">never rejects a message</div></div>
+      <div class="bx c-people" style="left:30px;top:318px;width:180px;height:54px">
+        <div class="t">Manual entry</div><div class="s">cash · backlog</div></div>
+      <div class="bx c-money strong" style="left:470px;top:198px;width:160px;height:74px">
+        <div class="t co">:claimed</div><div class="s">amount + last5</div><div class="s">asserted by student</div></div>
+      <div class="bx c-sale strong" style="left:740px;top:203px;width:230px;height:74px;border-color:#35c48b">
+        <div class="t gr">:confirmed</div><div class="s">confirmed_at + confirmed_by</div>
+        <div class="s gold">her eyes on the bank app</div></div>
+      <div class="bx c-money" style="left:740px;top:318px;width:230px;height:64px">
+        <div class="t co">:disputed</div><div class="s">claim didn't match the bank</div></div>
 
-      <path class="edge" d="M210,225 H250" marker-end="url(#arw3)"/>
-      <path class="edge" d="M430,225 H470" marker-end="url(#arw3)"/>
-      <path class="edge" d="M210,345 H250 V300 H470 V252" marker-end="url(#arw3)"/>
-      <path class="edge hot" d="M630,238 H740" marker-end="url(#arw3)"/>
-      <path class="edge dash" d="M630,258 H700 V345 H740" marker-end="url(#arw3)"/>
+      <div class="an gold" style="left:30px;top:412px">帳後五碼 is a lookup hint for a human, not a receipt — 5 digits prove nothing about amount, date, or sender.</div>
+      <div class="an" style="left:30px;top:434px">So no unique constraint on reported_last5; instead flag repeats as a likely double-post or copy-paste error.</div>
+    </div>
 
-      <g><rect x="30" y="198" width="180" height="54" rx="8" fill="#171d28" stroke="#2f4b73"/>
-        <text class="nodetext" x="46" y="221">LINE group message</text>
-        <text class="nodesub" x="46" y="238">「Lulu Line pay 1200」</text></g>
-      <g><rect x="250" y="198" width="180" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
-        <text class="nodetext" x="266" y="221">parser → draft</text>
-        <text class="nodesub" x="266" y="238">never rejects a message</text></g>
-      <g><rect x="30" y="318" width="180" height="54" rx="8" fill="#211d14" stroke="#6b5320"/>
-        <text class="nodetext" x="46" y="341">Manual entry</text>
-        <text class="nodesub" x="46" y="358">cash · backlog</text></g>
-      <g><rect x="470" y="198" width="160" height="74" rx="8" fill="#241a17" stroke="#7a3d2c" stroke-width="1.5"/>
-        <text class="nodetext" x="486" y="222" fill="#ff9d84">:claimed</text>
-        <text class="nodesub" x="486" y="240">amount + last5</text>
-        <text class="nodesub" x="486" y="257">asserted by student</text></g>
-      <g><rect x="740" y="203" width="230" height="74" rx="8" fill="#161f1c" stroke="#35c48b" stroke-width="1.8"/>
-        <text class="nodetext" x="756" y="227" fill="#6bdcae">:confirmed</text>
-        <text class="nodesub" x="756" y="245">confirmed_at + confirmed_by</text>
-        <text class="nodesub" x="756" y="262" fill="#f5c65b">her eyes on the bank app</text></g>
-      <g><rect x="740" y="318" width="230" height="64" rx="8" fill="#241a17" stroke="#7a3d2c"/>
-        <text class="nodetext" x="756" y="342" fill="#ff9d84">:disputed</text>
-        <text class="nodesub" x="756" y="360">claim didn't match the bank</text></g>
-
-      <text class="anno" x="30" y="428" fill="#f5c65b">帳後五碼 is a lookup hint for a human, not a receipt — 5 digits prove nothing about amount, date, or sender.</text>
-      <text class="anno" x="30" y="450">So no unique constraint on reported_last5; instead flag repeats as a likely double-post or copy-paste error.</text>
-    </svg>
     <ul class="notes">
-      <li><b>Why <code>list_price</code> is still stored even when overridden.</b> It is the snapshot of what the
+      <li><b>Why <code>list_price</code> is stored even when overridden.</b> It is the snapshot of what the
         package cost at sale time, so the price list can change without rewriting history — and it is what makes
         the override visible rather than silent.</li>
       <li><b><code>custom_amount</code> is freeform.</b> Any integer, above or below list, zero included. No
         percentage rule, no rounding policy, no discount arithmetic to keep consistent.</li>
       <li><b>Manual entry may go straight to <code>:confirmed</code></b> — she is the human, and for cash she
         already knows. The invariant is that a <i>human action</i> is required, not that a claim step happened.</li>
-      <li><b>Outstanding = Σ payable − Σ confirmed payments</b>, per student, over any date range derived from
-        attendance. Unconfirmed claims are deliberately excluded, so "who still owes me" never counts money
-        she hasn't actually seen.</li>
+      <li><b>Outstanding = Σ payable − Σ confirmed payments.</b> Unconfirmed claims are deliberately excluded,
+        so "who still owes me" never counts money she hasn't actually seen.</li>
       <li><b>A future <code>:ecpay</code> source could self-confirm.</b> A webhook-verified payment is
         machine-provable, so one ledger holds two source types at two trust levels — LINE claims stay
         human-confirmed.</li>
@@ -488,75 +442,54 @@
     <h2>LINE ingestion pipeline</h2>
     <p class="lede">Phase 2. The bot is a passive listener: it reads the group, writes drafts, and replies to
       nobody — with one legally required exception at join time.</p>
-    <svg viewBox="0 0 1000 640" role="img" aria-label="LINE ingestion pipeline">
-      <defs>
-        <marker id="arw4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-          <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
-        </marker>
-      </defs>
 
-      <path class="edge" d="M180,74 V104" marker-end="url(#arw4)"/>
-      <path class="edge" d="M180,158 V188" marker-end="url(#arw4)"/>
-      <path class="edge" d="M180,242 V272" marker-end="url(#arw4)"/>
-      <path class="edge" d="M180,326 V356" marker-end="url(#arw4)"/>
-      <path class="edge" d="M180,410 V440" marker-end="url(#arw4)"/>
-      <path class="edge" d="M180,494 V524" marker-end="url(#arw4)"/>
+    <div class="dgm" style="width:1000px;height:646px;min-width:1000px">
+      <svg viewBox="0 0 1000 646" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="arw4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="#5b6579"/>
+          </marker>
+        </defs>
+        <path class="edge" d="M180,74 V104" marker-end="url(#arw4)"/>
+        <path class="edge" d="M180,158 V188" marker-end="url(#arw4)"/>
+        <path class="edge" d="M180,242 V272" marker-end="url(#arw4)"/>
+        <path class="edge" d="M180,326 V356" marker-end="url(#arw4)"/>
+        <path class="edge" d="M180,410 V440" marker-end="url(#arw4)"/>
+        <path class="edge" d="M180,494 V524" marker-end="url(#arw4)"/>
+        <line x1="330" y1="131" x2="380" y2="131" stroke="#3d4553" stroke-width="1.5"/>
+        <line x1="330" y1="215" x2="380" y2="215" stroke="#3d4553" stroke-width="1.5"/>
+        <line x1="330" y1="299" x2="380" y2="299" stroke="#3d4553" stroke-width="1.5"/>
+        <line x1="330" y1="383" x2="380" y2="383" stroke="#3d4553" stroke-width="1.5"/>
+        <line x1="330" y1="467" x2="380" y2="467" stroke="#3d4553" stroke-width="1.5"/>
+        <line x1="330" y1="551" x2="380" y2="551" stroke="#3d4553" stroke-width="1.5"/>
+      </svg>
 
-      <g><rect x="40" y="20" width="280" height="54" rx="8" fill="#171d28" stroke="#2f4b73"/>
-        <text class="nodetext" x="56" y="43">Student posts in the group</text>
-        <text class="nodesub" x="56" y="60">no @mention needed</text></g>
+      <div class="bx c-sched" style="left:40px;top:20px;width:280px;height:54px">
+        <div class="t">Student posts in the group</div><div class="s">no @mention needed</div></div>
+      <div class="bx" style="left:40px;top:104px;width:280px;height:54px;border-color:#49546a;background:#1b1f28">
+        <div class="t">Verify x-line-signature</div><div class="s">HMAC-SHA256 over RAW body</div></div>
+      <div class="bx" style="left:40px;top:188px;width:280px;height:54px;border-color:#49546a;background:#1b1f28">
+        <div class="t">Persist raw event</div><div class="s">uniq webhook_event_id</div></div>
+      <div class="bx c-sale strong" style="left:40px;top:272px;width:280px;height:54px;border-color:#35c48b">
+        <div class="t gr">Return 200 — done</div><div class="s">nothing else happens inline</div></div>
+      <div class="bx" style="left:40px;top:356px;width:280px;height:54px;border-color:#49546a;background:#1b1f28">
+        <div class="t">Async: resolve sender + parse</div><div class="s">member profile → alias → draft</div></div>
+      <div class="bx c-people" style="left:40px;top:440px;width:280px;height:54px">
+        <div class="t">She reviews drafts on her phone</div><div class="s">tap to confirm · edit · discard</div></div>
+      <div class="bx c-money" style="left:40px;top:524px;width:280px;height:54px">
+        <div class="t">Retention sweep</div><div class="s">purge raw text + names ≤ 24h</div></div>
 
-      <g><rect x="40" y="104" width="280" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
-        <text class="nodetext" x="56" y="127">Verify x-line-signature</text>
-        <text class="nodesub" x="56" y="144">HMAC-SHA256 over RAW body</text></g>
+      <div class="an wide" style="left:390px;top:113px"><b>Raw body must be cached</b> before Plug.Parsers runs — a body_reader plug on this route only.</div>
+      <div class="an wide" style="left:390px;top:197px"><b>This is the only copy.</b> No API returns the text later, and none reaches pre-join history.</div>
+      <div class="an wide" style="left:390px;top:281px"><b style="color:#ff8f8f">2 second budget.</b> Slower is logged as request_timeout; repeated failure risks suspension.</div>
+      <div class="an wide" style="left:390px;top:365px"><b>userId can be absent</b> (LINE for PC senders), so an unattributed draft is a valid state.</div>
+      <div class="an wide" style="left:390px;top:449px"><b>Low confidence is fine.</b> The parser never rejects — it drafts, and she corrects.</div>
+      <div class="an wide" style="left:390px;top:533px"><b style="color:#f5c65b">Policy-driven, not an optimisation.</b> Confirmed ledger facts + userId survive; raw chatter does not.</div>
 
-      <g><rect x="40" y="188" width="280" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
-        <text class="nodetext" x="56" y="211">Persist raw event</text>
-        <text class="nodesub" x="56" y="228">uniq webhook_event_id</text></g>
-
-      <g><rect x="40" y="272" width="280" height="54" rx="8" fill="#161f1c" stroke="#35c48b" stroke-width="1.8"/>
-        <text class="nodetext" x="56" y="295" fill="#6bdcae">Return 200 — done</text>
-        <text class="nodesub" x="56" y="312">nothing else happens inline</text></g>
-
-      <g><rect x="40" y="356" width="280" height="54" rx="8" fill="#1b1f28" stroke="#49546a"/>
-        <text class="nodetext" x="56" y="379">Async: resolve sender + parse</text>
-        <text class="nodesub" x="56" y="396">member profile → alias → draft</text></g>
-
-      <g><rect x="40" y="440" width="280" height="54" rx="8" fill="#211d14" stroke="#6b5320"/>
-        <text class="nodetext" x="56" y="463">She reviews drafts on her phone</text>
-        <text class="nodesub" x="56" y="480">tap to confirm · edit · discard</text></g>
-
-      <g><rect x="40" y="524" width="280" height="54" rx="8" fill="#241a17" stroke="#7a3d2c"/>
-        <text class="nodetext" x="56" y="547">Retention sweep</text>
-        <text class="nodesub" x="56" y="564">purge raw text + names ≤ 24h</text></g>
-
-      <line x1="330" y1="131" x2="380" y2="131" stroke="#3d4553" stroke-width="1.5"/>
-      <text class="anno" x="390" y="126"><tspan font-weight="700" fill="#e7eaf0">Raw body must be cached</tspan> before Plug.Parsers</text>
-      <text class="anno" x="390" y="144">runs — a body_reader plug on this route only.</text>
-
-      <line x1="330" y1="215" x2="380" y2="215" stroke="#3d4553" stroke-width="1.5"/>
-      <text class="anno" x="390" y="210"><tspan font-weight="700" fill="#e7eaf0">This is the only copy.</tspan> No API returns the</text>
-      <text class="anno" x="390" y="228">text later, and none reaches pre-join history.</text>
-
-      <line x1="330" y1="299" x2="380" y2="299" stroke="#3d4553" stroke-width="1.5"/>
-      <text class="anno" x="390" y="294"><tspan font-weight="700" fill="#ff8f8f">2 second budget.</tspan> Slower is logged as</text>
-      <text class="anno" x="390" y="312">request_timeout; repeated failure risks suspension.</text>
-
-      <line x1="330" y1="383" x2="380" y2="383" stroke="#3d4553" stroke-width="1.5"/>
-      <text class="anno" x="390" y="378"><tspan font-weight="700" fill="#e7eaf0">userId can be absent</tspan> (LINE for PC senders),</text>
-      <text class="anno" x="390" y="396">so an unattributed draft is a valid state.</text>
-
-      <line x1="330" y1="467" x2="380" y2="467" stroke="#3d4553" stroke-width="1.5"/>
-      <text class="anno" x="390" y="462"><tspan font-weight="700" fill="#e7eaf0">Low confidence is fine.</tspan> The parser never</text>
-      <text class="anno" x="390" y="480">rejects — it drafts, and she corrects.</text>
-
-      <line x1="330" y1="551" x2="380" y2="551" stroke="#3d4553" stroke-width="1.5"/>
-      <text class="anno" x="390" y="546"><tspan font-weight="700" fill="#f5c65b">Policy-driven, not an optimisation.</tspan> Confirmed</text>
-      <text class="anno" x="390" y="564">ledger facts + userId survive; raw chatter does not.</text>
-
-      <rect x="40" y="596" width="930" height="30" rx="7" fill="#1f1416" stroke="#7a3d2c"/>
-      <text class="anno" x="56" y="616"><tspan font-weight="700" fill="#ff8f8f">Also required:</tspan> handle unsend (delete text + derived draft) and messageEdited (re-parse). Both affect ledger correctness.</text>
-    </svg>
+      <div class="banner" style="left:40px;top:600px;width:930px">
+        <b>Also required:</b> handle unsend (delete text + derived draft) and messageEdited (re-parse). Both affect ledger correctness.
+      </div>
+    </div>
   </div>
 </section>
 
@@ -674,16 +607,16 @@
       p.classList.toggle('active', p.id === b.dataset.p));
   });
 
-  const ents = [...document.querySelectorAll('g.entity')];
-  const edges = [...document.querySelectorAll('g.edgegrp')];
+  const d1    = document.getElementById('d1');
+  const ents  = [...d1.querySelectorAll('.nd')];
+  const edges = [...d1.querySelectorAll('.edgegrp, .lb')];
+  const touches = (el, id) => el.dataset.a === id || el.dataset.b === id;
+
   ents.forEach(e => {
     e.addEventListener('mouseenter', () => {
-      const id = e.dataset.id;
-      const keep = new Set([id]);
-      edges.forEach(g => {
-        if (g.dataset.a === id || g.dataset.b === id) { keep.add(g.dataset.a); keep.add(g.dataset.b); }
-      });
-      edges.forEach(g => g.classList.toggle('faded', !(g.dataset.a === id || g.dataset.b === id)));
+      const id = e.dataset.id, keep = new Set([id]);
+      edges.forEach(g => { if (touches(g, id)) { keep.add(g.dataset.a); keep.add(g.dataset.b); } });
+      edges.forEach(g => g.classList.toggle('faded', !touches(g, id)));
       ents.forEach(x => x.classList.toggle('faded', !keep.has(x.dataset.id)));
     });
     e.addEventListener('mouseleave', () => {
