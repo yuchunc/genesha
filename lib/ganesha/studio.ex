@@ -35,16 +35,21 @@ defmodule Ganesha.Studio do
   Returns all of the month's sessions for the slot, not only the new ones.
   """
   def generate_month(%Slot{} = slot, %Date{} = month) do
-    existing = slot |> sessions_for_slot_in_month(month) |> MapSet.new(& &1.date)
+    Repo.transaction(fn ->
+      existing = slot |> sessions_for_slot_in_month(month) |> MapSet.new(& &1.date)
 
-    month
-    |> dates_in_month_on(slot.weekday)
-    |> Enum.reject(&MapSet.member?(existing, &1))
-    |> Enum.each(fn date ->
-      {:ok, _session} = create_session(%{slot_id: slot.id, date: date, style: slot.default_style})
+      month
+      |> dates_in_month_on(slot.weekday)
+      |> Enum.reject(&MapSet.member?(existing, &1))
+      |> Enum.reduce_while(:ok, fn date, :ok ->
+        case create_session(%{slot_id: slot.id, date: date, style: slot.default_style}) do
+          {:ok, _session} -> {:cont, :ok}
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
+      end)
+
+      sessions_for_slot_in_month(slot, month)
     end)
-
-    {:ok, sessions_for_slot_in_month(slot, month)}
   end
 
   defp dates_in_month_on(%Date{} = month, weekday) do
@@ -91,10 +96,11 @@ defmodule Ganesha.Studio do
 
     Repo.one(
       from s in Session,
+        join: slot in assoc(s, :slot),
         where: s.date >= ^today and s.state == "scheduled",
-        order_by: [asc: s.date],
+        order_by: [asc: s.date, asc: slot.start_time],
         limit: 1,
-        preload: [:slot]
+        preload: [slot: slot]
     )
   end
 end

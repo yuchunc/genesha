@@ -20,5 +20,6 @@ defmodule Ganesha.Studio.Slot do
     |> cast(attrs, [:weekday, :start_time, :end_time, :default_style, :label, :active])
     |> validate_required([:weekday, :start_time, :end_time, :default_style, :label, :active])
     |> validate_inclusion(:weekday, 1..7)
+    |> unique_constraint([:weekday, :start_time], name: "slots_weekday_start_time_index")
   end
 end

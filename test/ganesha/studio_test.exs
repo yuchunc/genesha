@@ -43,6 +43,20 @@ defmodule Ganesha.StudioTest do
     assert Studio.get_session!(first.id).style == "流動"
   end
 
+  test "generate_month/2 is idempotent and preserves cancellation details" do
+    slot = monday_slot()
+    {:ok, [first | _]} = Studio.generate_month(slot, ~D[2026-08-01])
+    {:ok, _} = Studio.cancel_session(first, "颱風假")
+
+    {:ok, again} = Studio.generate_month(slot, ~D[2026-08-01])
+
+    assert length(again) == 5
+
+    first = Studio.get_session!(first.id)
+    assert first.state == "cancelled"
+    assert first.cancel_reason == "颱風假"
+  end
+
   test "the same slot and date cannot be created twice" do
     slot = monday_slot()
     {:ok, _} = Studio.create_session(%{slot_id: slot.id, date: ~D[2026-08-03], style: "基礎"})
@@ -51,6 +65,21 @@ defmodule Ganesha.StudioTest do
              Studio.create_session(%{slot_id: slot.id, date: ~D[2026-08-03], style: "基礎"})
 
     assert "has already been taken" in errors_on(cs).slot_id
+  end
+
+  test "the same weekday and start time cannot be created twice" do
+    _slot = monday_slot()
+
+    assert {:error, cs} =
+             Studio.create_slot(%{
+               weekday: 1,
+               start_time: ~T[09:30:00],
+               end_time: ~T[12:00:00],
+               default_style: "流動",
+               label: "duplicate"
+             })
+
+    assert "has already been taken" in errors_on(cs).weekday
   end
 
   test "set_style/2 changes one date only" do
@@ -79,6 +108,31 @@ defmodule Ganesha.StudioTest do
 
     assert {:error, cs} = Studio.cancel_session(session, "")
     assert "can't be blank" in errors_on(cs).cancel_reason
+  end
+
+  test "next_session/0 breaks same-date ties by slot start time" do
+    morning = monday_slot()
+
+    {:ok, afternoon} =
+      Studio.create_slot(%{
+        weekday: 1,
+        start_time: ~T[15:30:00],
+        end_time: ~T[16:45:00],
+        default_style: "基礎",
+        label: "午後練習｜週一 基礎瑜伽"
+      })
+
+    today = Ganesha.Clock.today()
+
+    {:ok, _later_in_day} =
+      Studio.create_session(%{slot_id: afternoon.id, date: today, style: "基礎"})
+
+    {:ok, earlier_in_day} =
+      Studio.create_session(%{slot_id: morning.id, date: today, style: "基礎"})
+
+    next = Studio.next_session()
+    assert next.id == earlier_in_day.id
+    assert next.slot.start_time == ~T[09:30:00]
   end
 
   test "next_session/0 skips cancelled sessions" do
