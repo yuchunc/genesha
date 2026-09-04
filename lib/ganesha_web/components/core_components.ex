@@ -259,15 +259,15 @@ defmodule GaneshaWeb.CoreComponents do
           name={@name}
           class={[
             @class ||
-              [
-                "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
-                if(@errors != [],
-                  do:
-                    @error_class ||
-                      "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
-                  else: "border-zinc-300 dark:border-zinc-600"
-                )
-              ]
+              "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-hidden focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
+            if(@errors != [],
+              do:
+                @error_class ||
+                  "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
+              else:
+                is_nil(@class) &&
+                  "border-zinc-300 focus:border-orange-500 focus:ring-orange-500/50 dark:border-zinc-600"
+            )
           ]}
           multiple={@multiple}
           {@rest}
@@ -293,15 +293,15 @@ defmodule GaneshaWeb.CoreComponents do
           name={@name}
           class={[
             @class ||
-              [
-                "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
-                if(@errors != [],
-                  do:
-                    @error_class ||
-                      "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
-                  else: "border-zinc-300 dark:border-zinc-600"
-                )
-              ]
+              "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-hidden focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
+            if(@errors != [],
+              do:
+                @error_class ||
+                  "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
+              else:
+                is_nil(@class) &&
+                  "border-zinc-300 focus:border-orange-500 focus:ring-orange-500/50 dark:border-zinc-600"
+            )
           ]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
@@ -326,15 +326,15 @@ defmodule GaneshaWeb.CoreComponents do
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
             @class ||
-              [
-                "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
-                if(@errors != [],
-                  do:
-                    @error_class ||
-                      "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
-                  else: "border-zinc-300 dark:border-zinc-600"
-                )
-              ]
+              "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:outline-hidden focus:ring-2 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
+            if(@errors != [],
+              do:
+                @error_class ||
+                  "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
+              else:
+                is_nil(@class) &&
+                  "border-zinc-300 focus:border-orange-500 focus:ring-orange-500/50 dark:border-zinc-600"
+            )
           ]}
           {@rest}
         />

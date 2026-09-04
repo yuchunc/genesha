@@ -29,7 +29,7 @@ defmodule Ganesha.Clock do
   def now, do: DateTime.utc_now()
 
   @spec today() :: Date.t()
-  @spec today(DateTime.t()) :: Date.t()
+  @spec today(utc_datetime()) :: Date.t()
   def today(now \\ now()), do: to_taipei_date(now)
 
   @spec to_taipei_date(utc_datetime()) :: Date.t()
