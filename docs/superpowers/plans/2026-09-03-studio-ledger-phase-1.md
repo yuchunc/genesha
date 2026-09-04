@@ -332,7 +332,7 @@ end
 
 ```elixir
 defmodule Ganesha.CatalogTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.Catalog
   alias Ganesha.Catalog.Package
 
@@ -574,7 +574,7 @@ end
 
 ```elixir
 defmodule Ganesha.PeopleTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.People
 
   test "creates a student with only a display name" do
@@ -817,7 +817,7 @@ end
 
 ```elixir
 defmodule Ganesha.StudioTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.Studio
 
   defp monday_slot do
@@ -1190,7 +1190,7 @@ end
 
 ```elixir
 defmodule Ganesha.Sales.PurchaseTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Sales}
 
   defp student_and_monthly do
@@ -1478,7 +1478,7 @@ end
 
 ```elixir
 defmodule Ganesha.Sales.PaymentTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, Clock, People, Sales}
 
   defp purchase_fixture(student_name \\ nil) do
@@ -1885,7 +1885,7 @@ end
 
 ```elixir
 defmodule Ganesha.Roster.AttendanceTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Roster, Sales, Studio}
 
   defp august_setup do
@@ -2201,7 +2201,7 @@ end
 
 ```elixir
 defmodule Ganesha.Roster.CreditTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Repo, Roster, Sales, Studio}
 
   defp monday_slot_with_sessions do
@@ -2691,7 +2691,7 @@ git commit -m "feat: add makeup credits with guarded consumption and idempotent 
 
 ```elixir
 defmodule Ganesha.ReportingTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Reporting, Roster, Sales, Studio}
 
   defp monthly_package do
@@ -2954,7 +2954,7 @@ end
 
 ```elixir
 defmodule Ganesha.PublishingTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Publishing, Roster, Sales, Studio}
 
   defp august_monday do
@@ -4823,7 +4823,7 @@ LiveView stays thin and the transaction is testable without a browser.
 
 ```elixir
 defmodule Ganesha.EnrollingTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
 
   defp context do
