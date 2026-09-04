@@ -11,8 +11,8 @@ defmodule GaneshaWeb.UserLive.Settings do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="text-center">
         <.header>
-          Account Settings
-          <:subtitle>Manage your account email address and password settings</:subtitle>
+          帳戶設定
+          <:subtitle>管理帳戶電子郵件與密碼</:subtitle>
         </.header>
       </div>
 
@@ -20,15 +20,15 @@ defmodule GaneshaWeb.UserLive.Settings do
         <.input
           field={@email_form[:email]}
           type="email"
-          label="Email"
+          label="電子郵件"
           autocomplete="username"
           spellcheck="false"
           required
         />
-        <.button variant="primary" phx-disable-with="Changing...">Change Email</.button>
+        <.button variant="primary" phx-disable-with="變更中…">變更電子郵件</.button>
       </.form>
 
-      <div class="divider" />
+      <hr class="border-stone-200 dark:border-stone-700" />
 
       <.form
         for={@password_form}
@@ -49,7 +49,7 @@ defmodule GaneshaWeb.UserLive.Settings do
         <.input
           field={@password_form[:password]}
           type="password"
-          label="New password"
+          label="新密碼"
           autocomplete="new-password"
           spellcheck="false"
           required
@@ -57,12 +57,12 @@ defmodule GaneshaWeb.UserLive.Settings do
         <.input
           field={@password_form[:password_confirmation]}
           type="password"
-          label="Confirm new password"
+          label="確認新密碼"
           autocomplete="new-password"
           spellcheck="false"
         />
-        <.button variant="primary" phx-disable-with="Saving...">
-          Save Password
+        <.button variant="primary" phx-disable-with="儲存中…">
+          儲存密碼
         </.button>
       </.form>
     </Layouts.app>
@@ -74,10 +74,10 @@ defmodule GaneshaWeb.UserLive.Settings do
     socket =
       case Accounts.update_user_email(socket.assigns.current_scope.user, token) do
         {:ok, _user} ->
-          put_flash(socket, :info, "Email changed successfully.")
+          put_flash(socket, :info, "電子郵件已變更。")
 
         {:error, _} ->
-          put_flash(socket, :error, "Email change link is invalid or it has expired.")
+          put_flash(socket, :error, "電子郵件變更連結無效或已過期。")
       end
 
     {:ok, push_navigate(socket, to: ~p"/users/settings")}
@@ -124,7 +124,7 @@ defmodule GaneshaWeb.UserLive.Settings do
           &url(~p"/users/settings/confirm-email/#{&1}")
         )
 
-        info = "A link to confirm your email change has been sent to the new address."
+        info = "已將確認連結寄至新的電子郵件地址。"
         {:noreply, socket |> put_flash(:info, info)}
 
       changeset ->

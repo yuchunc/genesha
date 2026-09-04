@@ -17,17 +17,46 @@ teacher_password = System.get_env("TEACHER_PASSWORD") || "change-me-please-1234"
 
 case Ganesha.Accounts.get_user_by_email(teacher_email) do
   nil ->
-    {:ok, user} = Ganesha.Accounts.register_user(%{email: teacher_email})
+    password_valid? =
+      %Ganesha.Accounts.User{}
+      |> Ganesha.Accounts.User.password_changeset(%{password: teacher_password},
+        hash_password: false
+      )
+      |> Map.fetch!(:valid?)
 
-    {:ok, user} =
-      user
-      |> Ganesha.Accounts.User.confirm_changeset()
-      |> Ganesha.Repo.update()
+    unless password_valid? do
+      raise """
+      TEACHER_PASSWORD must be at least 12 characters (and at most 72 bytes).
+      Fix the env var and retry so the teacher row is created cleanly.
+      """
+    end
 
-    {:ok, {_user, _expired_tokens}} =
-      Ganesha.Accounts.update_user_password(user, %{password: teacher_password})
+    result =
+      Ganesha.Repo.transact(fn ->
+        with {:ok, user} <- Ganesha.Accounts.register_user(%{email: teacher_email}),
+             {:ok, user} <-
+               user
+               |> Ganesha.Accounts.User.confirm_changeset()
+               |> Ganesha.Repo.update(),
+             {:ok, {user, _expired_tokens}} <-
+               Ganesha.Accounts.update_user_password(user, %{password: teacher_password}) do
+          {:ok, user}
+        else
+          {:error, reason} -> {:error, reason}
+        end
+      end)
 
-    IO.puts("Seeded teacher account: #{teacher_email}")
+    case result do
+      {:ok, _user} ->
+        IO.puts("Seeded teacher account: #{teacher_email}")
+
+      {:error, reason} ->
+        raise """
+        Failed to seed teacher account: #{inspect(reason)}
+        TEACHER_PASSWORD must be at least 12 characters (and at most 72 bytes).
+        Fix the env var and retry so the teacher row is created cleanly.
+        """
+    end
 
   _user ->
     IO.puts("Teacher account already present: #{teacher_email}")

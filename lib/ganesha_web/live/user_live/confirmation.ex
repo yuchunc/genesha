@@ -9,7 +9,7 @@ defmodule GaneshaWeb.UserLive.Confirmation do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="mx-auto max-w-sm">
         <div class="text-center">
-          <.header>Welcome {@user.email}</.header>
+          <.header>歡迎 {@user.email}</.header>
         </div>
 
         <.form
@@ -22,17 +22,19 @@ defmodule GaneshaWeb.UserLive.Confirmation do
           phx-trigger-action={@trigger_submit}
         >
           <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
-          <.button
-            name={@form[:remember_me].name}
-            value="true"
-            phx-disable-with="Confirming..."
-            class="btn btn-primary w-full"
-          >
-            Confirm and stay logged in
-          </.button>
-          <.button phx-disable-with="Confirming..." class="btn btn-primary btn-soft w-full mt-2">
-            Confirm and log in only this time
-          </.button>
+          <div class="space-y-2">
+            <.button
+              name={@form[:remember_me].name}
+              value="true"
+              phx-disable-with="確認中…"
+              variant="primary"
+            >
+              確認並保持登入
+            </.button>
+            <.button phx-disable-with="確認中…" variant="primary">
+              確認並僅此次登入
+            </.button>
+          </div>
         </.form>
 
         <.form
@@ -46,26 +48,31 @@ defmodule GaneshaWeb.UserLive.Confirmation do
         >
           <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
           <%= if @current_scope do %>
-            <.button phx-disable-with="Logging in..." class="btn btn-primary w-full">
-              Log in
+            <.button phx-disable-with="登入中…" variant="primary">
+              登入
             </.button>
           <% else %>
-            <.button
-              name={@form[:remember_me].name}
-              value="true"
-              phx-disable-with="Logging in..."
-              class="btn btn-primary w-full"
-            >
-              Keep me logged in on this device
-            </.button>
-            <.button phx-disable-with="Logging in..." class="btn btn-primary btn-soft w-full mt-2">
-              Log me in only this time
-            </.button>
+            <div class="space-y-2">
+              <.button
+                name={@form[:remember_me].name}
+                value="true"
+                phx-disable-with="登入中…"
+                variant="primary"
+              >
+                在此裝置保持登入
+              </.button>
+              <.button phx-disable-with="登入中…" variant="primary">
+                僅此次登入
+              </.button>
+            </div>
           <% end %>
         </.form>
 
-        <p :if={!@user.confirmed_at} class="alert alert-outline mt-8">
-          Tip: If you prefer passwords, you can enable them in the user settings.
+        <p
+          :if={!@user.confirmed_at}
+          class="mt-8 rounded-lg border border-stone-200 p-4 text-sm text-stone-600 dark:border-stone-700 dark:text-stone-300"
+        >
+          提示：若偏好使用密碼，可至帳戶設定啟用。
         </p>
       </div>
     </Layouts.app>
@@ -82,7 +89,7 @@ defmodule GaneshaWeb.UserLive.Confirmation do
     else
       {:ok,
        socket
-       |> put_flash(:error, "Magic link is invalid or it has expired.")
+       |> put_flash(:error, "魔術連結無效或已過期。")
        |> push_navigate(to: ~p"/users/log-in")}
     end
   end

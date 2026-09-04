@@ -10,19 +10,22 @@ defmodule GaneshaWeb.UserLive.Login do
       <div class="mx-auto max-w-sm space-y-4">
         <div class="text-center">
           <.header>
-            <p>Log in</p>
+            <p>登入</p>
             <:subtitle :if={@current_scope}>
-              You need to reauthenticate to perform sensitive actions on your account.
+              進行敏感操作前請重新驗證身分
             </:subtitle>
           </.header>
         </div>
 
-        <div :if={local_mail_adapter?()} class="alert alert-info">
+        <div
+          :if={local_mail_adapter?()}
+          class="flex gap-3 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100"
+        >
           <.icon name="hero-information-circle" class="size-6 shrink-0" />
           <div>
-            <p>You are running the local mail adapter.</p>
+            <p>目前使用本機郵件轉接器。</p>
             <p>
-              To see sent emails, visit <.link href="/dev/mailbox" class="underline">the mailbox page</.link>.
+              若要查看已寄出的郵件，請前往 <.link href="/dev/mailbox" class="underline">信箱頁面</.link>。
             </p>
           </div>
         </div>
@@ -38,18 +41,21 @@ defmodule GaneshaWeb.UserLive.Login do
             readonly={!!@current_scope}
             field={f[:email]}
             type="email"
-            label="Email"
+            label="電子郵件"
             autocomplete="username"
             spellcheck="false"
             required
             phx-mounted={JS.focus()}
           />
-          <.button class="btn btn-primary w-full">
-            Log in with email <span aria-hidden="true">→</span>
+          <.button variant="primary">
+            以電子郵件登入 <span aria-hidden="true">→</span>
           </.button>
         </.form>
 
-        <div class="divider">or</div>
+        <div class="flex items-center gap-3 text-sm text-stone-500">
+          <span class="h-px flex-1 bg-stone-200 dark:bg-stone-700"></span>
+          或 <span class="h-px flex-1 bg-stone-200 dark:bg-stone-700"></span>
+        </div>
 
         <.form
           :let={f}
@@ -63,7 +69,7 @@ defmodule GaneshaWeb.UserLive.Login do
             readonly={!!@current_scope}
             field={f[:email]}
             type="email"
-            label="Email"
+            label="電子郵件"
             autocomplete="username"
             spellcheck="false"
             required
@@ -71,16 +77,18 @@ defmodule GaneshaWeb.UserLive.Login do
           <.input
             field={@form[:password]}
             type="password"
-            label="Password"
+            label="密碼"
             autocomplete="current-password"
             spellcheck="false"
           />
-          <.button class="btn btn-primary w-full" name={@form[:remember_me].name} value="true">
-            Log in and stay logged in <span aria-hidden="true">→</span>
-          </.button>
-          <.button class="btn btn-primary btn-soft w-full mt-2">
-            Log in only this time
-          </.button>
+          <div class="space-y-2">
+            <.button variant="primary" name={@form[:remember_me].name} value="true">
+              登入並保持登入 <span aria-hidden="true">→</span>
+            </.button>
+            <.button variant="primary">
+              僅此次登入
+            </.button>
+          </div>
         </.form>
       </div>
     </Layouts.app>
@@ -111,8 +119,7 @@ defmodule GaneshaWeb.UserLive.Login do
       )
     end
 
-    info =
-      "If your email is in our system, you will receive instructions for logging in shortly."
+    info = "若系統中有此電子郵件，您將很快收到登入說明。"
 
     {:noreply,
      socket

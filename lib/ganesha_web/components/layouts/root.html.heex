@@ -38,20 +38,30 @@
     </script>
   </head>
   <body>
-    <ul class="menu menu-horizontal w-full relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 justify-end">
+    <ul class="relative z-10 flex w-full items-center justify-end gap-4 px-4 sm:px-6 lg:px-8">
       <%= if @current_scope do %>
         <li>
           {@current_scope.user.email}
         </li>
         <li>
-          <.link href={~p"/users/settings"}>Settings</.link>
+          <.link href={~p"/users/settings"} class="inline-flex min-h-11 items-center px-3 py-2">
+            設定
+          </.link>
         </li>
         <li>
-          <.link href={~p"/users/log-out"} method="delete">Log out</.link>
+          <.link
+            href={~p"/users/log-out"}
+            method="delete"
+            class="inline-flex min-h-11 items-center px-3 py-2"
+          >
+            登出
+          </.link>
         </li>
       <% else %>
         <li>
-          <.link href={~p"/users/log-in"}>Log in</.link>
+          <.link href={~p"/users/log-in"} class="inline-flex min-h-11 items-center px-3 py-2">
+            登入
+          </.link>
         </li>
       <% end %>
     </ul>

@@ -8,9 +8,10 @@ defmodule GaneshaWeb.UserLive.LoginTest do
     test "renders login page", %{conn: conn} do
       {:ok, _lv, html} = live(conn, ~p"/users/log-in")
 
-      assert html =~ "Log in"
+      assert html =~ "登入"
       refute html =~ "Sign up"
-      assert html =~ "Log in with email"
+      assert html =~ "以電子郵件登入"
+      assert html =~ "min-h-11"
     end
   end
 
@@ -25,7 +26,7 @@ defmodule GaneshaWeb.UserLive.LoginTest do
         |> render_submit()
         |> follow_redirect(conn, ~p"/users/log-in")
 
-      assert html =~ "If your email is in our system"
+      assert html =~ "若系統中有此電子郵件"
 
       assert Ganesha.Repo.get_by!(Ganesha.Accounts.UserToken, user_id: user.id).context ==
                "login"
@@ -39,7 +40,7 @@ defmodule GaneshaWeb.UserLive.LoginTest do
         |> render_submit()
         |> follow_redirect(conn, ~p"/users/log-in")
 
-      assert html =~ "If your email is in our system"
+      assert html =~ "若系統中有此電子郵件"
     end
   end
 
@@ -70,7 +71,7 @@ defmodule GaneshaWeb.UserLive.LoginTest do
       render_submit(form, %{user: %{remember_me: true}})
 
       conn = follow_trigger_action(form, conn)
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "Invalid email or password"
+      assert Phoenix.Flash.get(conn.assigns.flash, :error) == "電子郵件或密碼錯誤"
       assert redirected_to(conn) == ~p"/users/log-in"
     end
   end
@@ -84,9 +85,9 @@ defmodule GaneshaWeb.UserLive.LoginTest do
     test "shows login page with email filled in", %{conn: conn, user: user} do
       {:ok, _lv, html} = live(conn, ~p"/users/log-in")
 
-      assert html =~ "You need to reauthenticate"
+      assert html =~ "進行敏感操作前請重新驗證身分"
       refute html =~ "Register"
-      assert html =~ "Log in with email"
+      assert html =~ "以電子郵件登入"
 
       assert html =~
                ~s(<input type="email" name="user[email]" id="login_form_magic_email" value="#{user.email}")
