@@ -19,7 +19,7 @@ defmodule Ganesha.Catalog.Package do
   def changeset(package, attrs) do
     package
     |> cast(attrs, [:name, :kind, :price_per_class, :included_makeups, :active])
-    |> validate_required([:name, :kind, :price_per_class])
+    |> validate_required([:name, :kind, :price_per_class, :included_makeups, :active])
     |> validate_inclusion(:kind, @kinds)
     |> validate_number(:price_per_class, greater_than_or_equal_to: 0)
     |> validate_number(:included_makeups, greater_than_or_equal_to: 0)

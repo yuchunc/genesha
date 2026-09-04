@@ -33,7 +33,7 @@ defmodule Ganesha.Catalog do
   A suggestion only. The agreed number is snapshotted onto the purchase as
   `list_price`, and may be overridden there by `custom_amount`.
   """
-  @spec price_for(Package.t() | map(), non_neg_integer()) :: integer()
+  @spec price_for(map(), non_neg_integer()) :: non_neg_integer()
   def price_for(%{price_per_class: per_class}, session_count)
       when is_integer(session_count) and session_count >= 0 do
     per_class * session_count

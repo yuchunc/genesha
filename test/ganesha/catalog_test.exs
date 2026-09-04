@@ -1,7 +1,27 @@
 defmodule Ganesha.CatalogTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.Catalog
   alias Ganesha.Catalog.Package
+
+  test "lists active packages and all packages with active packages first" do
+    assert {:ok, active} =
+             Catalog.create_package(%{
+               name: "active package",
+               kind: "monthly",
+               price_per_class: 400
+             })
+
+    assert {:ok, inactive} =
+             Catalog.create_package(%{
+               name: "inactive package",
+               kind: "drop_in",
+               price_per_class: 450,
+               active: false
+             })
+
+    assert Catalog.list_active_packages() == [active]
+    assert Catalog.list_packages() == [active, inactive]
+  end
 
   test "creates a monthly package granting one makeup" do
     assert {:ok, pkg} =
@@ -36,6 +56,20 @@ defmodule Ganesha.CatalogTest do
              Catalog.create_package(%{name: "x", kind: "trial", price_per_class: -1})
 
     assert "must be greater than or equal to 0" in errors_on(cs).price_per_class
+  end
+
+  test "rejects explicit nil for database-required defaults" do
+    assert {:error, cs} =
+             Catalog.create_package(%{
+               name: "x",
+               kind: "trial",
+               price_per_class: 450,
+               included_makeups: nil,
+               active: nil
+             })
+
+    assert "can't be blank" in errors_on(cs).included_makeups
+    assert "can't be blank" in errors_on(cs).active
   end
 
   test "package names are unique" do
