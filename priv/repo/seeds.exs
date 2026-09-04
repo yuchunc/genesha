@@ -72,3 +72,42 @@ for attrs <- [
     _existing -> :ok
   end
 end
+
+for attrs <- [
+      %{
+        weekday: 1,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "基礎",
+        label: "早晨練習｜週一 基礎瑜伽"
+      },
+      %{
+        weekday: 1,
+        start_time: ~T[15:30:00],
+        end_time: ~T[16:45:00],
+        default_style: "基礎",
+        label: "午後練習｜週一 基礎瑜伽"
+      },
+      %{
+        weekday: 3,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "流動",
+        label: "早晨練習｜週三 和緩流動"
+      },
+      %{
+        weekday: 5,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "基礎",
+        label: "早晨練習｜週五 基礎瑜伽"
+      }
+    ] do
+  case Ganesha.Repo.get_by(Ganesha.Studio.Slot,
+         weekday: attrs.weekday,
+         start_time: attrs.start_time
+       ) do
+    nil -> {:ok, _} = Ganesha.Studio.create_slot(attrs)
+    _existing -> :ok
+  end
+end
