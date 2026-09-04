@@ -32,7 +32,8 @@
 
 **Files:**
 - Modify: `mix.exs` (remove the daisyUI dep block at lines 61-67)
-- Modify: `assets/css/app.css`
+- Modify: `assets/css/app.css` (subtract the daisyUI plugins only — see Step 2)
+- Modify: `lib/ganesha_web/components/core_components.ex` (replace daisyUI `btn`/`toast` classes)
 - Create: `lib/ganesha/clock.ex`
 - Test: `test/ganesha/clock_test.exs`
 
@@ -56,16 +57,43 @@ Delete this block from `mix.exs`:
 
 Then run `mix deps.unlock daisyui && mix deps.clean daisyui`.
 
-- [ ] **Step 2: Ensure `app.css` has no daisyUI plugin and uses the required import syntax**
+- [ ] **Step 2: Subtract the daisyUI plugins from `app.css` — and nothing else**
 
-`assets/css/app.css` must start with exactly this, with any `@plugin "daisyui"` line removed:
+This is a deletion of three blocks, **not** a replacement of the file. Delete only:
 
 ```css
-@import "tailwindcss" source(none);
-@source "../css";
-@source "../js";
-@source "../../lib/ganesha_web";
+@plugin "daisyui/packages/bundle/daisyui" { themes: false; }
+@plugin "daisyui/packages/bundle/daisyui-theme" { name: "dark"; ... }
+@plugin "daisyui/packages/bundle/daisyui-theme" { name: "light"; ... }
 ```
+
+Every other line stays verbatim. These five in particular are load-bearing and unrelated
+to daisyUI — removing any of them breaks the app while leaving all tests green:
+
+| Line | Why it must survive |
+|---|---|
+| `@plugin "../vendor/heroicons";` | `core_components.ex` renders `<.icon>` as `<span class={[@name, @class]}>`, so `hero-x-mark` is *only* a CSS class. Without the plugin every icon is an invisible empty span. `heroicons` stays a `mix.exs` dep. |
+| `@import "phoenix-colocated/ganesha/colocated.css";` + `@source "../../_build/dev/phoenix-colocated/ganesha/*/";` | Colocated asset pickup. `assets/js/app.js` imports `phoenix-colocated/ganesha`, and Global Constraints mandate `ColocatedHook` for all JS. |
+| `@custom-variant phx-click-loading` / `phx-submit-loading` / `phx-change-loading` | LiveView loading-state styling on buttons and forms. |
+| `@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));` | `layouts/root.html.heex` sets `data-theme` on `<html>`. Without this variant every `dark:` class in this plan's screens keys off `prefers-color-scheme` instead, and the app's own theme toggle stops working. |
+| `[data-phx-session], [data-phx-teleported-src] { display: contents }` | Keeps LiveView wrapper divs transparent to layout; without it they become flex/grid participants and the phone layouts break. |
+
+Verify the plugin actually still emits classes rather than trusting the file text: after
+the asset build, grep the built stylesheet for `.hero-` and confirm a non-zero count.
+
+- [ ] **Step 2b: Replace daisyUI classes in `core_components.ex`**
+
+Removing the framework while its class names still ship is an incomplete removal, and no
+later task touches this file. Two components carry daisyUI classes:
+
+- `<.button>` uses `btn` and its variants
+- `<.flash>` uses `toast` and its variants
+
+Swap them for hand-written Tailwind. Keep each component's attrs, slots, and call sites
+unchanged — this is styling only. Buttons keep a ≥44px tap target (phone-first).
+
+Do **not** touch `layouts.ex` or `page_html/home.html.heex`: Task 12 rewrites the first
+and deletes the second, so their daisyUI classes resolve themselves.
 
 - [ ] **Step 3: Write the failing clock test**
 
