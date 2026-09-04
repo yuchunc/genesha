@@ -61,3 +61,14 @@ case Ganesha.Accounts.get_user_by_email(teacher_email) do
   _user ->
     IO.puts("Teacher account already present: #{teacher_email}")
 end
+
+for attrs <- [
+      %{name: "月課程", kind: "monthly", price_per_class: 400, included_makeups: 1},
+      %{name: "單堂", kind: "drop_in", price_per_class: 450, included_makeups: 0},
+      %{name: "體驗", kind: "trial", price_per_class: 450, included_makeups: 0}
+    ] do
+  case Ganesha.Repo.get_by(Ganesha.Catalog.Package, name: attrs.name) do
+    nil -> {:ok, _} = Ganesha.Catalog.create_package(attrs)
+    _existing -> :ok
+  end
+end
