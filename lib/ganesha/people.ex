@@ -33,6 +33,8 @@ defmodule Ganesha.People do
     |> Repo.insert()
   end
 
+  def find_by_alias(nil), do: nil
+
   def find_by_alias(alias_text) do
     Repo.one(
       from s in Student,

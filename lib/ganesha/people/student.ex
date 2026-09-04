@@ -17,7 +17,7 @@ defmodule Ganesha.People.Student do
   def changeset(student, attrs) do
     student
     |> cast(attrs, [:display_name, :line_user_id, :active])
-    |> validate_required([:display_name])
+    |> validate_required([:display_name, :active])
     |> unique_constraint(:line_user_id)
   end
 end
