@@ -11,6 +11,10 @@ defmodule Ganesha.ClockTest do
     assert Clock.to_taipei_date(~U[2026-08-31 03:00:00Z]) == ~D[2026-08-31]
   end
 
+  test "today/1 returns the Taipei calendar date for a pinned UTC instant" do
+    assert Clock.today(~U[2026-08-31 17:00:00Z]) == ~D[2026-09-01]
+  end
+
   test "today/0 is either the UTC date or the day after" do
     assert Clock.today() in [Date.utc_today(), Date.add(Date.utc_today(), 1)]
   end

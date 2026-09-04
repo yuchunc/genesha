@@ -24,4 +24,14 @@
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
+/* Native form controls follow the app theme (checkboxes, selects, date pickers) */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+}
+
 /* This file is for your main application CSS */

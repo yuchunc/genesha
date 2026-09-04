@@ -109,7 +109,7 @@ defmodule GaneshaWeb.CoreComponents do
     assigns =
       assign_new(assigns, :class, fn ->
         [
-          "inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+          "inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50",
           Map.fetch!(variants, assigns[:variant])
         ]
       end)
@@ -236,7 +236,7 @@ defmodule GaneshaWeb.CoreComponents do
             checked={@checked}
             class={
               @class ||
-                "size-5 shrink-0 rounded border border-zinc-300 text-orange-600 accent-orange-600 focus:ring-2 focus:ring-orange-500/50 dark:border-zinc-600 dark:bg-zinc-900"
+                "size-5 shrink-0 accent-orange-600 focus:ring-2 focus:ring-orange-500/50"
             }
             {@rest}
           />{@label}
@@ -259,10 +259,15 @@ defmodule GaneshaWeb.CoreComponents do
           name={@name}
           class={[
             @class ||
-              "w-full min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100",
-            @errors != [] &&
-              (@error_class ||
-                 "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400")
+              [
+                "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
+                if(@errors != [],
+                  do:
+                    @error_class ||
+                      "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
+                  else: "border-zinc-300 dark:border-zinc-600"
+                )
+              ]
           ]}
           multiple={@multiple}
           {@rest}
@@ -288,10 +293,15 @@ defmodule GaneshaWeb.CoreComponents do
           name={@name}
           class={[
             @class ||
-              "w-full min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100",
-            @errors != [] &&
-              (@error_class ||
-                 "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400")
+              [
+                "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
+                if(@errors != [],
+                  do:
+                    @error_class ||
+                      "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
+                  else: "border-zinc-300 dark:border-zinc-600"
+                )
+              ]
           ]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
@@ -316,10 +326,15 @@ defmodule GaneshaWeb.CoreComponents do
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
             @class ||
-              "w-full min-h-11 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100",
-            @errors != [] &&
-              (@error_class ||
-                 "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400")
+              [
+                "w-full min-h-11 rounded-lg border bg-white px-3 py-2 text-sm text-zinc-900 focus:border-orange-500 focus:outline-hidden focus:ring-2 focus:ring-orange-500/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100",
+                if(@errors != [],
+                  do:
+                    @error_class ||
+                      "border-red-500 ring-1 ring-red-500/50 focus:border-red-500 focus:ring-red-500/50 dark:border-red-400",
+                  else: "border-zinc-300 dark:border-zinc-600"
+                )
+              ]
           ]}
           {@rest}
         />
@@ -400,7 +415,7 @@ defmodule GaneshaWeb.CoreComponents do
           <th :for={col <- @col} class="px-3 py-2 font-semibold text-zinc-700 dark:text-zinc-300">
             {col[:label]}
           </th>
-          <th :if={@action != []}>
+          <th :if={@action != []} class="px-3 py-2">
             <span class="sr-only">{gettext("Actions")}</span>
           </th>
         </tr>
@@ -418,7 +433,7 @@ defmodule GaneshaWeb.CoreComponents do
           >
             {render_slot(col, @row_item.(row))}
           </td>
-          <td :if={@action != []} class="w-0 font-semibold">
+          <td :if={@action != []} class="w-0 px-3 py-2 font-semibold">
             <div class="flex gap-4">
               <%= for action <- @action do %>
                 {render_slot(action, @row_item.(row))}
