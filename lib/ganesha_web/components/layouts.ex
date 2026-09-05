@@ -157,4 +157,65 @@ defmodule GaneshaWeb.Layouts do
     </div>
     """
   end
+
+  @doc """
+  Thumb-reachable bottom navigation.
+
+  She works on a phone, switching between LINE and this app, so navigation sits
+  at the bottom within thumb reach and every target is at least 44px tall.
+
+  Only `/` exists when this task lands, so it is the only entry using `~p`.
+  The other four are plain string literals matching their eventual route paths
+  exactly, because `~p` is a compile-time-verified route and `mix precommit`
+  runs `compile --warnings-as-errors` — a `~p` sigil for a route that doesn't
+  exist yet is a warning that becomes a hard failure. Tasks 13 (`/month`),
+  14 (`/students`), 15 (`/money`, `/publish`) each convert their own line from
+  a string back to `~p` in the same commit that adds the matching route.
+  """
+  attr :active, :atom, required: true
+
+  def bottom_nav(assigns) do
+    ~H"""
+    <nav
+      id="bottom-nav"
+      class="fixed bottom-0 inset-x-0 z-40 flex border-t border-zinc-200 bg-white/95 backdrop-blur
+             pb-[env(safe-area-inset-bottom)] dark:border-zinc-800 dark:bg-zinc-900/95"
+    >
+      <.nav_item active={@active} key={:today} path={~p"/"} icon="hero-sun" label="今天" />
+      <.nav_item
+        active={@active}
+        key={:month}
+        path="/month"
+        icon="hero-calendar-days"
+        label="月課表"
+      />
+      <.nav_item active={@active} key={:money} path="/money" icon="hero-banknotes" label="收款" />
+      <.nav_item active={@active} key={:students} path="/students" icon="hero-users" label="學生" />
+      <.nav_item active={@active} key={:publish} path="/publish" icon="hero-share" label="發布" />
+    </nav>
+    """
+  end
+
+  attr :active, :atom, required: true
+  attr :key, :atom, required: true
+  attr :path, :string, required: true
+  attr :icon, :string, required: true
+  attr :label, :string, required: true
+
+  defp nav_item(assigns) do
+    ~H"""
+    <.link
+      id={"nav-#{@key}"}
+      navigate={@path}
+      class={[
+        "flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs",
+        @active == @key && "text-emerald-600 dark:text-emerald-400",
+        @active != @key && "text-zinc-500 dark:text-zinc-400"
+      ]}
+    >
+      <.icon name={@icon} class="w-6 h-6" />
+      {@label}
+    </.link>
+    """
+  end
 end

@@ -17,12 +17,6 @@ defmodule GaneshaWeb.Router do
     plug :accepts, ["json"]
   end
 
-  scope "/", GaneshaWeb do
-    pipe_through :browser
-
-    get "/", PageController, :home
-  end
-
   # Other scopes may use custom stacks.
   # scope "/api", GaneshaWeb do
   #   pipe_through :api
@@ -52,6 +46,7 @@ defmodule GaneshaWeb.Router do
 
     live_session :require_authenticated_user,
       on_mount: [{GaneshaWeb.UserAuth, :require_authenticated}] do
+      live "/", TodayLive, :index
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
