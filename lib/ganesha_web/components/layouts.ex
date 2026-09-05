@@ -35,37 +35,12 @@ defmodule GaneshaWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://phoenix.hexdocs.pm/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
-            </a>
-          </li>
-        </ul>
-      </div>
+    <header class="flex items-center justify-end px-4 py-2 sm:px-6">
+      <.theme_toggle />
     </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
-        {render_slot(@inner_block)}
-      </div>
+    <main class="mx-auto max-w-2xl px-4 pb-4 sm:px-6">
+      {render_slot(@inner_block)}
     </main>
 
     <.flash_group flash={@flash} />
@@ -128,11 +103,11 @@ defmodule GaneshaWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 transition-[left]" />
+    <div class="relative flex items-center rounded-full border border-zinc-300 bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800">
+      <div class="absolute left-0 h-full w-1/3 rounded-full border border-zinc-300 bg-white shadow-sm transition-[left] [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 dark:border-zinc-500 dark:bg-zinc-600" />
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex w-1/3 cursor-pointer p-2"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="system"
       >
@@ -140,7 +115,7 @@ defmodule GaneshaWeb.Layouts do
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex w-1/3 cursor-pointer p-2"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
       >
@@ -148,7 +123,7 @@ defmodule GaneshaWeb.Layouts do
       </button>
 
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="flex w-1/3 cursor-pointer p-2"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
       >
@@ -178,6 +153,7 @@ defmodule GaneshaWeb.Layouts do
     ~H"""
     <nav
       id="bottom-nav"
+      aria-label="主要導覽"
       class="fixed bottom-0 inset-x-0 z-40 flex border-t border-zinc-200 bg-white/95 backdrop-blur
              pb-[env(safe-area-inset-bottom)] dark:border-zinc-800 dark:bg-zinc-900/95"
     >
@@ -207,6 +183,7 @@ defmodule GaneshaWeb.Layouts do
     <.link
       id={"nav-#{@key}"}
       navigate={@path}
+      aria-current={@active == @key && "page"}
       class={[
         "flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs",
         @active == @key && "text-emerald-600 dark:text-emerald-400",

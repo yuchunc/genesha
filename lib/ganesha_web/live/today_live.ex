@@ -11,12 +11,17 @@ defmodule GaneshaWeb.TodayLive do
   defp load(socket) do
     case Studio.next_session() do
       nil ->
-        socket |> assign(:session, nil) |> stream(:attendances, [], reset: true)
+        socket
+        |> assign(:session, nil)
+        |> stream(:attendances, [], reset: true, dom_id: &"attendance-#{&1.id}")
 
       session ->
         socket
         |> assign(:session, session)
-        |> stream(:attendances, Roster.list_for_session(session), reset: true)
+        |> stream(:attendances, Roster.list_for_session(session),
+          reset: true,
+          dom_id: &"attendance-#{&1.id}"
+        )
     end
   end
 
@@ -30,8 +35,11 @@ defmodule GaneshaWeb.TodayLive do
         "no_show" -> Roster.mark_expected(attendance)
       end
 
-    # Re-insert so the row's data-state attribute reflects the new value.
-    {:noreply, stream_insert(socket, :attendances, Roster.get_attendance!(updated.id))}
+    # Keep the row's existing preloads (:student, purchase: :package) instead
+    # of re-fetching through get_attendance!/1, which preloads session: :slot
+    # instead — swapping shape mid-stream would raise Ecto.Association.NotLoaded
+    # the moment a later screen renders a field from the other shape.
+    {:noreply, stream_insert(socket, :attendances, %{attendance | state: updated.state})}
   end
 
   @impl true
@@ -50,8 +58,8 @@ defmodule GaneshaWeb.TodayLive do
 
           <ul id="attendances" phx-update="stream" class="mt-4 space-y-2">
             <li
-              :for={{_dom_id, attendance} <- @streams.attendances}
-              id={"attendance-#{attendance.id}"}
+              :for={{dom_id, attendance} <- @streams.attendances}
+              id={dom_id}
               data-state={attendance.state}
               class="flex items-center justify-between rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
             >
