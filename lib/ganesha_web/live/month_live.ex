@@ -1,7 +1,7 @@
 defmodule GaneshaWeb.MonthLive do
   use GaneshaWeb, :live_view
 
-  alias Ganesha.{Clock, Roster, Studio}
+  alias Ganesha.{Clock, Repo, Roster, Studio}
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -12,7 +12,13 @@ defmodule GaneshaWeb.MonthLive do
   end
 
   defp assign_month(socket, %{"year" => year, "month" => month}) do
-    assign(socket, :month, Date.new!(String.to_integer(year), String.to_integer(month), 1))
+    with {y, ""} <- Integer.parse(year),
+         {m, ""} <- Integer.parse(month),
+         {:ok, date} <- Date.new(y, m, 1) do
+      assign(socket, :month, date)
+    else
+      _ -> assign_month(socket, %{})
+    end
   end
 
   defp assign_month(socket, _params) do
@@ -47,12 +53,25 @@ defmodule GaneshaWeb.MonthLive do
   def handle_event("cancel", %{"session-id" => id, "reason" => reason}, socket) do
     session = Studio.get_session!(id)
 
-    case Studio.cancel_session(session, reason) do
-      {:ok, cancelled} ->
-        # Credits are issued here rather than inside Studio so both steps are
-        # visible at the call site.
-        {:ok, credits} = Roster.issue_cancellation_credits(cancelled)
+    # Credits are issued here rather than inside Studio so both steps are
+    # visible at the call site; wrapped in one transaction so a session is
+    # never left cancelled without its students' makeup credits, or the
+    # reverse — the render guard hides the cancel form once state flips, so
+    # there is no UI path to retry a partial failure.
+    result =
+      Repo.transaction(fn ->
+        case Studio.cancel_session(session, reason) do
+          {:ok, cancelled} ->
+            {:ok, credits} = Roster.issue_cancellation_credits(cancelled)
+            credits
 
+          {:error, changeset} ->
+            Repo.rollback(changeset)
+        end
+      end)
+
+    case result do
+      {:ok, credits} ->
         {:noreply,
          socket
          |> put_flash(:info, "已停課，發出 #{length(credits)} 張補課額度")
@@ -116,6 +135,7 @@ defmodule GaneshaWeb.MonthLive do
                     type="text"
                     name="style"
                     value={session.style}
+                    required
                     class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
                   />
                   <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
