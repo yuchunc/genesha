@@ -174,6 +174,17 @@ defmodule GaneshaWeb.EnrollLive do
             </div>
           </fieldset>
 
+          <div class="flex flex-wrap gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+            <.link
+              :for={session <- @scheduled}
+              id={"open-session-#{session.id}"}
+              navigate={~p"/sessions/#{session.id}"}
+              class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm leading-[44px] dark:border-zinc-700"
+            >
+              {session.date.month}/{session.date.day} 名單
+            </.link>
+          </div>
+
           <div class="flex flex-wrap gap-2">
             <input
               type="number"

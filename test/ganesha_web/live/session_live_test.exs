@@ -1,0 +1,149 @@
+defmodule GaneshaWeb.SessionLiveTest do
+  use GaneshaWeb.ConnCase, async: false
+  import Phoenix.LiveViewTest
+  alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
+
+  setup :register_and_log_in_user
+
+  defp august do
+    {:ok, monthly} =
+      Catalog.create_package(%{
+        name: "月課程",
+        kind: "monthly",
+        price_per_class: 400,
+        included_makeups: 1
+      })
+
+    {:ok, drop_in} =
+      Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 450})
+
+    {:ok, monday} =
+      Studio.create_slot(%{
+        weekday: 1,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "基礎",
+        label: "早晨練習｜週一 基礎瑜伽"
+      })
+
+    {:ok, friday} =
+      Studio.create_slot(%{
+        weekday: 5,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "基礎",
+        label: "早晨練習｜週五 基礎瑜伽"
+      })
+
+    {:ok, mondays} = Studio.generate_month(monday, ~D[2026-08-01])
+    {:ok, fridays} = Studio.generate_month(friday, ~D[2026-08-01])
+
+    %{monthly: monthly, drop_in: drop_in, monday: monday, mondays: mondays, fridays: fridays}
+  end
+
+  test "shows the roster for a session", %{conn: conn} do
+    %{mondays: mondays, monday: monday, monthly: monthly} = august()
+    {:ok, student} = People.create_student(%{display_name: "Lulu"})
+
+    {:ok, _} =
+      Enrolling.enroll_month(%{
+        student: student,
+        slot: monday,
+        package: monthly,
+        sessions: mondays,
+        custom_amount: nil,
+        note: nil
+      })
+
+    session = hd(mondays)
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{session.id}")
+
+    assert render(view) =~ "Lulu"
+    assert has_element?(view, "#one-off-form")
+  end
+
+  test "adds a drop-in to the session", %{conn: conn} do
+    %{mondays: mondays, drop_in: drop_in} = august()
+    {:ok, jennifer} = People.create_student(%{display_name: "Jennifer"})
+
+    session = hd(mondays)
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{session.id}")
+
+    view
+    |> form("#one-off-form", %{"student_id" => jennifer.id, "package_id" => drop_in.id})
+    |> render_submit()
+
+    assert [attendance] = Roster.list_for_student(jennifer.id)
+    assert attendance.kind == "drop_in"
+    assert [purchase] = Sales.list_purchases_for_student(jennifer.id)
+    assert Sales.payable(purchase) == 450
+  end
+
+  test "books a makeup using an available credit on another weekday", %{conn: conn} do
+    %{mondays: mondays, fridays: fridays, monday: monday, monthly: monthly} = august()
+    {:ok, lanzi} = People.create_student(%{display_name: "蘭子"})
+
+    {:ok, _} =
+      Enrolling.enroll_month(%{
+        student: lanzi,
+        slot: monday,
+        package: monthly,
+        sessions: mondays,
+        custom_amount: nil,
+        note: nil
+      })
+
+    friday = hd(fridays)
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{friday.id}")
+
+    assert has_element?(view, "#makeup-form")
+
+    view
+    |> form("#makeup-form", %{"student_id" => lanzi.id})
+    |> render_submit()
+
+    makeup = Enum.find(Roster.list_for_student(lanzi.id), &(&1.kind == "makeup"))
+    refute is_nil(makeup)
+    assert is_nil(makeup.purchase_id), "a makeup is paid for by a credit, not a sale"
+    assert Roster.available_credits(lanzi.id, friday.date) == []
+  end
+
+  test "offers no makeup form when nobody holds a usable credit", %{conn: conn} do
+    %{fridays: fridays} = august()
+
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{hd(fridays).id}")
+    refute has_element?(view, "#makeup-form")
+  end
+
+  test "reports the reason when a makeup cannot be booked", %{conn: conn} do
+    %{mondays: mondays, monday: monday, monthly: monthly} = august()
+    {:ok, lanzi} = People.create_student(%{display_name: "蘭子"})
+
+    {:ok, _} =
+      Enrolling.enroll_month(%{
+        student: lanzi,
+        slot: monday,
+        package: monthly,
+        sessions: mondays,
+        custom_amount: nil,
+        note: nil
+      })
+
+    # The credit expires at the end of August, so a September session refuses it.
+    {:ok, tuesday} =
+      Studio.create_slot(%{
+        weekday: 2,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "基礎",
+        label: "週二"
+      })
+
+    {:ok, september} = Studio.generate_month(tuesday, ~D[2026-09-01])
+
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{hd(september).id}")
+
+    refute has_element?(view, "#makeup-form"),
+           "an expired credit must not be offered for a later month"
+  end
+end
