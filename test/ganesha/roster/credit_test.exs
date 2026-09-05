@@ -182,6 +182,25 @@ defmodule Ganesha.Roster.CreditTest do
              Roster.book_makeup(Enum.at(friday_sessions, 1), student, reloaded)
   end
 
+  test "book_makeup/3 refuses a second consumption of the same unreloaded credit struct" do
+    {monday, monday_sessions} = monday_slot_with_sessions()
+    %{student: student, purchase: purchase} = enrolled_monthly(monday, monday_sessions, "Lulu")
+    {:ok, [credit]} = Roster.mint_package_credits(purchase)
+
+    {_friday, friday_sessions} = friday_slot_with_sessions()
+
+    assert {:ok, _first} = Roster.book_makeup(Enum.at(friday_sessions, 0), student, credit)
+
+    # Same struct as above, never reloaded: its in-memory
+    # `consumed_by_attendance_id` is still nil, so this must be rejected by a
+    # database-level compare-and-set rather than silently spending the credit
+    # a second time and granting a free class.
+    assert {:error, :credit_already_consumed} =
+             Roster.book_makeup(Enum.at(friday_sessions, 1), student, credit)
+
+    assert Enum.count(Roster.list_for_student(student.id), &(&1.kind == "makeup")) == 1
+  end
+
   test "book_makeup/3 refuses a credit that expired before the session date" do
     {slot, sessions} = monday_slot_with_sessions()
     %{student: student, purchase: purchase} = enrolled_monthly(slot, sessions, "Lulu")

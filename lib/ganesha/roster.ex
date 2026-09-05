@@ -110,7 +110,7 @@ defmodule Ganesha.Roster do
               {:ok, credit} ->
                 credit
 
-              {:error, _changeset} ->
+              {:error, %{errors: [{_, {_, [constraint: :unique, constraint_name: _]}} | _]}} ->
                 # Already minted; the partial unique index rejected the insert.
                 Repo.one!(
                   from c in Credit,
@@ -162,7 +162,7 @@ defmodule Ganesha.Roster do
           {:ok, credit} ->
             credit
 
-          {:error, _changeset} ->
+          {:error, %{errors: [{_, {_, [constraint: :unique, constraint_name: _]}} | _]}} ->
             Repo.one!(
               from c in Credit,
                 where:
@@ -204,19 +204,32 @@ defmodule Ganesha.Roster do
 
   defp insert_makeup(session, student, credit) do
     Repo.transaction(fn ->
-      {:ok, attendance} =
-        create_attendance(%{
-          session_id: session.id,
-          student_id: student.id,
-          kind: "makeup",
-          purchase_id: nil,
-          credit_id: credit.id,
-          note: credit.note
-        })
+      attendance =
+        case create_attendance(%{
+               session_id: session.id,
+               student_id: student.id,
+               kind: "makeup",
+               purchase_id: nil,
+               credit_id: credit.id,
+               note: credit.note
+             }) do
+          {:ok, attendance} -> attendance
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
 
-      {:ok, _credit} = credit |> Credit.consumption_changeset(attendance) |> Repo.update()
+      # Compare-and-set, not an unconditional overwrite: two calls racing on
+      # the same unreloaded %Credit{} (the brief's own idempotency test needs
+      # Repo.reload!/1 before its second attempt to avoid exactly this) must
+      # not both succeed in spending it, or one credit buys two makeup classes.
+      claim = from(c in Credit, where: c.id == ^credit.id and is_nil(c.consumed_by_attendance_id))
+      stamp = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      attendance
+      case Repo.update_all(claim,
+             set: [consumed_by_attendance_id: attendance.id, updated_at: stamp]
+           ) do
+        {1, _} -> attendance
+        {0, _} -> Repo.rollback(:credit_already_consumed)
+      end
     end)
   end
 
