@@ -1823,7 +1823,7 @@ Add inside `defmodule Ganesha.Sales`, after the purchase functions:
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `mix ecto.migrate && mix test test/ganesha/sales/payment_test.exs`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -5572,6 +5572,13 @@ defmodule GaneshaWeb.EnrollLiveTest do
     assert render(view) =~ student.display_name
   end
 
+  test "falls back instead of crashing on malformed year or month", %{conn: conn} do
+    __omp_magic("", "{slot: slot} = august_monday()")
+
+    assert {:ok, _view, html} = live(conn, ~p"/enroll/#{slot.id}/oops/13")
+    assert html =~ slot.label
+  end
+
   test "enrolls a student in every session of the month", %{conn: conn} do
     %{slot: slot, sessions: sessions, student: student, monthly: monthly} = august_monday()
 
@@ -5696,14 +5703,26 @@ defmodule GaneshaWeb.EnrollLive do
   def mount(_params, _session, socket), do: {:ok, socket}
 
   @impl true
-  def handle_params(%{"slot_id" => slot_id, "year" => year, "month" => month}, _uri, socket) do
-    month = Date.new!(String.to_integer(year), String.to_integer(month), 1)
-
+  def handle_params(%{"slot_id" => slot_id} = params, _uri, socket) do
     {:noreply,
      socket
      |> assign(:slot, Studio.get_slot!(slot_id))
-     |> assign(:month, month)
+     |> assign_month(params)
      |> load()}
+  end
+
+  defp assign_month(socket, %{"year" => year, "month" => month}) do
+    with {y, ""} <- Integer.parse(year),
+         {m, ""} <- Integer.parse(month),
+         {:ok, date} <- Date.new(y, m, 1) do
+      assign(socket, :month, date)
+    else
+      _ -> assign_month(socket, %{})
+    end
+  end
+
+  defp assign_month(socket, _params) do
+    assign(socket, :month, Date.beginning_of_month(Clock.today()))
   end
 
   defp load(socket) do
