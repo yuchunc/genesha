@@ -105,6 +105,14 @@ defmodule GaneshaWeb.MonthLive do
             >
               建立本月
             </button>
+            <.link
+              :if={sessions != []}
+              id={"enroll-slot-#{slot.id}"}
+              navigate={~p"/enroll/#{slot.id}/#{@month.year}/#{@month.month}"}
+              class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm leading-[44px] dark:border-zinc-700"
+            >
+              報名
+            </.link>
           </header>
 
           <ul class="mt-3 space-y-3">

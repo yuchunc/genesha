@@ -27,6 +27,7 @@ defmodule GaneshaWeb.MonthLiveTest do
 
     assert length(Studio.sessions_for_slot_in_month(slot, ~D[2026-08-01])) == 5
     assert has_element?(view, "#slot-#{slot.id}")
+    assert has_element?(view, "#enroll-slot-#{slot.id}")
     assert has_element?(view, "[data-date='2026-08-03']")
   end
 
