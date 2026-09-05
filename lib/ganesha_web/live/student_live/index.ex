@@ -9,7 +9,7 @@ defmodule GaneshaWeb.StudentLive.Index do
     {:ok,
      socket
      |> assign(:form, to_form(People.change_student(%Student{})))
-     |> stream(:students, People.list_students())}
+     |> stream(:students, People.list_students(), dom_id: &"student-#{&1.id}")}
   end
 
   @impl true
@@ -39,7 +39,7 @@ defmodule GaneshaWeb.StudentLive.Index do
         </.form>
 
         <ul id="students" phx-update="stream" class="mt-4 space-y-2">
-          <li :for={{_dom_id, student} <- @streams.students} id={"student-#{student.id}"}>
+          <li :for={{dom_id, student} <- @streams.students} id={dom_id}>
             <.link
               navigate={~p"/students/#{student.id}"}
               class="flex min-h-[56px] items-center justify-between rounded-xl border border-zinc-200 px-4 dark:border-zinc-800"
