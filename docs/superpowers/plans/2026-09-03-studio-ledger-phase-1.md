@@ -3126,6 +3126,43 @@ defmodule Ganesha.PublishingTest do
     assert Publishing.roster_block(~D[2026-08-01]) =~ "素容（未到）"
   end
 
+  test "roster_block/1 omits a cancelled session, matching schedule_block/1" do
+    {_slot, sessions} = august_monday()
+    {:ok, _} = Studio.cancel_session(hd(sessions), "颱風假")
+
+    text = Publishing.roster_block(~D[2026-08-01])
+
+    refute text =~ "8/3：", "a cancelled date must not appear in either block"
+    assert text =~ "8/10"
+  end
+
+  test "roster_block/1 keeps the kind marker on a no-show drop-in" do
+    {slot, sessions} = august_monday()
+    {:ok, jennifer} = People.create_student(%{display_name: "Jennifer"})
+
+    {:ok, drop_pkg} =
+      Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 450})
+
+    {:ok, drop_purchase} =
+      Sales.create_purchase(%{student_id: jennifer.id, package_id: drop_pkg.id, list_price: 450})
+
+    {:ok, attendance} = Roster.add_drop_in(hd(sessions), jennifer, drop_purchase)
+    {:ok, _} = Roster.mark_no_show(attendance)
+
+    assert Publishing.roster_block(~D[2026-08-01]) =~ "（單）Jennifer（未到）"
+  end
+
+  test "announcement/1 renders only the settings fields that are present" do
+    august_monday()
+
+    {:ok, _} = Publishing.update_settings(%{account_number: "111001756051"})
+
+    text = Publishing.announcement(~D[2026-08-01])
+
+    refute text =~ "銀行代號", "no bank_code means no bank-name line"
+    assert text =~ "帳號： 111001756051"
+  end
+
   test "announcement/1 includes the bank footer from settings" do
     august_monday()
 
@@ -3231,16 +3268,18 @@ defmodule Ganesha.Publishing do
 
   @doc "The ✨開課時間表 block: one entry per active slot with its dates and price."
   def schedule_block(%Date{} = month) do
+    price = monthly_price_per_class()
+
     entries =
       Studio.list_active_slots()
-      |> Enum.map(&slot_entry(&1, month))
+      |> Enum.map(&slot_entry(&1, month, price))
       |> Enum.reject(&is_nil/1)
       |> Enum.join("\n\n")
 
     "✨ #{month.month}月開課時間表\n\n" <> entries
   end
 
-  defp slot_entry(slot, month) do
+  defp slot_entry(slot, month, price) do
     sessions =
       slot
       |> Studio.sessions_for_slot_in_month(month)
@@ -3256,7 +3295,7 @@ defmodule Ganesha.Publishing do
       #{slot.label}
       時間：#{format_time(slot.start_time)}－#{format_time(slot.end_time)}
       日期：#{dates}
-      （#{count * monthly_price_per_class()}元 /#{count} 堂）
+      （#{count * price}元 /#{count} 堂）
       """)
     end
   end
@@ -3305,6 +3344,7 @@ defmodule Ganesha.Publishing do
       lines =
         slot
         |> Studio.sessions_for_slot_in_month(month)
+        |> Enum.filter(&(&1.state == "scheduled"))
         |> Enum.map_join("\n", fn session ->
           names =
             session
@@ -3318,17 +3358,18 @@ defmodule Ganesha.Publishing do
     end)
   end
 
-  defp attendee_name(attendance) do
-    name = attendance.student.display_name
+  # Kind and state are independent: a drop-in or a makeup can also be a
+  # no-show, and both markers must survive rather than one short-circuiting
+  # the other.
+  defp attendee_name(attendance), do: kind_marker(attendance) <> no_show_marker(attendance)
 
-    cond do
-      attendance.state == "no_show" -> "#{name}（未到）"
-      attendance.kind == "makeup" -> "#{name}（補課#{note_suffix(attendance)}）"
-      attendance.kind == "drop_in" -> "（單）#{name}"
-      attendance.kind == "trial" -> "#{name}（體驗）"
-      true -> name
-    end
-  end
+  defp kind_marker(%{kind: "drop_in"} = a), do: "（單）#{a.student.display_name}"
+  defp kind_marker(%{kind: "makeup"} = a), do: "#{a.student.display_name}（補課#{note_suffix(a)}）"
+  defp kind_marker(%{kind: "trial"} = a), do: "#{a.student.display_name}（體驗）"
+  defp kind_marker(a), do: a.student.display_name
+
+  defp no_show_marker(%{state: "no_show"}), do: "（未到）"
+  defp no_show_marker(_), do: ""
 
   defp note_suffix(%{note: nil}), do: ""
   defp note_suffix(%{note: ""}), do: ""
@@ -3357,19 +3398,29 @@ defmodule Ganesha.Publishing do
     "麻煩於#{deadline}前轉帳，並告知帳後五碼。"
   end
 
-  defp bank_lines(%Settings{bank_code: nil}), do: nil
-  defp bank_lines(%Settings{bank_code: ""}), do: nil
-
   defp bank_lines(%Settings{} = settings) do
-    "LINE Bank 銀行代號：#{settings.bank_code} #{settings.bank_name}\n帳號： #{settings.account_number}"
+    [bank_line(settings), account_line(settings)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> case do
+      [] -> nil
+      lines -> Enum.join(lines, "\n")
+    end
   end
+
+  defp bank_line(%Settings{bank_code: nil}), do: nil
+  defp bank_line(%Settings{bank_code: ""}), do: nil
+  defp bank_line(%Settings{} = s), do: String.trim_trailing("LINE Bank 銀行代號：#{s.bank_code} #{s.bank_name}")
+
+  defp account_line(%Settings{account_number: nil}), do: nil
+  defp account_line(%Settings{account_number: ""}), do: nil
+  defp account_line(%Settings{} = s), do: "帳號： #{s.account_number}"
 end
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `mix ecto.migrate && mix test test/ganesha/publishing_test.exs`
-Expected: PASS, 8 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 7: Seed the real bank details**
 
@@ -3414,7 +3465,7 @@ git commit -m "feat: generate the monthly LINE announcement from the ledger"
 
 ```elixir
 defmodule GaneshaWeb.TodayLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Clock, People, Roster, Sales, Studio}
 
@@ -3486,6 +3537,61 @@ end
 Run: `mix test test/ganesha_web/live/today_live_test.exs`
 Expected: FAIL — `~p"/"` does not serve a LiveView.
 
+- [ ] **Step 2b: Rewrite the layout shell — remove the Phoenix scaffold header and daisyUI**
+
+`Layouts.app/1` still ships the `phx.new` scaffold: a header linking to
+phoenixframework.org, the Phoenix GitHub repo, and hexdocs "Get Started", plus the
+Phoenix logo — none of which belong in her app — and it, along with `theme_toggle/1`,
+still carries daisyUI classes (`navbar`, `btn btn-ghost`, `btn btn-primary`, `card`,
+`border-base-300`, `bg-base-300`, `bg-base-100`, `border-base-200`) even though
+daisyUI was removed from `assets/css/app.css` in Task 1. No later task touches this
+function, so it is this task's responsibility. Replace both functions in
+`lib/ganesha_web/components/layouts.ex` with:
+
+```elixir
+  def app(assigns) do
+    ~H"""
+    <header class="flex items-center justify-end px-4 py-2 sm:px-6">
+      <.theme_toggle />
+    </header>
+
+    <main class="mx-auto max-w-2xl px-4 pb-4 sm:px-6">
+      {render_slot(@inner_block)}
+    </main>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+```
+
+```elixir
+  def theme_toggle(assigns) do
+    ~H"""
+    <div class="relative flex items-center rounded-full border border-zinc-300 bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800">
+      <div class="absolute left-0 h-full w-1/3 rounded-full border border-zinc-300 bg-white shadow-sm transition-[left] [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 dark:border-zinc-500 dark:bg-zinc-600" />
+
+      <button class="flex w-1/3 cursor-pointer p-2" phx-click={JS.dispatch("phx:set-theme")} data-phx-theme="system">
+        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+      </button>
+
+      <button class="flex w-1/3 cursor-pointer p-2" phx-click={JS.dispatch("phx:set-theme")} data-phx-theme="light">
+        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+      </button>
+
+      <button class="flex w-1/3 cursor-pointer p-2" phx-click={JS.dispatch("phx:set-theme")} data-phx-theme="dark">
+        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+      </button>
+    </div>
+    """
+  end
+```
+
+`app/1`'s attrs (`flash`, `current_scope`) and `@doc`/`attr` declarations above it are
+unchanged — only the two function bodies above change. `current_scope` is unused in
+the new body, same as it was in the scaffold's; the user-context/settings/logout row
+already lives in `root.html.heex` (translated to Traditional Chinese in Task 2's fix
+round) and is out of scope here.
+
 - [ ] **Step 3: Add the bottom navigation to Layouts**
 
 Add to `lib/ganesha_web/components/layouts.ex`:
@@ -3496,6 +3602,14 @@ Add to `lib/ganesha_web/components/layouts.ex`:
 
   She works on a phone, switching between LINE and this app, so navigation sits
   at the bottom within thumb reach and every target is at least 44px tall.
+
+  Only `/` exists when this task lands, so it is the only entry using `~p`.
+  The other four are plain string literals matching their eventual route paths
+  exactly, because `~p` is a compile-time-verified route and `mix precommit`
+  runs `compile --warnings-as-errors` — a `~p` sigil for a route that doesn't
+  exist yet is a warning that becomes a hard failure. Tasks 13 (`/month`),
+  14 (`/students`), 15 (`/money`, `/publish`) each convert their own line from
+  a string back to `~p` in the same commit that adds the matching route.
   """
   attr :active, :atom, required: true
 
@@ -3503,14 +3617,15 @@ Add to `lib/ganesha_web/components/layouts.ex`:
     ~H"""
     <nav
       id="bottom-nav"
+      aria-label="主要導覽"
       class="fixed bottom-0 inset-x-0 z-40 flex border-t border-zinc-200 bg-white/95 backdrop-blur
              pb-[env(safe-area-inset-bottom)] dark:border-zinc-800 dark:bg-zinc-900/95"
     >
       <.nav_item active={@active} key={:today} path={~p"/"} icon="hero-sun" label="今天" />
-      <.nav_item active={@active} key={:month} path={~p"/month"} icon="hero-calendar-days" label="月課表" />
-      <.nav_item active={@active} key={:money} path={~p"/money"} icon="hero-banknotes" label="收款" />
-      <.nav_item active={@active} key={:students} path={~p"/students"} icon="hero-users" label="學生" />
-      <.nav_item active={@active} key={:publish} path={~p"/publish"} icon="hero-share" label="發布" />
+      <.nav_item active={@active} key={:month} path="/month" icon="hero-calendar-days" label="月課表" />
+      <.nav_item active={@active} key={:money} path="/money" icon="hero-banknotes" label="收款" />
+      <.nav_item active={@active} key={:students} path="/students" icon="hero-users" label="學生" />
+      <.nav_item active={@active} key={:publish} path="/publish" icon="hero-share" label="發布" />
     </nav>
     """
   end
@@ -3526,6 +3641,7 @@ Add to `lib/ganesha_web/components/layouts.ex`:
     <.link
       id={"nav-#{@key}"}
       navigate={@path}
+      aria-current={@active == @key && "page"}
       class={[
         "flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs",
         @active == @key && "text-emerald-600 dark:text-emerald-400",
@@ -3557,12 +3673,17 @@ defmodule GaneshaWeb.TodayLive do
   defp load(socket) do
     case Studio.next_session() do
       nil ->
-        socket |> assign(:session, nil) |> stream(:attendances, [], reset: true)
+        socket
+        |> assign(:session, nil)
+        |> stream(:attendances, [], reset: true, dom_id: &"attendance-#{&1.id}")
 
       session ->
         socket
         |> assign(:session, session)
-        |> stream(:attendances, Roster.list_for_session(session), reset: true)
+        |> stream(:attendances, Roster.list_for_session(session),
+          reset: true,
+          dom_id: &"attendance-#{&1.id}"
+        )
     end
   end
 
@@ -3570,14 +3691,22 @@ defmodule GaneshaWeb.TodayLive do
   def handle_event("toggle_no_show", %{"id" => id}, socket) do
     attendance = Roster.get_attendance!(id)
 
-    {:ok, updated} =
+    {:ok, _updated} =
       case attendance.state do
         "expected" -> Roster.mark_no_show(attendance)
         "no_show" -> Roster.mark_expected(attendance)
       end
 
-    # Re-insert so the row's data-state attribute reflects the new value.
-    {:noreply, stream_insert(socket, :attendances, Roster.get_attendance!(updated.id))}
+    # get_attendance!/1 preloads [:student, session: :slot], which does not
+    # match the [:student, purchase: :package] shape every other row in this
+    # stream has (from list_for_session/1). Re-derive the row through that
+    # same accessor so the stream never mixes preload shapes across rows.
+    refreshed =
+      socket.assigns.session
+      |> Roster.list_for_session()
+      |> Enum.find(&(&1.id == attendance.id))
+
+    {:noreply, stream_insert(socket, :attendances, refreshed)}
   end
 
   @impl true
@@ -3632,7 +3761,12 @@ defmodule GaneshaWeb.TodayLive do
 end
 ```
 
-Note the DOM id: the stream produces `id="attendances-<id>"` for the `<li>`, while the test asserts on `#attendance-<id>`. Set the `<li>` id explicitly to keep the test's selector honest — change `id={dom_id}` to `id={"attendance-#{attendance.id}"}` and keep `phx-update="stream"` on the `<ul>`.
+Note the DOM id: `stream/4`'s `dom_id:` option (used in `load/1` above) makes the
+stream itself produce `id="attendance-<id>"`, matching the test's `#attendance-<id>`
+selector, so `id={dom_id}` on the `<li>` needs no further override. Do not hardcode
+the `<li>` id separately — that disconnects the row from LiveView's stream-ref
+bookkeeping (`reset`, `stream_delete`, and `:at` positional inserts all key off the
+element actually carrying `data-phx-stream`, which only the stream's own dom id gets).
 
 - [ ] **Step 5: Add the route and remove the scaffold page**
 
@@ -3683,7 +3817,7 @@ git commit -m "feat: add phone-first layout shell and Today roster screen"
 
 ```elixir
 defmodule GaneshaWeb.MonthLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, People, Roster, Sales, Studio}
 
@@ -3970,7 +4104,7 @@ git commit -m "feat: add month screen with style override and cancellation credi
 
 ```elixir
 defmodule GaneshaWeb.StudentLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Clock, People, Repo, Sales}
 
@@ -4359,7 +4493,7 @@ git commit -m "feat: add student screens with payment confirmation and amount ov
 
 ```elixir
 defmodule GaneshaWeb.MoneyLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Clock, People, Sales}
 
@@ -4429,7 +4563,7 @@ end
 
 ```elixir
 defmodule GaneshaWeb.PublishLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Studio}
 
@@ -5163,7 +5297,7 @@ git commit -m "feat: add enrolling use case joining purchases to rosters"
 
 ```elixir
 defmodule GaneshaWeb.EnrollLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, People, Roster, Sales, Studio}
 
@@ -5604,7 +5738,7 @@ git commit -m "feat: add enroll screen for monthly signups and payment recording
 
 ```elixir
 defmodule GaneshaWeb.SessionLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
 
@@ -5958,7 +6092,7 @@ git commit -m "feat: add session screen for drop-ins, trials, and makeup booking
 
 ```elixir
 defmodule GaneshaWeb.SettingsLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Publishing}
 
