@@ -111,3 +111,12 @@ for attrs <- [
     _existing -> :ok
   end
 end
+
+{:ok, _settings} =
+  Ganesha.Publishing.update_settings(%{
+    bank_name: "連線商業銀行",
+    bank_code: "824",
+    account_number: "111001756051",
+    transfer_deadline: "每月 15 日",
+    closing_note: "＊＊或者 line pay Money"
+  })
