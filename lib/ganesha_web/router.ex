@@ -49,6 +49,9 @@ defmodule GaneshaWeb.Router do
       live "/", TodayLive, :index
       live "/month", MonthLive, :index
       live "/month/:year/:month", MonthLive, :index
+      live "/money", MoneyLive, :index
+      live "/publish", PublishLive, :index
+      live "/publish/:year/:month", PublishLive, :index
       live "/students", StudentLive.Index, :index
       live "/students/:id", StudentLive.Show, :show
       live "/users/settings", UserLive.Settings, :edit
