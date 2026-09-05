@@ -5054,7 +5054,7 @@ on the very first deploy:
 1. **Volume ownership.** The runner stage does `USER nobody` after `RUN chown
    nobody /app`, but `/data` is a Fly volume mounted at container start, not
    part of the image — a freshly created volume is `root:root`. The release
-   (and `rel/overlays/bin/server`'s new migrate-on-boot call) opens
+   (and `rel/overlays/bin/server`'s migrate-on-boot call) opens
    `${DATABASE_PATH}` as `nobody` and fails with `EACCES` before the endpoint
    ever starts.
 2. **Litestream is inert.** `litestream.yml` (Step 7) is never copied into the
@@ -5063,7 +5063,15 @@ on the very first deploy:
    header is not achieved by anything in the repo as generated.
 
 Fix both together with a root entrypoint that fixes ownership once, then drops
-privilege and runs the release under Litestream:
+privilege — and that only wraps the release in `litestream replicate` when a
+replica is actually configured, rather than unconditionally. **Litestream
+fails closed, not open**: with `type: s3` and an empty `bucket`, it exits
+non-zero before `-exec` ever runs the wrapped command (verified against the
+real binary: `bucket required for s3 replica`, exit 1). An unconditional
+wrapper means the app cannot boot at all — not degraded, not unreplicated,
+*down* — the moment `LITESTREAM_BUCKET` and friends aren't set, which is true
+of a fresh deploy before those secrets are configured and of every local/dev
+container run.
 
 `rel/overlays/bin/docker-entrypoint.sh` (new file; `mix release`'s overlay
 mechanism ships anything under `rel/overlays/` at the same relative path
@@ -5082,34 +5090,73 @@ if [ -n "${DATABASE_PATH:-}" ]; then
   chown -R nobody:root "$(dirname "$DATABASE_PATH")"
 fi
 
-exec gosu nobody "$@"
+# Litestream fails closed when its S3 replica is unconfigured (exits before
+# -exec ever runs), so only wrap the release in it when a bucket is actually
+# set. Otherwise the release runs unreplicated rather than not running at
+# all — true on a fresh deploy before secrets are configured, and true of
+# every local/dev container run.
+if [ -n "${LITESTREAM_BUCKET:-}" ]; then
+  exec gosu nobody litestream replicate -config /etc/litestream.yml -exec "$1"
+else
+  echo "LITESTREAM_BUCKET not set; starting without replication" >&2
+  exec gosu nobody "$@"
+fi
 ```
 
 Make it executable (`chmod +x rel/overlays/bin/docker-entrypoint.sh`) — match
-the existing `rel/overlays/bin/server`/`migrate` convention.
+the existing `rel/overlays/bin/server`/`migrate` convention. It must be
+**root-owned**, not `nobody`-owned: it is the only thing that runs as root at
+container start, so if it inherited the release tree's `nobody:root`
+ownership, the app process (which runs as `nobody`) could rewrite it and
+escalate to root on the next container start. Explicitly `chown root:root`
+it in the Dockerfile after the release is copied in — do not rely on
+whatever ownership the `COPY --chown=nobody:root` line gives the rest of the
+tree.
 
-In the Dockerfile's runner stage:
+In the Dockerfile's runner stage, in one combined `RUN` layer (so `curl` does
+not remain permanently installed in the final image — installing and purging
+it across two separate layers does not shrink the image, only removing it
+within the same layer it was added does):
 
-- Add `gosu` and `curl` to the `apt-get install` package list alongside the
-  existing `libstdc++6 openssl libncurses6 locales ca-certificates`.
-- Install the `litestream` binary. Do not hardcode a version number from
-  memory — resolve the current latest release yourself (e.g.
-  `curl -fsSL https://api.github.com/repos/benbjohnson/litestream/releases/latest`
-  to read the tag and asset names, since GitHub's release asset naming has
-  changed across versions) and download the `linux-amd64` (or matching arch)
-  static binary archive, extracting the `litestream` executable to
-  `/usr/local/bin/litestream`.
+```dockerfile
+ARG LITESTREAM_VERSION=<resolve the current release yourself; see below>
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates gosu curl \
+  && set -eu; \
+     case "$(dpkg --print-architecture)" in \
+       amd64) litestream_arch="x86_64" ;; \
+       arm64) litestream_arch="arm64" ;; \
+       *) echo "unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+     esac; \
+     litestream_asset="litestream-${LITESTREAM_VERSION}-linux-${litestream_arch}.tar.gz"; \
+     curl -fsSL -o /tmp/litestream.tar.gz \
+       "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/${litestream_asset}" \
+  && curl -fsSL -o /tmp/checksums.txt \
+       "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/checksums.txt" \
+  && (cd /tmp && grep " ${litestream_asset}\$" checksums.txt | sha256sum -c -) \
+  && tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz litestream \
+  && rm /tmp/litestream.tar.gz /tmp/checksums.txt \
+  && apt-get purge -y curl \
+  && apt-get autoremove -y \
+  && rm -rf /var/lib/apt/lists/*
+```
+
+Do not hardcode `LITESTREAM_VERSION` from memory — resolve the current
+release yourself (e.g.
+`curl -fsSL https://api.github.com/repos/benbjohnson/litestream/releases/latest`
+to read the tag and confirm the asset naming, since it has changed across
+versions) at the time you write this.
+
+Also:
+
 - `COPY litestream.yml /etc/litestream.yml`.
 - Remove the `USER nobody` line (the entrypoint now handles the privilege
   drop after fixing volume ownership as root).
+- `RUN chown root:root /app/bin/docker-entrypoint.sh` after the release COPY.
 - Set `ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]`.
-- Change `CMD` to
-  `["litestream", "replicate", "-config", "/etc/litestream.yml", "-exec", "/app/bin/server"]`
-  so the release always runs under replication; `litestream.yml`'s S3
-  replica config is read from environment variables that are unset locally,
-  which is fine — Litestream logs and continues without a working replica
-  rather than failing closed, so local/dev Docker runs are not blocked by
-  this.
+- `CMD` stays `["/app/bin/server"]` — unchanged from the generator's default.
+  The entrypoint script itself decides whether to wrap it in `litestream
+  replicate`, not the Dockerfile.
 
 **Verify empirically, not by inspection alone** — Docker is available in this
 environment:
@@ -5132,10 +5179,22 @@ environment:
    not need to boot the full release to prove this specific fix).
 3. Confirm `litestream` is on `PATH` in the image:
    `docker run --rm ganesha-test litestream version`.
+4. Confirm the entrypoint's fail-open gate actually works: run the image
+   with `LITESTREAM_BUCKET` unset (the default — do not set it) and confirm
+   the container does NOT immediately exit 1 the way a bare
+   `litestream replicate -config /etc/litestream.yml -exec ...` with an
+   empty bucket would. A minimal check: run with a command that would only
+   succeed past the gate, e.g. `docker run --rm -e DATABASE_PATH=/data/ganesha.db
+   -v /tmp/ganesha-data:/data ganesha-test echo booted-without-litestream`
+   and confirm it prints and exits 0, not `bucket required for s3 replica`.
+5. Confirm the entrypoint script itself is root-owned in the image:
+   `docker run --rm --entrypoint sh ganesha-test -c 'stat -c "%U" /app/bin/docker-entrypoint.sh'`
+   must print `root`, not `nobody`.
 
-If any of these three fail, the fix is not done — do not report success on
+If any of these five fail, the fix is not done — do not report success on
 `docker build` succeeding alone, since that would not catch a broken
-entrypoint or a wrong binary path.
+entrypoint, a wrong binary path, or the crash-loop this exact design was
+meant to prevent.
 
 - [ ] **Step 9: Deploy and verify against the running app**
 
@@ -5143,11 +5202,22 @@ entrypoint or a wrong binary path.
 fly launch --no-deploy --copy-config --name ganesha --region nrt
 fly volumes create ganesha_data --region nrt --size 1
 fly secrets set SECRET_KEY_BASE="$(mix phx.gen.secret)" \
-  TEACHER_EMAIL="<her email>" TEACHER_PASSWORD="<a strong password>"
+  TEACHER_EMAIL="<her email>" TEACHER_PASSWORD="<a strong password>" \
+  LITESTREAM_ENDPOINT="<S3-compatible endpoint>" \
+  LITESTREAM_BUCKET="<bucket name>" \
+  LITESTREAM_ACCESS_KEY_ID="<access key>" \
+  LITESTREAM_SECRET_ACCESS_KEY="<secret key>"
 fly deploy
-fly ssh console -C "/app/bin/ganesha eval 'Ganesha.Release.migrate()'"
 fly ssh console -C "/app/bin/ganesha eval 'Code.eval_file(\"/app/lib/ganesha-0.1.0/priv/repo/seeds.exs\")'"
 ```
+
+The four `LITESTREAM_*` secrets are optional for the app to boot (Step 8b's
+entrypoint degrades to running unreplicated if `LITESTREAM_BUCKET` is unset),
+but required for the actual replication `litestream.yml` exists for — set
+them before relying on this as the payment-record backup path. The manual
+`Ganesha.Release.migrate()` step is redundant now that Step 5b migrates on
+boot; harmless to run, since it's idempotent, but no longer necessary.
+
 
 Then verify, in this order:
 1. `curl -sS https://ganesha.fly.dev/health` returns `ok`.
