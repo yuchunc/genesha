@@ -138,14 +138,6 @@ defmodule GaneshaWeb.Layouts do
 
   She works on a phone, switching between LINE and this app, so navigation sits
   at the bottom within thumb reach and every target is at least 44px tall.
-
-  Only `/` exists when this task lands, so it is the only entry using `~p`.
-  The other four are plain string literals matching their eventual route paths
-  exactly, because `~p` is a compile-time-verified route and `mix precommit`
-  runs `compile --warnings-as-errors` — a `~p` sigil for a route that doesn't
-  exist yet is a warning that becomes a hard failure. Tasks 13 (`/month`),
-  14 (`/students`), 15 (`/money`, `/publish`) each convert their own line from
-  a string back to `~p` in the same commit that adds the matching route.
   """
   attr :active, :atom, required: true
 
