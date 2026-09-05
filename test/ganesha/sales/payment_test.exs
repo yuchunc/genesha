@@ -87,22 +87,6 @@ defmodule Ganesha.Sales.PaymentTest do
     assert "can't be blank" in errors_on(cs).confirmed_by
   end
 
-  test "dispute_payment/2 records the reason" do
-    purchase = purchase_fixture()
-
-    {:ok, payment} =
-      Sales.record_payment(%{
-        purchase_id: purchase.id,
-        amount: 100,
-        method: "cash",
-        paid_on: Clock.today()
-      })
-
-    assert {:ok, disputed} = Sales.dispute_payment(payment, "銀行沒有這筆")
-    assert disputed.state == "disputed"
-    assert disputed.note == "銀行沒有這筆"
-  end
-
   test "rejects an unknown method, a negative amount, and a bad last5" do
     purchase = purchase_fixture()
     base = %{purchase_id: purchase.id, paid_on: Clock.today()}

@@ -39,6 +39,13 @@ defmodule GaneshaWeb.PublishLive do
       <div class="pb-24">
         <div class="flex items-center justify-between gap-2">
           <h1 class="text-lg font-semibold">{@month.month} 月公告</h1>
+          <.link
+            id="open-settings"
+            navigate={~p"/settings"}
+            class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm leading-[44px] dark:border-zinc-700"
+          >
+            設定
+          </.link>
           <button
             id="copy-announcement"
             phx-hook=".CopyText"

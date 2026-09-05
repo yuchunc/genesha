@@ -27,7 +27,6 @@ defmodule Ganesha.Sales.PurchaseTest do
       })
 
     assert Sales.payable(purchase) == 1600
-    assert Sales.comped(purchase) == 0
   end
 
   test "payable/1 uses the override, and zero is a real value" do
@@ -43,7 +42,6 @@ defmodule Ganesha.Sales.PurchaseTest do
       })
 
     assert Sales.payable(purchase) == 0
-    assert Sales.comped(purchase) == 1600
     assert purchase.note == "按摩器代購"
   end
 
@@ -59,7 +57,6 @@ defmodule Ganesha.Sales.PurchaseTest do
       })
 
     assert Sales.payable(purchase) == 1500
-    assert Sales.comped(purchase) == -300
   end
 
   test "rejects a negative list price or override" do

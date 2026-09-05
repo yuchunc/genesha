@@ -20,8 +20,6 @@ defmodule Ganesha.Studio do
 
   def update_slot(%Slot{} = slot, attrs), do: slot |> Slot.changeset(attrs) |> Repo.update()
 
-  def change_slot(%Slot{} = slot, attrs \\ %{}), do: Slot.changeset(slot, attrs)
-
   @doc "Creates a single session. Prefer `generate_month/2` for a whole month."
   def create_session(attrs), do: %Session{} |> Session.changeset(attrs) |> Repo.insert()
 
@@ -64,15 +62,6 @@ defmodule Ganesha.Studio do
           s.slot_id == ^slot.id and s.date >= ^Date.beginning_of_month(month) and
             s.date <= ^Clock.end_of_month(month),
         order_by: s.date
-    )
-  end
-
-  def list_sessions_for_month(%Date{} = month) do
-    Repo.all(
-      from s in Session,
-        where: s.date >= ^Date.beginning_of_month(month) and s.date <= ^Clock.end_of_month(month),
-        order_by: [asc: s.date],
-        preload: [:slot]
     )
   end
 

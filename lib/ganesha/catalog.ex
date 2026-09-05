@@ -23,10 +23,6 @@ defmodule Ganesha.Catalog do
     package |> Package.changeset(attrs) |> Repo.update()
   end
 
-  def change_package(%Package{} = package, attrs \\ %{}) do
-    Package.changeset(package, attrs)
-  end
-
   @doc """
   The list price for buying `session_count` classes of this package.
 

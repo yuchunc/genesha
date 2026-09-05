@@ -27,12 +27,14 @@ defmodule Ganesha.People do
     Student.changeset(student, attrs)
   end
 
+  @doc "Adds a LINE ingestion alias for resolving free-text student names."
   def add_alias(%Student{} = student, alias_text) do
     %StudentAlias{}
     |> StudentAlias.changeset(%{student_id: student.id, alias: alias_text})
     |> Repo.insert()
   end
 
+  @doc "Finds a student from a LINE ingestion alias."
   def find_by_alias(nil), do: nil
 
   def find_by_alias(alias_text) do
@@ -44,6 +46,7 @@ defmodule Ganesha.People do
     )
   end
 
+  @doc "Finds a student by LINE user id during LINE ingestion."
   def find_by_line_user_id(nil), do: nil
 
   def find_by_line_user_id(line_user_id) do

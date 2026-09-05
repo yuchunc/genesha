@@ -37,10 +37,6 @@ defmodule Ganesha.Sales do
   def payable(%Purchase{custom_amount: nil, list_price: list_price}), do: list_price
   def payable(%Purchase{custom_amount: custom_amount}), do: custom_amount
 
-  @doc "How much was given away against list price. Negative means she charged more."
-  @spec comped(Purchase.t()) :: integer()
-  def comped(%Purchase{} = purchase), do: purchase.list_price - payable(purchase)
-
   def list_purchases_for_student(student_id) do
     Repo.all(
       from p in Purchase,
@@ -56,10 +52,6 @@ defmodule Ganesha.Sales do
     %Payment{} |> Payment.changeset(attrs) |> Repo.insert()
   end
 
-  def change_payment(%Payment{} = payment, attrs \\ %{}) do
-    Payment.changeset(payment, attrs)
-  end
-
   @doc """
   Confirms that the money actually arrived.
 
@@ -69,10 +61,6 @@ defmodule Ganesha.Sales do
   """
   def confirm_payment(%Payment{} = payment, confirmed_by) do
     payment |> Payment.confirmation_changeset(confirmed_by) |> Repo.update()
-  end
-
-  def dispute_payment(%Payment{} = payment, reason) do
-    payment |> Payment.dispute_changeset(reason) |> Repo.update()
   end
 
   def list_payments_for_purchase(purchase_id) do
