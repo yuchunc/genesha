@@ -55,12 +55,19 @@ defmodule GaneshaWeb.EnrollLive do
         purchase: purchase,
         student: purchase.student,
         payable: Sales.payable(purchase),
-        paid:
-          purchase.id |> Sales.list_payments_for_purchase() |> Enum.map(& &1.amount) |> Enum.sum(),
+        paid: confirmed_paid(purchase.id),
         period: Reporting.purchase_period(purchase.id)
       }
     end)
     |> Enum.sort_by(& &1.student.display_name)
+  end
+
+  defp confirmed_paid(purchase_id) do
+    purchase_id
+    |> Sales.list_payments_for_purchase()
+    |> Enum.filter(&(&1.state == "confirmed"))
+    |> Enum.map(& &1.amount)
+    |> Enum.sum()
   end
 
   @impl true

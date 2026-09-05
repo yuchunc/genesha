@@ -40,6 +40,26 @@ defmodule GaneshaWeb.StudentLive.Show do
     {:noreply, socket |> put_flash(:info, "已確認收款") |> load()}
   end
 
+  def handle_event("record_payment", %{"purchase-id" => id} = params, socket) do
+    case Sales.record_payment(%{
+           purchase_id: id,
+           amount: params["amount"],
+           method: params["method"],
+           paid_on: Clock.today(),
+           reported_last5: blank_to_nil(params["reported_last5"]),
+           source: "manual"
+         }) do
+      {:ok, _payment} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "已記錄，待確認入帳")
+         |> load()}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "金額或方式不正確")}
+    end
+  end
+
   def handle_event("override", %{"purchase-id" => id} = params, socket) do
     purchase = Sales.get_purchase!(id)
 
@@ -57,6 +77,14 @@ defmodule GaneshaWeb.StudentLive.Show do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
+
+  defp confirmed_paid(payment_rows) do
+    payment_rows
+    |> Enum.map(& &1.payment)
+    |> Enum.filter(&(&1.state == "confirmed"))
+    |> Enum.map(& &1.amount)
+    |> Enum.sum()
+  end
 
   @impl true
   def render(assigns) do
@@ -122,6 +150,40 @@ defmodule GaneshaWeb.StudentLive.Show do
             />
             <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
               儲存
+            </button>
+          </form>
+
+          <form
+            id={"payment-form-#{purchase.id}"}
+            phx-submit="record_payment"
+            class="mt-3 flex flex-wrap gap-2"
+          >
+            <input type="hidden" name="purchase-id" value={purchase.id} />
+            <input
+              type="number"
+              name="amount"
+              placeholder="金額"
+              value={Sales.payable(purchase) - confirmed_paid(@payments[purchase.id] || [])}
+              class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            />
+            <select
+              name="method"
+              class="min-h-[44px] rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            >
+              <option value="line_pay">Line Pay</option>
+              <option value="line_bank">LINE Bank</option>
+              <option value="cash">現金</option>
+              <option value="other">其他</option>
+            </select>
+            <input
+              type="text"
+              name="reported_last5"
+              placeholder="帳後五碼"
+              inputmode="numeric"
+              class="min-h-[44px] w-28 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            />
+            <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
+              記錄
             </button>
           </form>
 

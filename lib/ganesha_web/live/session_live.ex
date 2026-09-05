@@ -34,41 +34,49 @@ defmodule GaneshaWeb.SessionLive do
 
   @impl true
   def handle_event("add_one_off", params, socket) do
-    student = People.get_student!(params["student_id"])
+    if scheduled?(socket.assigns.session) do
+      student = People.get_student!(params["student_id"])
 
-    package =
-      Enum.find(socket.assigns.one_off_packages, &(to_string(&1.id) == params["package_id"]))
+      package =
+        Enum.find(socket.assigns.one_off_packages, &(to_string(&1.id) == params["package_id"]))
 
-    opts = [
-      custom_amount: blank_to_nil(params["custom_amount"]),
-      note: blank_to_nil(params["note"])
-    ]
+      opts = [
+        custom_amount: blank_to_nil(params["custom_amount"]),
+        note: blank_to_nil(params["note"])
+      ]
 
-    case Enrolling.add_one_off(socket.assigns.session, student, package, opts) do
-      {:ok, _result} ->
-        {:noreply, socket |> put_flash(:info, "已加入 #{student.display_name}") |> load()}
+      case Enrolling.add_one_off(socket.assigns.session, student, package, opts) do
+        {:ok, _result} ->
+          {:noreply, socket |> put_flash(:info, "已加入 #{student.display_name}") |> load()}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "無法加入，可能已在名單中")}
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "無法加入，可能已在名單中")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "已停課，不能加入單堂或體驗")}
     end
   end
 
   def handle_event("book_makeup", %{"student_id" => student_id}, socket) do
-    session = socket.assigns.session
-    student = People.get_student!(student_id)
+    if scheduled?(socket.assigns.session) do
+      session = socket.assigns.session
+      student = People.get_student!(student_id)
 
-    case Roster.available_credits(student.id, session.date) do
-      [credit | _] ->
-        case Roster.book_makeup(session, student, credit) do
-          {:ok, _attendance} ->
-            {:noreply, socket |> put_flash(:info, "已安排補課") |> load()}
+      case Roster.available_credits(student.id, session.date) do
+        [credit | _] ->
+          case Roster.book_makeup(session, student, credit) do
+            {:ok, _attendance} ->
+              {:noreply, socket |> put_flash(:info, "已安排補課") |> load()}
 
-          {:error, reason} ->
-            {:noreply, put_flash(socket, :error, makeup_error(reason))}
-        end
+            {:error, reason} ->
+              {:noreply, put_flash(socket, :error, makeup_error(reason))}
+          end
 
-      [] ->
-        {:noreply, put_flash(socket, :error, "沒有可用的補課額度")}
+        [] ->
+          {:noreply, put_flash(socket, :error, "沒有可用的補課額度")}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "已停課，不能安排補課")}
     end
   end
 
@@ -80,6 +88,8 @@ defmodule GaneshaWeb.SessionLive do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
+
+  defp scheduled?(session), do: session.state == "scheduled"
 
   defp attendee_label(attendance) do
     case attendance.kind do
@@ -112,8 +122,11 @@ defmodule GaneshaWeb.SessionLive do
           <li :if={@attendances == []} class="text-sm text-zinc-400">名單是空的</li>
         </ul>
 
-        <h2 class="mt-6 text-sm font-medium text-zinc-500">加入單堂／體驗</h2>
+        <h2 :if={scheduled?(@session)} class="mt-6 text-sm font-medium text-zinc-500">
+          加入單堂／體驗
+        </h2>
         <form
+          :if={scheduled?(@session)}
           id="one-off-form"
           phx-submit="add_one_off"
           class="mt-2 space-y-2 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
@@ -149,7 +162,7 @@ defmodule GaneshaWeb.SessionLive do
           <button class="min-h-[44px] w-full rounded-lg bg-emerald-600 text-sm text-white">加入</button>
         </form>
 
-        <div :if={@makeup_candidates != []}>
+        <div :if={scheduled?(@session) && @makeup_candidates != []}>
           <h2 class="mt-6 text-sm font-medium text-zinc-500">安排補課</h2>
           <form
             id="makeup-form"

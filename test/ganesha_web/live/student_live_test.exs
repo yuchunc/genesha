@@ -44,6 +44,31 @@ defmodule GaneshaWeb.StudentLiveTest do
     assert render(view) =~ "1600"
   end
 
+  test "records a claimed payment for a one-off purchase without clearing balance", %{conn: conn} do
+    {:ok, student} = People.create_student(%{display_name: "Jennifer"})
+    {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 450})
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 450})
+
+    {:ok, view, _html} = live(conn, ~p"/students/#{student.id}")
+
+    view
+    |> form("#payment-form-#{purchase.id}", %{
+      "amount" => "450",
+      "method" => "line_bank",
+      "reported_last5" => "98765"
+    })
+    |> render_submit()
+
+    assert [payment] = Sales.list_payments_for_purchase(purchase.id)
+    assert payment.state == "claimed"
+    assert payment.amount == 450
+    assert payment.method == "line_bank"
+    assert payment.reported_last5 == "98765"
+    assert has_element?(view, "#outstanding[data-amount='450']")
+  end
+
   test "confirming a payment records the confirmer and clears the balance", %{conn: conn} do
     %{student: student, purchase: purchase} = student_with_purchase()
 

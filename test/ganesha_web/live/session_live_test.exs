@@ -115,6 +115,64 @@ defmodule GaneshaWeb.SessionLiveTest do
     refute has_element?(view, "#makeup-form")
   end
 
+  test "hides one-off and makeup forms for cancelled sessions", %{conn: conn} do
+    %{mondays: mondays, fridays: fridays, monday: monday, monthly: monthly} = august()
+    {:ok, lanzi} = People.create_student(%{display_name: "蘭子"})
+
+    {:ok, _} =
+      Enrolling.enroll_month(%{
+        student: lanzi,
+        slot: monday,
+        package: monthly,
+        sessions: mondays,
+        custom_amount: nil,
+        note: nil
+      })
+
+    {:ok, cancelled} = Studio.cancel_session(hd(fridays), "颱風假")
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{cancelled.id}")
+
+    refute has_element?(view, "#one-off-form")
+    refute has_element?(view, "#makeup-form")
+  end
+
+  test "guards one-off and makeup submissions for cancelled sessions", %{conn: conn} do
+    %{mondays: mondays, fridays: fridays, monday: monday, monthly: monthly, drop_in: drop_in} =
+      august()
+
+    {:ok, drop_student} = People.create_student(%{display_name: "Jennifer"})
+    {:ok, makeup_student} = People.create_student(%{display_name: "蘭子"})
+
+    {:ok, %{credits: [credit]}} =
+      Enrolling.enroll_month(%{
+        student: makeup_student,
+        slot: monday,
+        package: monthly,
+        sessions: mondays,
+        custom_amount: nil,
+        note: nil
+      })
+
+    {:ok, cancelled} = Studio.cancel_session(hd(fridays), "颱風假")
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{cancelled.id}")
+
+    render_submit(view, "add_one_off", %{
+      "student_id" => drop_student.id,
+      "package_id" => drop_in.id
+    })
+
+    render_submit(view, "book_makeup", %{"student_id" => makeup_student.id})
+
+    assert Sales.list_purchases_for_student(drop_student.id) == []
+    assert Roster.list_for_student(drop_student.id) == []
+
+    assert Enum.find(Roster.list_for_student(makeup_student.id), &(&1.session.id == cancelled.id)) ==
+             nil
+
+    assert [available] = Roster.available_credits(makeup_student.id, cancelled.date)
+    assert available.id == credit.id
+  end
+
   test "reports the reason when a makeup cannot be booked", %{conn: conn} do
     %{mondays: mondays, monday: monday, monthly: monthly} = august()
     {:ok, lanzi} = People.create_student(%{display_name: "蘭子"})

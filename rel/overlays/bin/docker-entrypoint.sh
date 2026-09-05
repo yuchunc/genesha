@@ -15,7 +15,7 @@ fi
 # all — true on a fresh deploy before secrets are configured, and true of
 # every local/dev container run.
 if [ -n "${LITESTREAM_BUCKET:-}" ]; then
-  exec gosu nobody litestream replicate -config /etc/litestream.yml -exec "$1"
+  exec gosu nobody litestream replicate -config /etc/litestream.yml -restore-if-db-not-exists -exec "$*"
 else
   echo "LITESTREAM_BUCKET not set; starting without replication" >&2
   exec gosu nobody "$@"

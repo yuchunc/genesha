@@ -156,5 +156,7 @@ defmodule GaneshaWeb.EnrollLiveTest do
     assert payment.method == "line_pay"
     assert payment.reported_last5 == "12345"
     assert payment.state == "claimed", "recording is not confirming"
+    assert render(view) =~ "NT$ 0 / 2000"
+    assert has_element?(view, "#payment-form-#{purchase.id} input[name='amount'][value='2000']")
   end
 end

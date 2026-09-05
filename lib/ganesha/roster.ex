@@ -15,6 +15,8 @@ defmodule Ganesha.Roster do
   alias Ganesha.Sales.Purchase
   alias Ganesha.Studio.Session
 
+  @cancelled_session_credit_kinds ~w(enrolled makeup drop_in trial)
+
   def create_attendance(attrs) do
     %Attendance{} |> Attendance.changeset(attrs) |> Repo.insert()
   end
@@ -136,7 +138,7 @@ defmodule Ganesha.Roster do
   end
 
   @doc """
-  Issues one never-expiring makeup credit per enrolled student on a cancelled
+  Issues one never-expiring makeup credit per seated student on a cancelled
   session. Idempotent via the partial unique index on
   `(origin_session_id, student_id)`.
   """
@@ -144,7 +146,7 @@ defmodule Ganesha.Roster do
     student_ids =
       Repo.all(
         from a in Attendance,
-          where: a.session_id == ^session.id and a.kind == "enrolled",
+          where: a.session_id == ^session.id and a.kind in ^@cancelled_session_credit_kinds,
           select: a.student_id
       )
 
