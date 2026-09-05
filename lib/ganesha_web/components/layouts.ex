@@ -166,7 +166,13 @@ defmodule GaneshaWeb.Layouts do
         label="月課表"
       />
       <.nav_item active={@active} key={:money} path="/money" icon="hero-banknotes" label="收款" />
-      <.nav_item active={@active} key={:students} path="/students" icon="hero-users" label="學生" />
+      <.nav_item
+        active={@active}
+        key={:students}
+        path={~p"/students"}
+        icon="hero-users"
+        label="學生"
+      />
       <.nav_item active={@active} key={:publish} path="/publish" icon="hero-share" label="發布" />
     </nav>
     """
