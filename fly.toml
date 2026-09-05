@@ -1,0 +1,33 @@
+app = "ganesha"
+# nrt is the closest Fly region to Taiwan. Every interaction is a phone tap
+# against a LiveView socket, so round-trip latency is felt directly.
+primary_region = "nrt"
+
+[build]
+
+[env]
+  PHX_HOST = "ganesha.fly.dev"
+  PORT = "8080"
+  DATABASE_PATH = "/data/ganesha.db"
+
+[[mounts]]
+  source = "ganesha_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  # A single machine owns the SQLite file. Never scale this to two.
+  min_machines_running = 1
+
+[[http_service.checks]]
+  interval = "30s"
+  timeout = "5s"
+  method = "get"
+  path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

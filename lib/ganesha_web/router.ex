@@ -72,5 +72,7 @@ defmodule GaneshaWeb.Router do
 
     post "/users/log-in", UserSessionController, :create
     delete "/users/log-out", UserSessionController, :delete
+
+    get "/health", HealthController, :index
   end
 end
