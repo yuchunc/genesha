@@ -5129,13 +5129,13 @@ RUN apt-get update \
        *) echo "unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
      esac; \
      litestream_asset="litestream-${LITESTREAM_VERSION}-linux-${litestream_arch}.tar.gz"; \
-     curl -fsSL -o /tmp/litestream.tar.gz \
+     curl -fsSL -o "/tmp/${litestream_asset}" \
        "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/${litestream_asset}" \
   && curl -fsSL -o /tmp/checksums.txt \
        "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/checksums.txt" \
   && (cd /tmp && grep " ${litestream_asset}\$" checksums.txt | sha256sum -c -) \
-  && tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz litestream \
-  && rm /tmp/litestream.tar.gz /tmp/checksums.txt \
+  && tar -C /usr/local/bin -xzf "/tmp/${litestream_asset}" litestream \
+  && rm "/tmp/${litestream_asset}" /tmp/checksums.txt \
   && apt-get purge -y curl \
   && apt-get autoremove -y \
   && rm -rf /var/lib/apt/lists/*
