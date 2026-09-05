@@ -6339,7 +6339,7 @@ git commit -m "feat: add session screen for drop-ins, trials, and makeup booking
 
 **Files:**
 - Create: `lib/ganesha_web/live/settings_live.ex`
-- Modify: `lib/ganesha_web/router.ex`, `lib/ganesha_web/components/layouts.ex`
+- Modify: `lib/ganesha_web/router.ex`, `lib/ganesha_web/components/layouts.ex`, `lib/ganesha_web/live/publish_live.ex`
 - Test: `test/ganesha_web/live/settings_live_test.exs`
 
 **Interfaces:**
@@ -6373,6 +6373,24 @@ defmodule GaneshaWeb.SettingsLiveTest do
     updated = Catalog.get_package!(pkg.id)
     assert updated.price_per_class == 450
     assert updated.included_makeups == 1
+  end
+
+  test "creates a new package", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    view
+    |> form("#new-package-form", %{
+      "package" => %{
+        "name" => "暑期加開",
+        "kind" => "drop_in",
+        "price_per_class" => "500",
+        "included_makeups" => "0"
+      }
+    })
+    |> render_submit()
+
+    assert Enum.any?(Catalog.list_packages(), &(&1.name == "暑期加開" and &1.price_per_class == 500))
+    assert render(view) =~ "暑期加開"
   end
 
   test "saves the bank details used by the announcement footer", %{conn: conn} do
@@ -6442,6 +6460,13 @@ defmodule GaneshaWeb.SettingsLive do
   end
 
   @impl true
+  def handle_event("create_package", %{"package" => params}, socket) do
+    case Catalog.create_package(params) do
+      {:ok, _package} -> {:noreply, socket |> put_flash(:info, "已新增方案") |> load()}
+      {:error, _changeset} -> {:noreply, put_flash(socket, :error, "方案資料不正確")}
+    end
+  end
+
   def handle_event("save_package", %{"package-id" => id} = params, socket) do
     package = Catalog.get_package!(id)
 
@@ -6469,6 +6494,42 @@ defmodule GaneshaWeb.SettingsLive do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="pb-24">
         <h1 class="text-lg font-semibold">方案與設定</h1>
+
+        <form
+          id="new-package-form"
+          phx-submit="create_package"
+          class="mt-3 space-y-2 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
+        >
+          <h2 class="font-medium">新增方案</h2>
+          <input
+            type="text"
+            name="package[name]"
+            placeholder="方案名稱"
+            required
+            class="min-h-[44px] w-full rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+          />
+          <select name="package[kind]" class="min-h-[44px] w-full rounded-lg border-zinc-300 dark:bg-zinc-900">
+            <option value="monthly">月課程</option>
+            <option value="drop_in">單堂</option>
+            <option value="trial">體驗</option>
+          </select>
+          <div class="flex gap-2">
+            <input
+              type="number"
+              name="package[price_per_class]"
+              placeholder="每堂"
+              required
+              class="min-h-[44px] flex-1 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            />
+            <input
+              type="number"
+              name="package[included_makeups]"
+              value="0"
+              class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            />
+          </div>
+          <button class="min-h-[44px] w-full rounded-lg bg-emerald-600 text-sm text-white">新增</button>
+        </form>
 
         <section
           :for={package <- @packages}
@@ -6551,7 +6612,7 @@ In `lib/ganesha_web/live/publish_live.ex`, beside the 複製 button:
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `mix test test/ganesha_web/live/settings_live_test.exs`
-Expected: PASS, 3 tests.
+Expected: PASS, 4 tests.
 
 - [ ] **Step 6: Sweep dead code**
 
