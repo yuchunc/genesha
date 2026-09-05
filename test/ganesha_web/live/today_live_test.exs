@@ -1,5 +1,5 @@
 defmodule GaneshaWeb.TodayLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Clock, People, Roster, Sales, Studio}
 
