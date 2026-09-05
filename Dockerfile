@@ -77,8 +77,24 @@ RUN mix release
 FROM ${RUNNER_IMAGE} AS final
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates \
+  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates gosu curl \
   && rm -rf /var/lib/apt/lists/*
+
+# Install the Litestream binary for continuous SQLite replication (see
+# litestream.yml). Version resolved from
+# https://api.github.com/repos/benbjohnson/litestream/releases/latest at the
+# time this Dockerfile was written; bump LITESTREAM_VERSION to upgrade.
+ARG LITESTREAM_VERSION=0.5.17
+RUN set -eu; \
+  case "$(dpkg --print-architecture)" in \
+    amd64) litestream_arch="x86_64" ;; \
+    arm64) litestream_arch="arm64" ;; \
+    *) echo "unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+  esac; \
+  curl -fsSL -o /tmp/litestream.tar.gz \
+    "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${litestream_arch}.tar.gz" \
+  && tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz litestream \
+  && rm /tmp/litestream.tar.gz
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
@@ -97,11 +113,11 @@ ENV MIX_ENV="prod"
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/ganesha ./
 
-USER nobody
+COPY litestream.yml /etc/litestream.yml
 
 # If using an environment that doesn't automatically reap zombie processes, it is
 # advised to add an init process such as tini via `apt-get install`
 # above and adding an entrypoint. See https://github.com/krallin/tini for details
-# ENTRYPOINT ["/tini", "--"]
+ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]
 
-CMD ["/app/bin/server"]
+CMD ["litestream", "replicate", "-config", "/etc/litestream.yml", "-exec", "/app/bin/server"]
