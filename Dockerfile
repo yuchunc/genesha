@@ -76,25 +76,34 @@ RUN mix release
 # the compiled release and other runtime necessities
 FROM ${RUNNER_IMAGE} AS final
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates gosu curl \
-  && rm -rf /var/lib/apt/lists/*
-
 # Install the Litestream binary for continuous SQLite replication (see
 # litestream.yml). Version resolved from
 # https://api.github.com/repos/benbjohnson/litestream/releases/latest at the
 # time this Dockerfile was written; bump LITESTREAM_VERSION to upgrade.
+#
+# curl is installed and purged within this same layer: purging it in a
+# later, separate RUN does not shrink the image, since Docker layers are
+# cumulative.
 ARG LITESTREAM_VERSION=0.5.17
-RUN set -eu; \
-  case "$(dpkg --print-architecture)" in \
-    amd64) litestream_arch="x86_64" ;; \
-    arm64) litestream_arch="arm64" ;; \
-    *) echo "unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
-  esac; \
-  curl -fsSL -o /tmp/litestream.tar.gz \
-    "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-${litestream_arch}.tar.gz" \
-  && tar -C /usr/local/bin -xzf /tmp/litestream.tar.gz litestream \
-  && rm /tmp/litestream.tar.gz
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates gosu curl \
+  && set -eu; \
+     case "$(dpkg --print-architecture)" in \
+       amd64) litestream_arch="x86_64" ;; \
+       arm64) litestream_arch="arm64" ;; \
+       *) echo "unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+     esac; \
+     litestream_asset="litestream-${LITESTREAM_VERSION}-linux-${litestream_arch}.tar.gz"; \
+     curl -fsSL -o "/tmp/${litestream_asset}" \
+       "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/${litestream_asset}" \
+  && curl -fsSL -o /tmp/checksums.txt \
+       "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/checksums.txt" \
+  && (cd /tmp && grep " ${litestream_asset}\$" checksums.txt | sha256sum -c -) \
+  && tar -C /usr/local/bin -xzf "/tmp/${litestream_asset}" litestream \
+  && rm "/tmp/${litestream_asset}" /tmp/checksums.txt \
+  && apt-get purge -y curl \
+  && apt-get autoremove -y \
+  && rm -rf /var/lib/apt/lists/*
 
 # Set the locale
 RUN sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
@@ -113,6 +122,12 @@ ENV MIX_ENV="prod"
 # Only copy the final release from the build stage
 COPY --from=builder --chown=nobody:root /app/_build/${MIX_ENV}/rel/ganesha ./
 
+# entrypoint runs as root to fix volume ownership before dropping
+# privilege; if it inherited nobody:root like the rest of the tree, the
+# app process (running as nobody) could rewrite it and escalate on the
+# next boot.
+RUN chown root:root /app/bin/docker-entrypoint.sh
+
 COPY litestream.yml /etc/litestream.yml
 
 # If using an environment that doesn't automatically reap zombie processes, it is
@@ -120,4 +135,4 @@ COPY litestream.yml /etc/litestream.yml
 # above and adding an entrypoint. See https://github.com/krallin/tini for details
 ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]
 
-CMD ["litestream", "replicate", "-config", "/etc/litestream.yml", "-exec", "/app/bin/server"]
+CMD ["/app/bin/server"]
