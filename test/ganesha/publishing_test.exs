@@ -124,6 +124,43 @@ defmodule Ganesha.PublishingTest do
     assert Publishing.roster_block(~D[2026-08-01]) =~ "素容（未到）"
   end
 
+  test "roster_block/1 omits a cancelled session, matching schedule_block/1" do
+    {_slot, sessions} = august_monday()
+    {:ok, _} = Studio.cancel_session(hd(sessions), "颱風假")
+
+    text = Publishing.roster_block(~D[2026-08-01])
+
+    refute text =~ "8/3：", "a cancelled date must not appear in either block"
+    assert text =~ "8/10"
+  end
+
+  test "roster_block/1 keeps the kind marker on a no-show drop-in" do
+    {_slot, sessions} = august_monday()
+    {:ok, jennifer} = People.create_student(%{display_name: "Jennifer"})
+
+    {:ok, drop_pkg} =
+      Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 450})
+
+    {:ok, drop_purchase} =
+      Sales.create_purchase(%{student_id: jennifer.id, package_id: drop_pkg.id, list_price: 450})
+
+    {:ok, attendance} = Roster.add_drop_in(hd(sessions), jennifer, drop_purchase)
+    {:ok, _} = Roster.mark_no_show(attendance)
+
+    assert Publishing.roster_block(~D[2026-08-01]) =~ "（單）Jennifer（未到）"
+  end
+
+  test "announcement/1 renders only the settings fields that are present" do
+    august_monday()
+
+    {:ok, _} = Publishing.update_settings(%{account_number: "111001756051"})
+
+    text = Publishing.announcement(~D[2026-08-01])
+
+    refute text =~ "銀行代號", "no bank_code means no bank-name line"
+    assert text =~ "帳號： 111001756051"
+  end
+
   test "announcement/1 includes the bank footer from settings" do
     august_monday()
 

@@ -29,16 +29,18 @@ defmodule Ganesha.Publishing do
 
   @doc "The ✨開課時間表 block: one entry per active slot with its dates and price."
   def schedule_block(%Date{} = month) do
+    price = monthly_price_per_class()
+
     entries =
       Studio.list_active_slots()
-      |> Enum.map(&slot_entry(&1, month))
+      |> Enum.map(&slot_entry(&1, month, price))
       |> Enum.reject(&is_nil/1)
       |> Enum.join("\n\n")
 
     "✨ #{month.month}月開課時間表\n\n" <> entries
   end
 
-  defp slot_entry(slot, month) do
+  defp slot_entry(slot, month, price) do
     sessions =
       slot
       |> Studio.sessions_for_slot_in_month(month)
@@ -54,7 +56,7 @@ defmodule Ganesha.Publishing do
       #{slot.label}
       時間：#{format_time(slot.start_time)}－#{format_time(slot.end_time)}
       日期：#{dates}
-      （#{count * monthly_price_per_class()}元 /#{count} 堂）
+      （#{count * price}元 /#{count} 堂）
       """)
     end
   end
@@ -103,6 +105,7 @@ defmodule Ganesha.Publishing do
       lines =
         slot
         |> Studio.sessions_for_slot_in_month(month)
+        |> Enum.filter(&(&1.state == "scheduled"))
         |> Enum.map_join("\n", fn session ->
           names =
             session
@@ -116,17 +119,18 @@ defmodule Ganesha.Publishing do
     end)
   end
 
-  defp attendee_name(attendance) do
-    name = attendance.student.display_name
+  # Kind and state are independent: a drop-in or a makeup can also be a
+  # no-show, and both markers must survive rather than one short-circuiting
+  # the other.
+  defp attendee_name(attendance), do: kind_marker(attendance) <> no_show_marker(attendance)
 
-    cond do
-      attendance.state == "no_show" -> "#{name}（未到）"
-      attendance.kind == "makeup" -> "#{name}（補課#{note_suffix(attendance)}）"
-      attendance.kind == "drop_in" -> "（單）#{name}"
-      attendance.kind == "trial" -> "#{name}（體驗）"
-      true -> name
-    end
-  end
+  defp kind_marker(%{kind: "drop_in"} = a), do: "（單）#{a.student.display_name}"
+  defp kind_marker(%{kind: "makeup"} = a), do: "#{a.student.display_name}（補課#{note_suffix(a)}）"
+  defp kind_marker(%{kind: "trial"} = a), do: "#{a.student.display_name}（體驗）"
+  defp kind_marker(a), do: a.student.display_name
+
+  defp no_show_marker(%{state: "no_show"}), do: "（未到）"
+  defp no_show_marker(_), do: ""
 
   defp note_suffix(%{note: nil}), do: ""
   defp note_suffix(%{note: ""}), do: ""
@@ -155,10 +159,22 @@ defmodule Ganesha.Publishing do
     "麻煩於#{deadline}前轉帳，並告知帳後五碼。"
   end
 
-  defp bank_lines(%Settings{bank_code: nil}), do: nil
-  defp bank_lines(%Settings{bank_code: ""}), do: nil
-
   defp bank_lines(%Settings{} = settings) do
-    "LINE Bank 銀行代號：#{settings.bank_code} #{settings.bank_name}\n帳號： #{settings.account_number}"
+    [bank_line(settings), account_line(settings)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> case do
+      [] -> nil
+      lines -> Enum.join(lines, "\n")
+    end
   end
+
+  defp bank_line(%Settings{bank_code: nil}), do: nil
+  defp bank_line(%Settings{bank_code: ""}), do: nil
+
+  defp bank_line(%Settings{} = s),
+    do: String.trim_trailing("LINE Bank 銀行代號：#{s.bank_code} #{s.bank_name}")
+
+  defp account_line(%Settings{account_number: nil}), do: nil
+  defp account_line(%Settings{account_number: ""}), do: nil
+  defp account_line(%Settings{} = s), do: "帳號： #{s.account_number}"
 end
