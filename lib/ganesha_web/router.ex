@@ -47,6 +47,8 @@ defmodule GaneshaWeb.Router do
     live_session :require_authenticated_user,
       on_mount: [{GaneshaWeb.UserAuth, :require_authenticated}] do
       live "/", TodayLive, :index
+      live "/month", MonthLive, :index
+      live "/month/:year/:month", MonthLive, :index
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end

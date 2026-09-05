@@ -161,7 +161,7 @@ defmodule GaneshaWeb.Layouts do
       <.nav_item
         active={@active}
         key={:month}
-        path="/month"
+        path={~p"/month"}
         icon="hero-calendar-days"
         label="月課表"
       />
