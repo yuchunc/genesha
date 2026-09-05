@@ -4850,8 +4850,9 @@ git commit -m "feat: add money screen with tax gauge and publish screen with cop
 **Files:**
 - Create: `lib/ganesha_web/controllers/health_controller.ex`
 - Create (generated): `Dockerfile`, `.dockerignore`, `rel/`
-- Create: `fly.toml`, `litestream.yml`
-- Modify: `config/runtime.exs`, `lib/ganesha_web/router.ex`
+- Modify (generated): `rel/overlays/bin/server` (migrate-on-boot), `Dockerfile` (Litestream + volume-ownership entrypoint)
+- Create: `fly.toml`, `litestream.yml`, `rel/overlays/bin/docker-entrypoint.sh`
+- Modify: `config/runtime.exs`, `config/prod.exs`, `lib/ganesha_web/router.ex`
 - Test: `test/ganesha_web/health_test.exs`
 
 **Interfaces:**
@@ -4886,8 +4887,18 @@ Expected: FAIL — no route matches `/health`.
 defmodule GaneshaWeb.HealthController do
   use GaneshaWeb, :controller
 
-  @doc "Unauthenticated liveness probe for the platform health check."
-  def index(conn, _params), do: send_resp(conn, 200, "ok")
+  @doc """
+  Unauthenticated liveness+readiness probe for the platform health check.
+
+  Touches the database rather than answering unconditionally: a machine
+  whose volume failed to mount or whose SQLite file is unwritable would
+  otherwise report healthy while every real page 500s, and Fly would keep
+  routing traffic to it instead of rolling the deploy back.
+  """
+  def index(conn, _params) do
+    Ganesha.Repo.query!("select 1")
+    send_resp(conn, 200, "ok")
+  end
 end
 ```
 
@@ -4906,10 +4917,61 @@ In `lib/ganesha_web/router.ex`, in a scope that is NOT behind authentication:
 Run: `mix test test/ganesha_web/health_test.exs`
 Expected: PASS.
 
+- [ ] **Step 4b: Exclude `/health` from `force_ssl`**
+
+Fly's `[[http_service.checks]]` (Step 8) hit the app directly over plain HTTP on
+the machine's internal port — they never pass through the Fly proxy, so no
+`x-forwarded-proto: https` header is added and the request's Host is the
+machine's private address, not `localhost`/`127.0.0.1`. Without an exclusion,
+`Plug.SSL` 301-redirects `/health` to `https://`, which Fly's checker does not
+follow, and the machine never becomes healthy.
+
+In `config/prod.exs`, uncomment the generator's own hint so the `exclude:` list
+reads:
+
+```elixir
+config :ganesha, GaneshaWeb.Endpoint,
+  force_ssl: [
+    rewrite_on: [:x_forwarded_proto],
+    exclude: [
+      paths: ["/health"],
+      hosts: ["localhost", "127.0.0.1"]
+    ]
+  ]
+```
+
+`:force_ssl` is compile-time config and must be changed here, not in
+`runtime.exs`.
+
 - [ ] **Step 5: Generate the release scaffolding**
 
 ```bash
 mix phx.gen.release --docker
+```
+
+- [ ] **Step 5b: Migrate on boot**
+
+`mix phx.gen.release --docker` writes `rel/overlays/bin/server` as a thin
+wrapper that only starts the release. Nothing in this deployment runs
+migrations automatically otherwise — the `[deploy] release_command` pattern is
+wrong here because Fly's release-command machine does not mount the app's
+volume, so it would migrate an ephemeral file instead of the real database.
+Migrating on the boot path is safe specifically because exactly one machine
+ever owns the SQLite file (Step 8's `min_machines_running = 1`).
+
+Edit `rel/overlays/bin/server` to:
+
+```sh
+#!/bin/sh
+set -eu
+
+cd -P -- "$(dirname -- "$0")"
+
+# Exactly one machine owns the SQLite file (see fly.toml's
+# min_machines_running = 1), so migrating on boot is safe here in a way it
+# would not be with a horizontally-scaled release_command.
+./ganesha eval Ganesha.Release.migrate
+PHX_SERVER=true exec ./ganesha start
 ```
 
 - [ ] **Step 6: Point the production database at the mounted volume**
@@ -4983,6 +5045,97 @@ primary_region = "nrt"
   size = "shared-cpu-1x"
   memory = "512mb"
 ```
+
+- [ ] **Step 8b: Fix volume ownership and wire Litestream into the image**
+
+Two problems with the Dockerfile as generated, both real and both reachable
+on the very first deploy:
+
+1. **Volume ownership.** The runner stage does `USER nobody` after `RUN chown
+   nobody /app`, but `/data` is a Fly volume mounted at container start, not
+   part of the image — a freshly created volume is `root:root`. The release
+   (and `rel/overlays/bin/server`'s new migrate-on-boot call) opens
+   `${DATABASE_PATH}` as `nobody` and fails with `EACCES` before the endpoint
+   ever starts.
+2. **Litestream is inert.** `litestream.yml` (Step 7) is never copied into the
+   image, no `litestream` binary is installed, and `CMD` starts only the
+   release. The continuous-replication goal stated in `litestream.yml`'s own
+   header is not achieved by anything in the repo as generated.
+
+Fix both together with a root entrypoint that fixes ownership once, then drops
+privilege and runs the release under Litestream:
+
+`rel/overlays/bin/docker-entrypoint.sh` (new file; `mix release`'s overlay
+mechanism ships anything under `rel/overlays/` at the same relative path
+inside the release, so this lands at `/app/bin/docker-entrypoint.sh` in the
+final image with no separate `COPY` needed):
+
+```sh
+#!/bin/sh
+set -eu
+
+# The Fly volume mounted at DATABASE_PATH's directory is root:root on first
+# boot; the release runs as nobody, so ownership must be fixed here, as
+# root, before dropping privilege and exec'ing the real command.
+if [ -n "${DATABASE_PATH:-}" ]; then
+  mkdir -p "$(dirname "$DATABASE_PATH")"
+  chown -R nobody:root "$(dirname "$DATABASE_PATH")"
+fi
+
+exec gosu nobody "$@"
+```
+
+Make it executable (`chmod +x rel/overlays/bin/docker-entrypoint.sh`) — match
+the existing `rel/overlays/bin/server`/`migrate` convention.
+
+In the Dockerfile's runner stage:
+
+- Add `gosu` and `curl` to the `apt-get install` package list alongside the
+  existing `libstdc++6 openssl libncurses6 locales ca-certificates`.
+- Install the `litestream` binary. Do not hardcode a version number from
+  memory — resolve the current latest release yourself (e.g.
+  `curl -fsSL https://api.github.com/repos/benbjohnson/litestream/releases/latest`
+  to read the tag and asset names, since GitHub's release asset naming has
+  changed across versions) and download the `linux-amd64` (or matching arch)
+  static binary archive, extracting the `litestream` executable to
+  `/usr/local/bin/litestream`.
+- `COPY litestream.yml /etc/litestream.yml`.
+- Remove the `USER nobody` line (the entrypoint now handles the privilege
+  drop after fixing volume ownership as root).
+- Set `ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]`.
+- Change `CMD` to
+  `["litestream", "replicate", "-config", "/etc/litestream.yml", "-exec", "/app/bin/server"]`
+  so the release always runs under replication; `litestream.yml`'s S3
+  replica config is read from environment variables that are unset locally,
+  which is fine — Litestream logs and continues without a working replica
+  rather than failing closed, so local/dev Docker runs are not blocked by
+  this.
+
+**Verify empirically, not by inspection alone** — Docker is available in this
+environment:
+
+1. `docker build -t ganesha-test .` must succeed.
+2. Run it against a bind-mounted directory simulating a fresh Fly volume,
+   owned by root, and confirm the container does NOT crash with `EACCES` and
+   that the mounted directory ends up owned by `nobody` after boot — e.g.:
+   ```bash
+   mkdir -p /tmp/ganesha-data && sudo chown root:root /tmp/ganesha-data
+   docker run --rm \
+     -e DATABASE_PATH=/data/ganesha.db \
+     -e SECRET_KEY_BASE="$(mix phx.gen.secret)" \
+     -e PHX_HOST=localhost \
+     -v /tmp/ganesha-data:/data \
+     ganesha-test whoami
+   ```
+   (a plain `whoami` as the container command is enough to prove the
+   entrypoint's chown-then-drop-privilege sequence runs without error; it does
+   not need to boot the full release to prove this specific fix).
+3. Confirm `litestream` is on `PATH` in the image:
+   `docker run --rm ganesha-test litestream version`.
+
+If any of these three fail, the fix is not done — do not report success on
+`docker build` succeeding alone, since that would not catch a broken
+entrypoint or a wrong binary path.
 
 - [ ] **Step 9: Deploy and verify against the running app**
 
