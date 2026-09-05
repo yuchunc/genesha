@@ -29,17 +29,22 @@ defmodule GaneshaWeb.TodayLive do
   def handle_event("toggle_no_show", %{"id" => id}, socket) do
     attendance = Roster.get_attendance!(id)
 
-    {:ok, updated} =
+    {:ok, _updated} =
       case attendance.state do
         "expected" -> Roster.mark_no_show(attendance)
         "no_show" -> Roster.mark_expected(attendance)
       end
 
-    # Keep the row's existing preloads (:student, purchase: :package) instead
-    # of re-fetching through get_attendance!/1, which preloads session: :slot
-    # instead — swapping shape mid-stream would raise Ecto.Association.NotLoaded
-    # the moment a later screen renders a field from the other shape.
-    {:noreply, stream_insert(socket, :attendances, %{attendance | state: updated.state})}
+    # get_attendance!/1 preloads [:student, session: :slot], which does not
+    # match the [:student, purchase: :package] shape every other row in this
+    # stream has (from list_for_session/1). Re-derive the row through that
+    # same accessor so the stream never mixes preload shapes across rows.
+    refreshed =
+      socket.assigns.session
+      |> Roster.list_for_session()
+      |> Enum.find(&(&1.id == attendance.id))
+
+    {:noreply, stream_insert(socket, :attendances, refreshed)}
   end
 
   @impl true
