@@ -14,11 +14,13 @@ defmodule Ganesha.ReportingTest do
   defp august_sale(paid_amount, opts \\ []) do
     confirm? = Keyword.get(opts, :confirm, true)
 
+    start_time = Time.add(~T[09:30:00], System.unique_integer([:positive]), :second)
+
     {:ok, slot} =
       Studio.create_slot(%{
         weekday: 1,
-        start_time: Time.add(~T[09:30:00], System.unique_integer([:positive]), :second),
-        end_time: ~T[10:45:00],
+        start_time: start_time,
+        end_time: Time.add(start_time, 75, :minute),
         default_style: "基礎",
         label: "slot-#{System.unique_integer([:positive])}"
       })
@@ -111,5 +113,24 @@ defmodule Ganesha.ReportingTest do
 
     assert status.revenue == 46_400
     assert status.warn?, "46,400 of 50,000 is past the 90% warning line"
+  end
+
+  test "purchase_period/1 spans the first and last attended dates" do
+    %{purchase: purchase} = august_sale(1600)
+
+    assert Reporting.purchase_period(purchase.id) == %{
+             first: ~D[2026-08-03],
+             last: ~D[2026-08-31]
+           }
+  end
+
+  test "purchase_period/1 is nil for a purchase with no attendance" do
+    {:ok, student} = People.create_student(%{display_name: "Nobody"})
+    {:ok, pkg} = monthly_package()
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1600})
+
+    assert Reporting.purchase_period(purchase.id) == nil
   end
 end

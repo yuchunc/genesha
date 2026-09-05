@@ -2717,9 +2717,11 @@ defmodule Ganesha.ReportingTest do
   defp august_sale(paid_amount, opts \\ []) do
     confirm? = Keyword.get(opts, :confirm, true)
 
+    start_time = Time.add(~T[09:30:00], System.unique_integer([:positive]), :second)
+
     {:ok, slot} =
       Studio.create_slot(%{
-        weekday: 1, start_time: ~T[09:30:00], end_time: ~T[10:45:00],
+        weekday: 1, start_time: start_time, end_time: Time.add(start_time, 75, :minute),
         default_style: "基礎", label: "slot-#{System.unique_integer([:positive])}"
       })
 
@@ -2804,6 +2806,25 @@ defmodule Ganesha.ReportingTest do
     assert status.revenue == 46_400
     assert status.warn?, "46,400 of 50,000 is past the 90% warning line"
   end
+
+  test "purchase_period/1 spans the first and last attended dates" do
+    %{purchase: purchase} = august_sale(1600)
+
+    assert Reporting.purchase_period(purchase.id) == %{
+             first: ~D[2026-08-03],
+             last: ~D[2026-08-31]
+           }
+  end
+
+  test "purchase_period/1 is nil for a purchase with no attendance" do
+    {:ok, student} = People.create_student(%{display_name: "Nobody"})
+    {:ok, pkg} = monthly_package()
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1600})
+
+    assert Reporting.purchase_period(purchase.id) == nil
+  end
 end
 ```
 
@@ -2828,6 +2849,7 @@ defmodule Ganesha.Reporting do
   """
 
   import Ecto.Query, warn: false
+  alias Ganesha.Clock
   alias Ganesha.People
   alias Ganesha.Repo
   alias Ganesha.Roster.Attendance
@@ -2862,18 +2884,41 @@ defmodule Ganesha.Reporting do
     payable - confirmed
   end
 
-  @doc "Every student with a non-zero balance, largest first."
+  @doc "Every student with a positive balance, largest first."
   def outstanding_by_student do
+    payable_by_student =
+      Repo.all(
+        from p in Purchase,
+          group_by: p.student_id,
+          select: {p.student_id, sum(coalesce(p.custom_amount, p.list_price))}
+      )
+      |> Map.new()
+
+    confirmed_by_student =
+      Repo.all(
+        from pay in Payment,
+          join: pur in Purchase,
+          on: pur.id == pay.purchase_id,
+          where: pay.state == "confirmed",
+          group_by: pur.student_id,
+          select: {pur.student_id, sum(pay.amount)}
+      )
+      |> Map.new()
+
     People.list_students()
-    |> Enum.map(&%{student: &1, outstanding: outstanding_for_student(&1.id)})
-    |> Enum.reject(&(&1.outstanding == 0))
+    |> Enum.map(fn student ->
+      payable = Map.get(payable_by_student, student.id, 0)
+      confirmed = Map.get(confirmed_by_student, student.id, 0)
+      %{student: student, outstanding: payable - confirmed}
+    end)
+    |> Enum.reject(&(&1.outstanding <= 0))
     |> Enum.sort_by(& &1.outstanding, :desc)
   end
 
   @spec revenue_for_month(Date.t()) :: integer()
   def revenue_for_month(%Date{} = month) do
     first = Date.beginning_of_month(month)
-    last = Date.end_of_month(month)
+    last = Clock.end_of_month(month)
 
     Repo.one(
       from pay in Payment,
@@ -2894,15 +2939,21 @@ defmodule Ganesha.Reporting do
     }
   end
 
-  @doc "The first and last dates a purchase's attendance rows fall on, for display."
+  @doc """
+  The first and last dates a purchase's attendance rows fall on, for display.
+  Returns `nil` when the purchase has no attendance rows yet.
+  """
   def purchase_period(purchase_id) do
-    Repo.one(
-      from a in Attendance,
-        join: s in Session,
-        on: s.id == a.session_id,
-        where: a.purchase_id == ^purchase_id,
-        select: %{first: min(s.date), last: max(s.date)}
-    )
+    case Repo.one(
+           from a in Attendance,
+             join: s in Session,
+             on: s.id == a.session_id,
+             where: a.purchase_id == ^purchase_id,
+             select: %{first: min(s.date), last: max(s.date)}
+         ) do
+      %{first: nil, last: nil} -> nil
+      period -> period
+    end
   end
 end
 ```
