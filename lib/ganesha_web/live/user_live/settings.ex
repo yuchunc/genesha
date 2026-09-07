@@ -8,63 +8,69 @@ defmodule GaneshaWeb.UserLive.Settings do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="text-center">
-        <.header>
-          帳戶設定
-          <:subtitle>管理帳戶電子郵件與密碼</:subtitle>
-        </.header>
+    <Layouts.app flash={@flash} current_scope={@current_scope} back={~p"/settings"}>
+      <div class="mx-auto max-w-sm py-8">
+        <.page_header title="帳戶設定">
+          <:subtitle>管理登入用的 Email 與密碼</:subtitle>
+        </.page_header>
+
+        <.section title="Email">
+          <.form
+            for={@email_form}
+            id="email_form"
+            phx-submit="update_email"
+            phx-change="validate_email"
+            class="grid gap-4"
+          >
+            <.input
+              field={@email_form[:email]}
+              type="email"
+              label="電子郵件"
+              autocomplete="username"
+              spellcheck="false"
+              required
+            />
+            <.button variant="primary" phx-disable-with="變更中…">更新 Email</.button>
+          </.form>
+        </.section>
+
+        <.section title="密碼">
+          <.form
+            for={@password_form}
+            id="password_form"
+            action={~p"/users/update-password"}
+            method="post"
+            phx-change="validate_password"
+            phx-submit="update_password"
+            phx-trigger-action={@trigger_submit}
+            class="grid gap-4"
+          >
+            <input
+              name={@password_form[:email].name}
+              type="hidden"
+              id="hidden_user_email"
+              spellcheck="false"
+              value={@current_email}
+            />
+            <.input
+              field={@password_form[:password]}
+              type="password"
+              label="新密碼"
+              autocomplete="new-password"
+              spellcheck="false"
+              required
+            />
+            <.input
+              field={@password_form[:password_confirmation]}
+              type="password"
+              label="確認新密碼"
+              autocomplete="new-password"
+              spellcheck="false"
+            />
+            <.button variant="primary" phx-disable-with="儲存中…">更新密碼</.button>
+          </.form>
+        </.section>
       </div>
-
-      <.form for={@email_form} id="email_form" phx-submit="update_email" phx-change="validate_email">
-        <.input
-          field={@email_form[:email]}
-          type="email"
-          label="電子郵件"
-          autocomplete="username"
-          spellcheck="false"
-          required
-        />
-        <.button variant="primary" phx-disable-with="變更中…">變更電子郵件</.button>
-      </.form>
-
-      <hr class="border-stone-200 dark:border-stone-700" />
-
-      <.form
-        for={@password_form}
-        id="password_form"
-        action={~p"/users/update-password"}
-        method="post"
-        phx-change="validate_password"
-        phx-submit="update_password"
-        phx-trigger-action={@trigger_submit}
-      >
-        <input
-          name={@password_form[:email].name}
-          type="hidden"
-          id="hidden_user_email"
-          spellcheck="false"
-          value={@current_email}
-        />
-        <.input
-          field={@password_form[:password]}
-          type="password"
-          label="新密碼"
-          autocomplete="new-password"
-          spellcheck="false"
-          required
-        />
-        <.input
-          field={@password_form[:password_confirmation]}
-          type="password"
-          label="確認新密碼"
-          autocomplete="new-password"
-          spellcheck="false"
-        />
-        <.button variant="primary" phx-disable-with="儲存中…">
-          儲存密碼
-        </.button>
-      </.form>
     </Layouts.app>
     """
   end

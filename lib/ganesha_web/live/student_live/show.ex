@@ -3,6 +3,7 @@ defmodule GaneshaWeb.StudentLive.Show do
 
   alias Ganesha.{Clock, People, Reporting, Repo, Roster, Sales}
   alias Ganesha.Sales.Payment
+  alias GaneshaWeb.Fmt
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -89,136 +90,223 @@ defmodule GaneshaWeb.StudentLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="pb-24">
-        <h1 class="text-lg font-semibold">{@student.display_name}</h1>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      nav={:students}
+      back={~p"/students"}
+    >
+      <.page_header title={@student.display_name} />
 
-        <p id="outstanding" data-amount={@outstanding} class="mt-1 text-sm text-zinc-500">
-          未收：NT$ {@outstanding}
-        </p>
+      <p id="outstanding" data-amount={@outstanding}>
+        <.money
+          amount={@outstanding}
+          size="lg"
+          tone={if @outstanding > 0, do: "turmeric", else: "celadon"}
+          label={if @outstanding > 0, do: "未收", else: "已收齊"}
+        />
+      </p>
 
-        <section
-          :if={@credits != []}
-          class="mt-4 rounded-2xl border border-purple-200 p-4 dark:border-purple-900"
-        >
-          <h2 class="text-sm font-medium">可用補課額度：{length(@credits)}</h2>
-          <ul class="mt-2 space-y-1 text-xs text-zinc-500">
-            <li :for={credit <- @credits}>
-              {credit.source} ·
-              <%= if credit.expires_on do %>
-                至 {credit.expires_on}
-              <% else %>
-                無期限
-              <% end %>
-            </li>
-          </ul>
-        </section>
+      <.section :if={@credits != []} id="credits" title="補課額度" count={length(@credits)}>
+        <ul class="space-y-1">
+          <.credit_row :for={credit <- @credits} credit={credit} />
+        </ul>
+      </.section>
 
-        <section
+      <.section title="購買與收款" count={length(@purchases)}>
+        <.empty :if={@purchases == []}>這位學生還沒有購買紀錄。</.empty>
+
+        <.purchase_group
           :for={purchase <- @purchases}
-          id={"purchase-#{purchase.id}"}
-          class="mt-4 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <header class="flex items-baseline justify-between gap-2">
-            <h2 class="font-medium">{purchase.package.name}</h2>
-            <span class="font-mono text-sm">NT$ {Sales.payable(purchase)}</span>
-          </header>
-
-          <p :if={purchase.custom_amount} class="mt-1 text-xs text-zinc-500">
-            原價 {purchase.list_price}<span :if={purchase.note}> · {purchase.note}</span>
-          </p>
-
-          <form
-            id={"override-form-#{purchase.id}"}
-            phx-submit="override"
-            class="mt-3 flex flex-wrap gap-2"
-          >
-            <input type="hidden" name="purchase-id" value={purchase.id} />
-            <input
-              type="number"
-              name="custom_amount"
-              value={purchase.custom_amount}
-              placeholder="自訂金額"
-              class="min-h-[44px] w-28 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-            <input
-              type="text"
-              name="note"
-              value={purchase.note}
-              placeholder="備註"
-              class="min-h-[44px] w-32 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-            <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
-              儲存
-            </button>
-          </form>
-
-          <form
-            id={"payment-form-#{purchase.id}"}
-            phx-submit="record_payment"
-            class="mt-3 flex flex-wrap gap-2"
-          >
-            <input type="hidden" name="purchase-id" value={purchase.id} />
-            <input
-              type="number"
-              name="amount"
-              placeholder="金額"
-              value={Sales.payable(purchase) - confirmed_paid(@payments[purchase.id] || [])}
-              class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-            <select
-              name="method"
-              class="min-h-[44px] rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            >
-              <option value="line_pay">Line Pay</option>
-              <option value="line_bank">LINE Bank</option>
-              <option value="cash">現金</option>
-              <option value="other">其他</option>
-            </select>
-            <input
-              type="text"
-              name="reported_last5"
-              placeholder="帳後五碼"
-              inputmode="numeric"
-              class="min-h-[44px] w-28 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-            <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
-              記錄
-            </button>
-          </form>
-
-          <ul class="mt-3 space-y-2">
-            <li
-              :for={%{payment: payment, suspicious?: suspicious?} <- @payments[purchase.id] || []}
-              data-suspicious={to_string(suspicious?)}
-              class="flex items-center justify-between gap-2 text-sm"
-            >
-              <span>
-                NT$ {payment.amount} · {payment.method}
-                <span :if={payment.reported_last5} class="text-zinc-400">
-                  ({payment.reported_last5})
-                </span>
-                <span :if={suspicious?} class="text-amber-600">重複？</span>
-              </span>
-
-              <button
-                :if={payment.state == "claimed"}
-                id={"confirm-payment-#{payment.id}"}
-                phx-click="confirm_payment"
-                phx-value-id={payment.id}
-                class="min-h-[44px] rounded-lg bg-emerald-600 px-3 text-xs text-white"
-              >
-                確認入帳
-              </button>
-              <span :if={payment.state == "confirmed"} class="text-xs text-emerald-600">已確認</span>
-              <span :if={payment.state == "disputed"} class="text-xs text-red-600">有問題</span>
-            </li>
-          </ul>
-        </section>
-      </div>
-
-      <Layouts.bottom_nav active={:students} />
+          purchase={purchase}
+          payment_rows={@payments[purchase.id] || []}
+        />
+      </.section>
     </Layouts.app>
     """
   end
+
+  attr :credit, :map, required: true
+
+  defp credit_row(assigns) do
+    ~H"""
+    <li class="flex min-h-11 items-center justify-between gap-4 border-l-[3px] border-turmeric py-1.5 pl-4">
+      <span class="text-sm text-ink">{credit_source(@credit.source)}</span>
+      <span class="shrink-0 font-display text-xs text-ink-faint">
+        {if @credit.expires_on, do: Fmt.short_date(@credit.expires_on), else: "無期限"}
+      </span>
+    </li>
+    """
+  end
+
+  attr :purchase, :map, required: true
+  attr :payment_rows, :list, required: true
+
+  defp purchase_group(assigns) do
+    payable = Sales.payable(assigns.purchase)
+    paid = confirmed_paid(assigns.payment_rows)
+
+    assigns = assign(assigns, payable: payable, paid: paid, due: payable - paid)
+
+    ~H"""
+    <section
+      id={"purchase-#{@purchase.id}"}
+      class={[
+        "mt-5 border-l-[3px] pl-4",
+        @due > 0 && "border-turmeric",
+        @due <= 0 && "border-celadon"
+      ]}
+    >
+      <div class="flex items-baseline justify-between gap-4">
+        <h3 class="font-display text-lg text-ink">{@purchase.package.name}</h3>
+        <.money
+          amount={@payable}
+          tone={if @due > 0, do: "turmeric", else: "celadon"}
+          class="shrink-0"
+        />
+      </div>
+
+      <p :if={@purchase.slot} class="mt-1 flex items-center gap-2 text-xs text-ink-soft">
+        <.seal weekday={@purchase.slot.weekday} size="sm" />
+        <span>
+          {Fmt.slot_title(@purchase.slot.label)}
+          <span class="font-display">
+            {Fmt.time_range(@purchase.slot.start_time, @purchase.slot.end_time)}
+          </span>
+        </span>
+      </p>
+
+      <p :if={@purchase.custom_amount} class="mt-1 text-xs text-ink-soft">
+        原價
+        <span class="font-display text-ink-faint line-through">
+          {Fmt.amount(@purchase.list_price)}
+        </span>
+        ，已議定為此金額<span :if={@purchase.note}>：{@purchase.note}</span>
+      </p>
+
+      <p class="mt-1 text-xs text-ink-faint">
+        已收 <span class="font-display">{Fmt.amount(@paid)}</span>
+        <span :if={@due > 0}>
+          · 未收 <span class="font-display text-turmeric-ink">{Fmt.amount(@due)}</span>
+        </span>
+      </p>
+
+      <ul class="mt-3 space-y-2">
+        <li
+          :for={%{payment: payment, suspicious?: suspicious?} <- @payment_rows}
+          data-suspicious={to_string(suspicious?)}
+          class={["border-l-[3px] py-2 pl-4", payment_rule(payment.state)]}
+        >
+          <div class="flex items-baseline justify-between gap-4">
+            <span class="text-sm text-ink-soft">
+              {Fmt.method(payment.method)}
+              <span class="font-display">{Fmt.short_date(payment.paid_on)}</span>
+            </span>
+            <.money
+              amount={payment.amount}
+              size="sm"
+              tone={if payment.state == "confirmed", do: "celadon", else: "ink"}
+              class="shrink-0"
+            />
+          </div>
+
+          <div class="mt-1 flex flex-wrap items-center justify-between gap-3">
+            <.pill tone={payment_tone(payment.state)}>{Fmt.payment_state(payment.state)}</.pill>
+
+            <.button
+              :if={payment.state == "claimed"}
+              id={"confirm-payment-#{payment.id}"}
+              variant="accent"
+              phx-click="confirm_payment"
+              phx-value-id={payment.id}
+            >
+              確認收到
+            </.button>
+
+            <span :if={payment.state == "confirmed"} class="truncate text-xs text-ink-faint">
+              {payment.confirmed_by} 已確認
+            </span>
+          </div>
+
+          <p :if={suspicious?} class="mt-1 text-xs text-sindoor-ink">
+            帳後五碼 {payment.reported_last5} 和另一筆款項重複，確認收到之前先對一次帳。
+          </p>
+        </li>
+      </ul>
+
+      <details class="mt-3 border-t border-rule">
+        <summary class="flex min-h-11 cursor-pointer list-none items-center text-sm text-ink-soft [&::-webkit-details-marker]:hidden">
+          調整金額
+        </summary>
+        <form id={"override-form-#{@purchase.id}"} phx-submit="override" class="mb-3 space-y-3">
+          <input type="hidden" name="purchase-id" value={@purchase.id} />
+          <.input
+            type="number"
+            name="custom_amount"
+            value={@purchase.custom_amount}
+            label="議定金額"
+            placeholder="留空即照原價"
+          />
+          <.input
+            type="text"
+            name="note"
+            value={@purchase.note}
+            label="備註"
+            placeholder="為什麼調整"
+          />
+          <.button variant="primary">儲存調整</.button>
+        </form>
+      </details>
+
+      <details class="border-t border-rule">
+        <summary class="flex min-h-11 cursor-pointer list-none items-center text-sm text-ink-soft [&::-webkit-details-marker]:hidden">
+          記錄收款
+        </summary>
+        <form
+          id={"payment-form-#{@purchase.id}"}
+          phx-submit="record_payment"
+          class="mb-3 space-y-3"
+        >
+          <input type="hidden" name="purchase-id" value={@purchase.id} />
+          <.input type="number" name="amount" value={@due} label="金額" />
+          <.input
+            type="select"
+            name="method"
+            value="line_pay"
+            label="方式"
+            options={[
+              {"Line Pay", "line_pay"},
+              {"LINE Bank", "line_bank"},
+              {"現金", "cash"},
+              {"其他", "other"}
+            ]}
+          />
+          <.input
+            type="text"
+            name="reported_last5"
+            value=""
+            label="帳後五碼"
+            inputmode="numeric"
+            placeholder="轉帳末五碼"
+          />
+          <.button variant="accent">記錄收款</.button>
+        </form>
+      </details>
+    </section>
+    """
+  end
+
+  defp credit_source("package"), do: "課程附帶"
+  defp credit_source("cancellation"), do: "停課補償"
+  defp credit_source(other), do: other
+
+  defp payment_tone("confirmed"), do: "celadon"
+  defp payment_tone("claimed"), do: "turmeric"
+  defp payment_tone("disputed"), do: "sindoor"
+  defp payment_tone(_state), do: "quiet"
+
+  defp payment_rule("confirmed"), do: "border-celadon"
+  defp payment_rule("claimed"), do: "border-turmeric"
+  defp payment_rule("disputed"), do: "border-sindoor"
+  defp payment_rule(_state), do: "border-rule"
 end

@@ -8,6 +8,18 @@ defmodule GaneshaWeb.UserSessionControllerTest do
     %{unconfirmed_user: unconfirmed_user_fixture(), user: user_fixture()}
   end
 
+  # The redesign moved account controls (email, change email/password,
+  # log-out) off every page and onto the studio settings screen, reachable
+  # via the top bar's settings icon. Assert reachability there rather than on
+  # the raw root page, which no longer carries that chrome.
+  defp assert_account_reachable(conn, user) do
+    conn = get(conn, ~p"/settings")
+    response = html_response(conn, 200)
+    assert response =~ user.email
+    assert response =~ ~p"/users/settings"
+    assert response =~ ~p"/users/log-out"
+  end
+
   describe "POST /users/log-in - email and password" do
     test "logs the user in", %{conn: conn, user: user} do
       user = set_password(user)
@@ -19,13 +31,7 @@ defmodule GaneshaWeb.UserSessionControllerTest do
 
       assert get_session(conn, :user_token)
       assert redirected_to(conn) == ~p"/"
-
-      # Now do a logged in request and assert on the menu
-      conn = get(conn, ~p"/")
-      response = html_response(conn, 200)
-      assert response =~ user.email
-      assert response =~ ~p"/users/settings"
-      assert response =~ ~p"/users/log-out"
+      assert_account_reachable(conn, user)
     end
 
     test "logs the user in with remember me", %{conn: conn, user: user} do
@@ -83,13 +89,7 @@ defmodule GaneshaWeb.UserSessionControllerTest do
 
       assert get_session(conn, :user_token)
       assert redirected_to(conn) == ~p"/"
-
-      # Now do a logged in request and assert on the menu
-      conn = get(conn, ~p"/")
-      response = html_response(conn, 200)
-      assert response =~ user.email
-      assert response =~ ~p"/users/settings"
-      assert response =~ ~p"/users/log-out"
+      assert_account_reachable(conn, user)
     end
 
     test "confirms unconfirmed user", %{conn: conn, unconfirmed_user: user} do
@@ -107,13 +107,7 @@ defmodule GaneshaWeb.UserSessionControllerTest do
       assert Phoenix.Flash.get(conn.assigns.flash, :info) =~ "帳號已確認"
 
       assert Accounts.get_user!(user.id).confirmed_at
-
-      # Now do a logged in request and assert on the menu
-      conn = get(conn, ~p"/")
-      response = html_response(conn, 200)
-      assert response =~ user.email
-      assert response =~ ~p"/users/settings"
-      assert response =~ ~p"/users/log-out"
+      assert_account_reachable(conn, user)
     end
 
     test "redirects to login page when magic link is invalid", %{conn: conn} do

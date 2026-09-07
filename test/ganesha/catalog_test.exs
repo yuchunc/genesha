@@ -23,6 +23,44 @@ defmodule Ganesha.CatalogTest do
     assert Catalog.list_packages() == [active, inactive]
   end
 
+  describe "package_available?/2 and list_selectable_packages/0" do
+    test "an active package is available to anyone" do
+      {:ok, pkg} =
+        Catalog.create_package(%{name: "月課程", kind: "monthly", price_per_class: 400})
+
+      assert Catalog.package_available?(pkg, MapSet.new())
+    end
+
+    test "an inactive package with no grandfather strategy is closed to everyone" do
+      {:ok, pkg} =
+        Catalog.create_package(%{
+          name: "舊方案",
+          kind: "drop_in",
+          price_per_class: 450,
+          active: false
+        })
+
+      refute Catalog.package_available?(pkg, MapSet.new([pkg.id]))
+      refute Catalog.package_available?(pkg, MapSet.new())
+      refute pkg in Catalog.list_selectable_packages()
+    end
+
+    test "an inactive past_purchasers package is open only to a student who already holds it" do
+      {:ok, pkg} =
+        Catalog.create_package(%{
+          name: "元老方案",
+          kind: "monthly",
+          price_per_class: 350,
+          active: false,
+          grandfather_strategy: "past_purchasers"
+        })
+
+      assert Catalog.package_available?(pkg, MapSet.new([pkg.id]))
+      refute Catalog.package_available?(pkg, MapSet.new())
+      assert pkg in Catalog.list_selectable_packages()
+    end
+  end
+
   test "creates a monthly package granting one makeup" do
     assert {:ok, pkg} =
              Catalog.create_package(%{

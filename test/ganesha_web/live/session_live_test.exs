@@ -62,6 +62,30 @@ defmodule GaneshaWeb.SessionLiveTest do
     assert has_element?(view, "#one-off-form")
   end
 
+  test "toggles a student between expected and no-show", %{conn: conn} do
+    %{mondays: mondays, monday: monday, monthly: monthly} = august()
+    {:ok, student} = People.create_student(%{display_name: "Lulu"})
+
+    {:ok, %{attendances: [attendance]}} =
+      Enrolling.enroll_month(%{
+        student: student,
+        slot: monday,
+        package: monthly,
+        sessions: [hd(mondays)],
+        custom_amount: nil,
+        note: nil
+      })
+
+    session = hd(mondays)
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{session.id}")
+
+    view |> element("#no-show-#{attendance.id}") |> render_click()
+    assert has_element?(view, "#attendance-#{attendance.id}[data-state=no_show]")
+
+    view |> element("#no-show-#{attendance.id}") |> render_click()
+    assert has_element?(view, "#attendance-#{attendance.id}[data-state=expected]")
+  end
+
   test "adds a drop-in to the session", %{conn: conn} do
     %{mondays: mondays, drop_in: drop_in} = august()
     {:ok, jennifer} = People.create_student(%{display_name: "Jennifer"})
@@ -203,5 +227,61 @@ defmodule GaneshaWeb.SessionLiveTest do
 
     refute has_element?(view, "#makeup-form"),
            "an expired credit must not be offered for a later month"
+  end
+
+  test "rejects a one-off for a student who has never bought a grandfathered package", %{
+    conn: conn
+  } do
+    %{mondays: mondays} = august()
+    {:ok, student} = People.create_student(%{display_name: "素容"})
+
+    {:ok, retired} =
+      Catalog.create_package(%{
+        name: "舊生單堂",
+        kind: "drop_in",
+        price_per_class: 350,
+        active: false,
+        grandfather_strategy: "past_purchasers"
+      })
+
+    session = hd(mondays)
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{session.id}")
+
+    html =
+      view
+      |> form("#one-off-form", %{"student_id" => student.id, "package_id" => retired.id})
+      |> render_submit()
+
+    assert html =~ "僅開放曾購買過的學生續購"
+    assert Sales.list_purchases_for_student(student.id) == []
+  end
+
+  test "lets a returning student buy a grandfathered drop-in again", %{conn: conn} do
+    %{mondays: mondays} = august()
+    {:ok, student} = People.create_student(%{display_name: "素容"})
+
+    {:ok, retired} =
+      Catalog.create_package(%{
+        name: "舊生單堂",
+        kind: "drop_in",
+        price_per_class: 350,
+        active: false,
+        grandfather_strategy: "past_purchasers"
+      })
+
+    {:ok, _prior} =
+      Sales.create_purchase(%{student_id: student.id, package_id: retired.id, list_price: 350})
+
+    session = hd(mondays)
+    {:ok, view, _html} = live(conn, ~p"/sessions/#{session.id}")
+
+    view
+    |> form("#one-off-form", %{"student_id" => student.id, "package_id" => retired.id})
+    |> render_submit()
+
+    assert [attendance] =
+             Roster.list_for_session(session) |> Enum.filter(&(&1.student_id == student.id))
+
+    assert attendance.kind == "drop_in"
   end
 end

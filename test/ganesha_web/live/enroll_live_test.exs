@@ -159,4 +159,67 @@ defmodule GaneshaWeb.EnrollLiveTest do
     assert render(view) =~ "NT$ 0 / 2000"
     assert has_element?(view, "#payment-form-#{purchase.id} input[name='amount'][value='2000']")
   end
+
+  test "rejects enrolling a student who has never bought a grandfathered package", %{conn: conn} do
+    %{slot: slot, sessions: sessions, student: student} = august_monday()
+
+    {:ok, retired} =
+      Catalog.create_package(%{
+        name: "元老方案",
+        kind: "monthly",
+        price_per_class: 350,
+        active: false,
+        grandfather_strategy: "past_purchasers"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/enroll/#{slot.id}/2026/8")
+
+    html =
+      view
+      |> form("#enroll-form", %{
+        "student_id" => student.id,
+        "package_id" => retired.id,
+        "session_ids" => Enum.map(sessions, &to_string(&1.id))
+      })
+      |> render_submit()
+
+    assert html =~ "僅開放曾購買過的學生續購"
+    assert Sales.list_purchases_for_student(student.id) == []
+  end
+
+  test "lets a returning student renew a grandfathered package", %{conn: conn} do
+    %{slot: slot, sessions: sessions, student: student} = august_monday()
+
+    {:ok, retired} =
+      Catalog.create_package(%{
+        name: "元老方案",
+        kind: "monthly",
+        price_per_class: 350,
+        active: false,
+        grandfather_strategy: "past_purchasers"
+      })
+
+    {:ok, _prior} =
+      Sales.create_purchase(%{
+        student_id: student.id,
+        package_id: retired.id,
+        list_price: 350
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/enroll/#{slot.id}/2026/8")
+
+    view
+    |> form("#enroll-form", %{
+      "student_id" => student.id,
+      "package_id" => retired.id,
+      "session_ids" => Enum.map(sessions, &to_string(&1.id))
+    })
+    |> render_submit()
+
+    purchases = Sales.list_purchases_for_student(student.id)
+    assert length(purchases) == 2
+    # The new enrollment has a slot_id; the seeded prior purchase does not.
+    assert new_purchase = Enum.find(purchases, &(&1.slot_id == slot.id))
+    assert new_purchase.list_price == 1750
+  end
 end

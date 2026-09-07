@@ -1,85 +1,220 @@
 defmodule GaneshaWeb.MoneyLive do
+  @moduledoc """
+  The finance landing page: this cycle's revenue and tax gauge, the two
+  running lists that are never scoped to one month (未收款, 已過期補課額度),
+  a trend across recent cycles, and a paginated way to reach any past one.
+
+  Detail for a specific cycle — the full payment list, its breakdown by
+  method, confirming a claim — lives one level down in `MoneyLive.Cycle`,
+  reached by clicking the current-cycle card or a row in the history list.
+  Splitting it this way keeps the landing page a glance, not a scroll.
+  """
   use GaneshaWeb, :live_view
 
   alias Ganesha.{Clock, Reporting, Roster}
+  alias GaneshaWeb.Fmt
+
+  @cycles_per_page 12
+  @chart_months 6
 
   @impl true
-  def mount(_params, _session, socket) do
-    month = Date.beginning_of_month(Clock.today())
+  def mount(_params, _session, socket), do: {:ok, socket}
 
-    {:ok,
+  @impl true
+  def handle_params(params, _uri, socket) do
+    page = parse_page(params["page"])
+    current_month = Date.beginning_of_month(Clock.today())
+    chart = chart_months(current_month)
+
+    {:noreply,
      socket
-     |> assign(:month, month)
+     |> assign(:page, page)
+     |> assign(:current_month, current_month)
+     |> assign(:current_revenue, Reporting.revenue_for_month(current_month))
+     |> assign(:tax, Reporting.tax_threshold_status(current_month))
      |> assign(:owing, Reporting.outstanding_by_student())
-     |> assign(:revenue, Reporting.revenue_for_month(month))
-     |> assign(:tax, Reporting.tax_threshold_status(month))
-     |> assign(:expired_credits, Roster.expired_credits())}
+     |> assign(:expired_credits, Roster.expired_credits())
+     |> assign(:chart_months, chart)
+     |> assign(:chart_max, chart |> Enum.map(& &1.revenue) |> Enum.max(fn -> 0 end))
+     |> assign(:cycles, previous_cycles(current_month, page))}
   end
+
+  defp parse_page(nil), do: 0
+
+  defp parse_page(page) do
+    case Integer.parse(page) do
+      {n, ""} when n >= 0 -> n
+      _ -> 0
+    end
+  end
+
+  # The six most recent cycles, oldest first, for a left-to-right trend.
+  defp chart_months(current_month) do
+    for offset <- (@chart_months - 1)..0//-1 do
+      month = Date.shift(current_month, month: -offset)
+      %{month: month, revenue: Reporting.revenue_for_month(month)}
+    end
+  end
+
+  # A page of history, strictly before the current cycle — which already has
+  # its own card above and would be a redundant first row here.
+  defp previous_cycles(current_month, page) do
+    first_offset = 1 + page * @cycles_per_page
+
+    for offset <- first_offset..(first_offset + @cycles_per_page - 1) do
+      month = Date.shift(current_month, month: -offset)
+      %{month: month, revenue: Reporting.revenue_for_month(month)}
+    end
+  end
+
+  defp bar_height(_revenue, 0), do: 0
+  defp bar_height(revenue, max), do: revenue / max * 100
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="pb-24">
-        <h1 class="text-lg font-semibold">收款</h1>
+    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:money}>
+      <.page_header title="款項" />
 
-        <section class="mt-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-          <p id="revenue" data-amount={@revenue} class="text-2xl font-semibold tabular-nums">
-            NT$ {@revenue}
-          </p>
-          <p class="text-xs text-zinc-500">{@month.year} 年 {@month.month} 月已確認收入</p>
+      <.link
+        id="current-cycle"
+        navigate={~p"/money/#{@current_month.year}/#{@current_month.month}"}
+        class="block border-l-[3px] border-ink pl-4 transition-colors hover:bg-sunk"
+      >
+        <p class="text-sm text-ink-soft">{Fmt.month_title(@current_month)}</p>
 
-          <div
-            id="tax-gauge"
-            class="mt-3 h-2 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-800"
-          >
+        <p id="revenue" data-amount={@current_revenue}>
+          <.money amount={@current_revenue} label="本期已確認" size="xl" tone="turmeric" />
+        </p>
+
+        <div class="mt-4">
+          <div id="tax-gauge" class="relative h-4 bg-sunk">
             <div
               class={[
-                "h-full rounded-full transition-all",
-                @tax.warn? && "bg-amber-500",
-                !@tax.warn? && "bg-emerald-500"
+                "fills-across absolute inset-y-0 left-0 origin-left",
+                @tax.warn? && "bg-sindoor",
+                !@tax.warn? && "bg-turmeric"
               ]}
               style={"width: #{min(@tax.ratio, 1.0) * 100}%"}
             />
+            <div class="absolute inset-x-0 bottom-0 h-px bg-rule-strong" />
           </div>
 
-          <p class="mt-1 text-xs text-zinc-500">營業稅起徵點 NT$ {@tax.threshold} / 月（勞務）</p>
+          <div class="mt-2 flex items-baseline justify-between gap-4">
+            <p class="text-xs text-ink-soft">
+              <%= if @tax.threshold - @tax.revenue > 0 do %>
+                距起徵點還有
+                <span class="font-display text-base text-ink">
+                  {Fmt.amount(@tax.threshold - @tax.revenue)}
+                </span>
+              <% else %>
+                已超過起徵點
+                <span class="font-display text-base text-sindoor-ink">
+                  {Fmt.amount(@tax.revenue - @tax.threshold)}
+                </span>
+              <% end %>
+            </p>
+            <p class="shrink-0 text-xs text-ink-faint">
+              <span class="font-display">{Fmt.amount(@tax.threshold)}</span> 起徵點
+            </p>
+          </div>
+        </div>
+      </.link>
 
-          <p
-            :if={@tax.warn?}
-            id="tax-warning"
-            class="mt-2 rounded-lg bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200"
+      <p
+        :if={@tax.warn?}
+        id="tax-warning"
+        class="mt-3 border-l-[3px] border-sindoor bg-sindoor-lift py-3 pr-3 pl-4 text-sm text-ink"
+      >
+        本月已逼近勞務起徵點。單月超過就要辦理稅籍登記；逾期登記，會自當月一日起補徵。
+      </p>
+
+      <.section title="近月趨勢">
+        <div id="revenue-chart" class="flex items-end justify-between gap-3 pt-2">
+          <div :for={entry <- @chart_months} class="flex flex-1 flex-col items-center gap-2">
+            <span class="font-display text-xs text-ink-faint">{Fmt.amount(entry.revenue)}</span>
+            <div class="relative h-24 w-full max-w-8 border-t border-rule-strong bg-sunk">
+              <div
+                class={[
+                  "fills-up absolute inset-x-0 bottom-0",
+                  entry.month == @current_month && "bg-turmeric",
+                  entry.month != @current_month && "bg-rule-strong"
+                ]}
+                style={"height: #{bar_height(entry.revenue, @chart_max)}%"}
+              />
+            </div>
+            <span class="text-xs text-ink-faint">{entry.month.month}月</span>
+          </div>
+        </div>
+      </.section>
+
+      <.section title="未收款" count={length(@owing)}>
+        <ul class="space-y-1">
+          <li
+            :for={row <- @owing}
+            id={"owing-#{row.student.id}"}
+            class="border-l-[3px] border-turmeric"
           >
-            本月接近起徵點。超過當月即須辦理稅籍登記，逾期會自當月一日起補徵。
-          </p>
-        </section>
-
-        <section class="mt-4">
-          <h2 class="text-sm font-medium text-zinc-500">未收款</h2>
-          <ul class="mt-2 space-y-2">
-            <li
-              :for={row <- @owing}
-              id={"owing-#{row.student.id}"}
-              class="flex min-h-[56px] items-center justify-between rounded-xl border border-zinc-200 px-4 dark:border-zinc-800"
+            <.link
+              navigate={~p"/students/#{row.student.id}"}
+              class="flex min-h-11 items-center justify-between gap-4 py-1.5 pl-4 transition-colors hover:bg-sunk"
             >
-              <.link navigate={~p"/students/#{row.student.id}"}>{row.student.display_name}</.link>
-              <span class="font-mono text-sm">NT$ {row.outstanding}</span>
-            </li>
-            <li :if={@owing == []} id="nothing-owed" class="text-sm text-zinc-400">全部收齊</li>
-          </ul>
-        </section>
+              <span class="font-display text-lg text-ink">{row.student.display_name}</span>
+              <.money amount={row.outstanding} tone="turmeric" class="shrink-0" />
+            </.link>
+          </li>
+        </ul>
 
-        <section :if={@expired_credits != []} class="mt-4">
-          <h2 class="text-sm font-medium text-zinc-500">已過期補課額度</h2>
-          <ul class="mt-2 space-y-1 text-xs text-zinc-500">
-            <li :for={credit <- @expired_credits}>
-              {credit.student.display_name} · 到期 {credit.expires_on}
-            </li>
-          </ul>
-        </section>
-      </div>
+        <.empty :if={@owing == []} id="nothing-owed">本月款項都已收齊。</.empty>
+      </.section>
 
-      <Layouts.bottom_nav active={:money} />
+      <.section
+        :if={@expired_credits != []}
+        id="expired-credits"
+        title="已過期補課額度"
+        count={length(@expired_credits)}
+      >
+        <ul class="space-y-1">
+          <li
+            :for={credit <- @expired_credits}
+            class="flex min-h-11 items-center justify-between gap-4 border-l-[3px] border-sindoor py-1.5 pl-4"
+          >
+            <span class="font-display text-base text-ink">{credit.student.display_name}</span>
+            <span class="shrink-0 text-xs text-sindoor-ink">
+              <span class="font-display">{Fmt.short_date(credit.expires_on)}</span> 已過期
+            </span>
+          </li>
+        </ul>
+      </.section>
+
+      <.section title="歷史款項">
+        <:actions>
+          <.button
+            :if={@page > 0}
+            variant="quiet"
+            patch={~p"/money?#{[page: @page - 1]}"}
+          >
+            較近
+          </.button>
+          <.button variant="quiet" patch={~p"/money?#{[page: @page + 1]}"}>更早</.button>
+        </:actions>
+
+        <ul class="space-y-1">
+          <li
+            :for={cycle <- @cycles}
+            id={"cycle-#{cycle.month.year}-#{cycle.month.month}"}
+            class="border-l-[3px] border-rule"
+          >
+            <.link
+              navigate={~p"/money/#{cycle.month.year}/#{cycle.month.month}"}
+              class="flex min-h-11 items-center justify-between gap-4 py-1.5 pl-4 transition-colors hover:bg-sunk"
+            >
+              <span class="font-display text-base text-ink">{Fmt.month_title(cycle.month)}</span>
+              <.money amount={cycle.revenue} size="sm" class="shrink-0" />
+            </.link>
+          </li>
+        </ul>
+      </.section>
     </Layouts.app>
     """
   end

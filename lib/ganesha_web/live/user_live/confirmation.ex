@@ -7,10 +7,10 @@ defmodule GaneshaWeb.UserLive.Confirmation do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm">
-        <div class="text-center">
-          <.header>歡迎 {@user.email}</.header>
-        </div>
+      <div class="mx-auto max-w-sm py-8">
+        <.page_header title="歡迎">
+          <:subtitle>{@user.email}</:subtitle>
+        </.page_header>
 
         <.form
           :if={!@user.confirmed_at}
@@ -22,7 +22,7 @@ defmodule GaneshaWeb.UserLive.Confirmation do
           phx-trigger-action={@trigger_submit}
         >
           <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
-          <div class="space-y-2">
+          <div class="grid gap-2">
             <.button
               name={@form[:remember_me].name}
               value="true"
@@ -48,11 +48,13 @@ defmodule GaneshaWeb.UserLive.Confirmation do
         >
           <input type="hidden" name={@form[:token].name} value={@form[:token].value} />
           <%= if @current_scope do %>
-            <.button phx-disable-with="登入中…" variant="primary">
-              登入
-            </.button>
+            <div class="grid gap-2">
+              <.button phx-disable-with="登入中…" variant="primary">
+                登入
+              </.button>
+            </div>
           <% else %>
-            <div class="space-y-2">
+            <div class="grid gap-2">
               <.button
                 name={@form[:remember_me].name}
                 value="true"
@@ -70,7 +72,7 @@ defmodule GaneshaWeb.UserLive.Confirmation do
 
         <p
           :if={!@user.confirmed_at}
-          class="mt-8 rounded-lg border border-stone-200 p-4 text-sm text-stone-600 dark:border-stone-700 dark:text-stone-300"
+          class="mt-8 border-l-[3px] border-rule bg-sunk py-3 pl-4 text-sm text-ink-soft"
         >
           提示：若偏好使用密碼，可至帳戶設定啟用。
         </p>

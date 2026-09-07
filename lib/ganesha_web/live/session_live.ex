@@ -1,7 +1,8 @@
 defmodule GaneshaWeb.SessionLive do
   use GaneshaWeb, :live_view
 
-  alias Ganesha.{Catalog, Enrolling, People, Roster, Studio}
+  alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
+  alias GaneshaWeb.Fmt
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -28,7 +29,7 @@ defmodule GaneshaWeb.SessionLive do
     |> assign(:makeup_candidates, eligible)
     |> assign(
       :one_off_packages,
-      Enum.reject(Catalog.list_active_packages(), &(&1.kind == "monthly"))
+      Enum.reject(Catalog.list_selectable_packages(), &(&1.kind == "monthly"))
     )
   end
 
@@ -45,16 +46,37 @@ defmodule GaneshaWeb.SessionLive do
         note: blank_to_nil(params["note"])
       ]
 
-      case Enrolling.add_one_off(socket.assigns.session, student, package, opts) do
-        {:ok, _result} ->
-          {:noreply, socket |> put_flash(:info, "已加入 #{student.display_name}") |> load()}
+      cond do
+        not Catalog.package_available?(
+          package,
+          Sales.purchased_package_ids_for_student(student.id)
+        ) ->
+          {:noreply, put_flash(socket, :error, "此方案已停用，僅開放曾購買過的學生續購")}
 
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "無法加入，可能已在名單中")}
+        true ->
+          case Enrolling.add_one_off(socket.assigns.session, student, package, opts) do
+            {:ok, _result} ->
+              {:noreply, socket |> put_flash(:info, "已加入 #{student.display_name}") |> load()}
+
+            {:error, _changeset} ->
+              {:noreply, put_flash(socket, :error, "無法加入，可能已在名單中")}
+          end
       end
     else
       {:noreply, put_flash(socket, :error, "已停課，不能加入單堂或體驗")}
     end
+  end
+
+  def handle_event("toggle_no_show", %{"id" => id}, socket) do
+    attendance = Roster.get_attendance!(id)
+
+    {:ok, _updated} =
+      case attendance.state do
+        "expected" -> Roster.mark_no_show(attendance)
+        "no_show" -> Roster.mark_expected(attendance)
+      end
+
+    {:noreply, load(socket)}
   end
 
   def handle_event("book_makeup", %{"student_id" => student_id}, socket) do
@@ -91,99 +113,156 @@ defmodule GaneshaWeb.SessionLive do
 
   defp scheduled?(session), do: session.state == "scheduled"
 
-  defp attendee_label(attendance) do
-    case attendance.kind do
-      "makeup" -> "補課"
-      "drop_in" -> "單堂"
-      "trial" -> "體驗"
-      _ -> "月課程"
+  defp student_options(students), do: Enum.map(students, &{&1.display_name, &1.id})
+
+  defp package_options(packages) do
+    Enum.map(packages, fn package ->
+      {"#{package.name}（NT$#{Fmt.amount(package.price_per_class)}）", package.id}
+    end)
+  end
+
+  # An expiring credit is the reason she is on this screen, so the option says
+  # which credit will be spent. `book_makeup` takes the first available credit
+  # and `available_credits/2` orders soonest-expiry first, so this is the one.
+  defp makeup_options(candidates, %Date{} = date) do
+    Enum.map(candidates, fn student ->
+      {"#{student.display_name} · #{credit_expiry(student, date)}", student.id}
+    end)
+  end
+
+  defp credit_expiry(student, date) do
+    case Roster.available_credits(student.id, date) do
+      [%{expires_on: nil} | _] -> "無期限"
+      [%{expires_on: expires_on} | _] -> "#{Fmt.short_date(expires_on)} 到期"
+      [] -> "無可用額度"
     end
   end
 
   @impl true
   def render(assigns) do
-    ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="pb-24">
-        <h1 class="text-lg font-semibold">{@session.slot.label}</h1>
-        <p class="text-sm text-zinc-500">{@session.date} · {@session.style}</p>
+    assigns =
+      assign(assigns,
+        cancelled: assigns.session.state == "cancelled",
+        style_override:
+          assigns.session.style && assigns.session.style != assigns.session.slot.default_style
+      )
 
-        <ul class="mt-4 space-y-2">
+    ~H"""
+    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:month} back={~p"/month"}>
+      <.page_header title={Fmt.date_with_weekday(@session.date)}>
+        <:subtitle>
+          <span class="inline-flex flex-wrap items-center gap-2">
+            <.seal
+              weekday={@session.slot.weekday}
+              size="sm"
+              tone={if @cancelled, do: "sindoor", else: "ink"}
+            />
+            <span class="font-display text-ink">{Fmt.slot_title(@session.slot.label)}</span>
+            <span class="font-display">
+              {Fmt.time_range(@session.slot.start_time, @session.slot.end_time)}
+            </span>
+            <.pill :if={@style_override} tone="turmeric">{@session.style}</.pill>
+            <span :if={@session.style && !@style_override}>{@session.style}</span>
+          </span>
+        </:subtitle>
+        <:actions>
+          <.pill :if={@cancelled} tone="sindoor">已取消</.pill>
+        </:actions>
+      </.page_header>
+
+      <p
+        :if={@cancelled && @session.cancel_reason}
+        class="border-l-[3px] border-sindoor py-2 pl-4 text-sm text-sindoor-ink"
+      >
+        {@session.cancel_reason}
+      </p>
+
+      <.section title="名單" count={length(@attendances)}>
+        <ul :if={@attendances != []} class="space-y-2">
           <li
             :for={attendance <- @attendances}
             id={"attendance-#{attendance.id}"}
-            class="flex items-center justify-between rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
+            data-state={attendance.state}
+            class={[
+              "flex min-h-11 items-center gap-3 border-l-[3px] py-1.5 pl-4",
+              row_rule(attendance)
+            ]}
           >
-            <span>{attendance.student.display_name}</span>
-            <span class="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-              {attendee_label(attendance)}
-            </span>
-          </li>
-          <li :if={@attendances == []} class="text-sm text-zinc-400">名單是空的</li>
-        </ul>
+            <div class="min-w-0 flex-1">
+              <p class="font-display text-lg leading-snug text-ink">
+                <span :if={attendance.state == "no_show"} class="struck">
+                  {attendance.student.display_name}
+                </span>
+                <span :if={attendance.state != "no_show"}>
+                  {attendance.student.display_name}
+                </span>
+              </p>
+              <p :if={attendance.note} class="text-xs text-ink-faint">{attendance.note}</p>
+            </div>
+            <.pill tone={if attendance.kind == "makeup", do: "turmeric", else: "quiet"}>
+              {Fmt.kind(attendance.kind)}
+            </.pill>
 
-        <h2 :if={scheduled?(@session)} class="mt-6 text-sm font-medium text-zinc-500">
-          加入單堂／體驗
-        </h2>
-        <form
-          :if={scheduled?(@session)}
-          id="one-off-form"
-          phx-submit="add_one_off"
-          class="mt-2 space-y-2 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <select
-            name="student_id"
-            class="min-h-[44px] w-full rounded-lg border-zinc-300 dark:bg-zinc-900"
-          >
-            <option :for={student <- @students} value={student.id}>{student.display_name}</option>
-          </select>
-          <select
-            name="package_id"
-            class="min-h-[44px] w-full rounded-lg border-zinc-300 dark:bg-zinc-900"
-          >
-            <option :for={package <- @one_off_packages} value={package.id}>
-              {package.name}（{package.price_per_class}）
-            </option>
-          </select>
-          <div class="flex gap-2">
-            <input
-              type="number"
-              name="custom_amount"
-              placeholder="自訂金額"
-              class="min-h-[44px] flex-1 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-            <input
-              type="text"
-              name="note"
-              placeholder="備註"
-              class="min-h-[44px] flex-1 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-          </div>
-          <button class="min-h-[44px] w-full rounded-lg bg-emerald-600 text-sm text-white">加入</button>
-        </form>
-
-        <div :if={scheduled?(@session) && @makeup_candidates != []}>
-          <h2 class="mt-6 text-sm font-medium text-zinc-500">安排補課</h2>
-          <form
-            id="makeup-form"
-            phx-submit="book_makeup"
-            class="mt-2 flex gap-2 rounded-2xl border border-purple-200 p-4 dark:border-purple-900"
-          >
-            <select
-              name="student_id"
-              class="min-h-[44px] flex-1 rounded-lg border-zinc-300 dark:bg-zinc-900"
+            <.button
+              id={"no-show-#{attendance.id}"}
+              variant="quiet"
+              phx-click="toggle_no_show"
+              phx-value-id={attendance.id}
             >
-              <option :for={student <- @makeup_candidates} value={student.id}>
-                {student.display_name}
-              </option>
-            </select>
-            <button class="min-h-[44px] rounded-lg bg-purple-600 px-4 text-sm text-white">補課</button>
-          </form>
-        </div>
-      </div>
+              {if attendance.state == "no_show", do: "取消未到", else: "標記未到"}
+            </.button>
+          </li>
+        </ul>
+        <.empty :if={@attendances == []}>這堂還沒有人。用下面的表單加入。</.empty>
+      </.section>
 
-      <Layouts.bottom_nav active={:month} />
+      <.section :if={scheduled?(@session)} title="加入單堂或體驗">
+        <form id="one-off-form" phx-submit="add_one_off" class="space-y-3">
+          <.input
+            type="select"
+            name="student_id"
+            value={nil}
+            label="學生"
+            options={student_options(@students)}
+          />
+          <.input
+            type="select"
+            name="package_id"
+            value={nil}
+            label="方案"
+            options={package_options(@one_off_packages)}
+          />
+          <div class="flex gap-3">
+            <div class="flex-1">
+              <.input type="number" name="custom_amount" value={nil} label="自訂金額" />
+            </div>
+            <div class="flex-1">
+              <.input type="text" name="note" value={nil} label="備註" />
+            </div>
+          </div>
+          <.button variant="primary">加入名單</.button>
+        </form>
+      </.section>
+
+      <.section :if={scheduled?(@session) && @makeup_candidates != []} title="安排補課">
+        <form id="makeup-form" phx-submit="book_makeup" class="space-y-3">
+          <.input
+            type="select"
+            name="student_id"
+            value={nil}
+            label="學生與即將到期的額度"
+            options={makeup_options(@makeup_candidates, @session.date)}
+          />
+          <.button variant="accent">安排補課</.button>
+        </form>
+      </.section>
     </Layouts.app>
     """
   end
+
+  # The same left rule the Dashboard uses for a roster row, so every screen
+  # reads as one ledger.
+  defp row_rule(%{state: "no_show"}), do: "border-sindoor"
+  defp row_rule(%{kind: "makeup"}), do: "border-turmeric"
+  defp row_rule(_attendance), do: "border-ink"
 end

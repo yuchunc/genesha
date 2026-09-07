@@ -111,4 +111,28 @@ defmodule Ganesha.Sales.PurchaseTest do
     assert [purchase] = Sales.list_purchases_for_student(student.id)
     assert purchase.package.name == "月課程"
   end
+
+  test "purchased_package_ids_for_student/1 collects every package ever bought, once each" do
+    {student, monthly} = student_and_monthly()
+
+    {:ok, drop_in} =
+      Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 450})
+
+    {:ok, _} =
+      Sales.create_purchase(%{student_id: student.id, package_id: monthly.id, list_price: 1600})
+
+    {:ok, _} =
+      Sales.create_purchase(%{student_id: student.id, package_id: monthly.id, list_price: 1600})
+
+    {:ok, _} =
+      Sales.create_purchase(%{student_id: student.id, package_id: drop_in.id, list_price: 450})
+
+    ids = Sales.purchased_package_ids_for_student(student.id)
+    assert ids == MapSet.new([monthly.id, drop_in.id])
+  end
+
+  test "purchased_package_ids_for_student/1 is empty for a student who has never bought anything" do
+    {:ok, student} = People.create_student(%{display_name: "新學生"})
+    assert Sales.purchased_package_ids_for_student(student.id) == MapSet.new()
+  end
 end

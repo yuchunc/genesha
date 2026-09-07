@@ -67,4 +67,31 @@ defmodule GaneshaWeb.MoneyLiveTest do
     {:ok, view, _html} = live(conn, ~p"/money")
     assert has_element?(view, "#tax-warning")
   end
+
+  test "the current cycle links through to its detail view", %{conn: conn} do
+    today = Clock.today()
+    {:ok, view, _html} = live(conn, ~p"/money")
+
+    html = view |> element("#current-cycle") |> render()
+    assert html =~ ~s(href="/money/#{today.year}/#{today.month}")
+  end
+
+  test "shows a revenue trend chart across recent cycles", %{conn: conn} do
+    _student = confirmed_sale(1600)
+
+    {:ok, view, _html} = live(conn, ~p"/money")
+    assert has_element?(view, "#revenue-chart")
+  end
+
+  test "pages into history without repeating the current cycle", %{conn: conn} do
+    today = Clock.today()
+    {:ok, view, _html} = live(conn, ~p"/money")
+
+    refute has_element?(view, "#cycle-#{today.year}-#{today.month}")
+
+    view |> element("a", "更早") |> render_click()
+    assert_patch(view, ~p"/money?page=1")
+
+    assert has_element?(view, "a", "較近")
+  end
 end

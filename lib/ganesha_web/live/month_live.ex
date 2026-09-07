@@ -2,6 +2,7 @@ defmodule GaneshaWeb.MonthLive do
   use GaneshaWeb, :live_view
 
   alias Ganesha.{Clock, Repo, Roster, Studio}
+  alias GaneshaWeb.Fmt
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -82,94 +83,136 @@ defmodule GaneshaWeb.MonthLive do
     end
   end
 
+  # The month either side of the one on screen, for the header's navigation.
+  defp prev_month(%Date{} = month), do: month |> Date.beginning_of_month() |> Date.add(-1)
+  defp next_month(%Date{} = month), do: month |> Date.end_of_month() |> Date.add(1)
+
+  defp month_path(%Date{} = month), do: ~p"/month/#{month.year}/#{month.month}"
+
+  # The left rule carries the date's state.
+  defp session_rule(%{state: "cancelled"}), do: "border-sindoor"
+  defp session_rule(_session), do: "border-rule"
+
+  # A disclosure control that reads as quiet text, with the native marker gone
+  # and a 44px tap target kept.
+  defp summary_class do
+    "flex min-h-11 w-fit cursor-pointer list-none items-center text-sm text-ink-faint transition-colors hover:text-ink [&::-webkit-details-marker]:hidden"
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="pb-24">
-        <h1 class="text-lg font-semibold">{@month.year} 年 {@month.month} 月課表</h1>
+    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:month}>
+      <.page_header title={Fmt.month_title(@month)}>
+        <:actions>
+          <.button variant="quiet" navigate={month_path(prev_month(@month))} aria-label="上個月">
+            <.icon name="hero-chevron-left" class="size-5" />
+          </.button>
+          <.button variant="quiet" navigate={month_path(next_month(@month))} aria-label="下個月">
+            <.icon name="hero-chevron-right" class="size-5" />
+          </.button>
+          <.button variant="quiet" navigate={~p"/publish"}>發布課表</.button>
+        </:actions>
+      </.page_header>
+      <section
+        :for={%{slot: slot, sessions: sessions} <- @slots}
+        id={"slot-#{slot.id}"}
+        class="mt-8"
+      >
+        <div class="flex items-center gap-3 border-b border-rule pb-2">
+          <.seal weekday={slot.weekday} />
+          <div class="min-w-0 flex-1">
+            <h2 class="font-display text-lg leading-tight text-ink">{Fmt.slot_title(slot.label)}</h2>
+            <p class="mt-0.5 text-sm text-ink-soft">
+              {Fmt.time_range(slot.start_time, slot.end_time)} · {slot.default_style}
+            </p>
+          </div>
+          <.button
+            :if={sessions != []}
+            variant="quiet"
+            id={"enroll-slot-#{slot.id}"}
+            navigate={~p"/enroll/#{slot.id}/#{@month.year}/#{@month.month}"}
+          >
+            本月名單
+          </.button>
+        </div>
 
-        <section
-          :for={%{slot: slot, sessions: sessions} <- @slots}
-          id={"slot-#{slot.id}"}
-          class="mt-4 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <header class="flex items-start justify-between gap-3">
-            <h2 class="font-medium">{slot.label}</h2>
-            <button
-              :if={sessions == []}
+        <.empty :if={sessions == []} class="mt-3">
+          本月尚未建立課程。
+          <:action>
+            <.button
+              variant="primary"
               id={"generate-slot-#{slot.id}"}
               phx-click="generate"
               phx-value-slot-id={slot.id}
-              class="min-h-[44px] rounded-lg bg-emerald-600 px-3 text-sm text-white"
             >
-              建立本月
-            </button>
+              建立本月課程
+            </.button>
+          </:action>
+        </.empty>
+
+        <ul :if={sessions != []} class="mt-3 space-y-2">
+          <li
+            :for={session <- sessions}
+            data-date={session.date}
+            class={["border-l-[3px] pl-4", session_rule(session)]}
+          >
             <.link
-              :if={sessions != []}
-              id={"enroll-slot-#{slot.id}"}
-              navigate={~p"/enroll/#{slot.id}/#{@month.year}/#{@month.month}"}
-              class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm leading-[44px] dark:border-zinc-700"
+              navigate={~p"/sessions/#{session.id}"}
+              class="flex min-h-11 items-center gap-2 text-ink transition-colors hover:text-turmeric-ink"
             >
-              報名
+              <span class="font-display text-lg tabular-nums">{Fmt.short_date(session.date)}</span>
+              <.pill :if={session.style != slot.default_style} tone="turmeric">
+                {session.style}
+              </.pill>
+              <.pill :if={session.state == "cancelled"} tone="sindoor">已取消</.pill>
             </.link>
-          </header>
 
-          <ul class="mt-3 space-y-3">
-            <li
-              :for={session <- sessions}
-              data-date={session.date}
-              class="rounded-xl border border-zinc-200 p-3 dark:border-zinc-800"
+            <p
+              :if={session.state == "cancelled" and session.cancel_reason}
+              class="pb-2 text-xs text-sindoor-ink"
             >
-              <div class="flex items-center justify-between gap-2">
-                <span class="font-mono text-sm">{session.date}</span>
-                <span class={[
-                  "rounded-full px-2 py-0.5 text-xs",
-                  session.state == "cancelled" && "bg-red-100 text-red-700",
-                  session.state == "scheduled" && "bg-zinc-100 text-zinc-600"
-                ]}>
-                  <%= if session.state == "cancelled" do %>
-                    已停課 · {session.cancel_reason}
-                  <% else %>
-                    {session.style}
-                  <% end %>
-                </span>
-              </div>
+              {session.cancel_reason}
+            </p>
 
-              <div :if={session.state == "scheduled"} class="mt-2 flex flex-wrap gap-2">
-                <form id={"style-form-#{session.id}"} phx-submit="set_style" class="flex gap-2">
+            <details :if={session.state == "scheduled"} class="pb-1">
+              <summary class={summary_class()}>調整</summary>
+
+              <div class="mt-1 space-y-4 pb-3">
+                <form
+                  id={"style-form-#{session.id}"}
+                  phx-submit="set_style"
+                  class="flex items-end gap-2"
+                >
                   <input type="hidden" name="session-id" value={session.id} />
-                  <input
-                    type="text"
-                    name="style"
-                    value={session.style}
-                    required
-                    class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-                  />
-                  <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
-                    改課型
-                  </button>
+                  <div class="flex-1">
+                    <.input type="text" name="style" value={session.style} label="課型" required />
+                  </div>
+                  <.button variant="primary">更新課型</.button>
                 </form>
 
-                <form id={"cancel-form-#{session.id}"} phx-submit="cancel" class="flex gap-2">
+                <form
+                  id={"cancel-form-#{session.id}"}
+                  phx-submit="cancel"
+                  class="flex items-end gap-2"
+                >
                   <input type="hidden" name="session-id" value={session.id} />
-                  <input
-                    type="text"
-                    name="reason"
-                    placeholder="停課原因"
-                    class="min-h-[44px] w-28 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-                  />
-                  <button class="min-h-[44px] rounded-lg border border-red-300 px-3 text-sm text-red-700">
-                    停課
-                  </button>
+                  <div class="flex-1">
+                    <.input
+                      type="text"
+                      name="reason"
+                      value=""
+                      label="停課原因"
+                      placeholder="例如：颱風假"
+                    />
+                  </div>
+                  <.button variant="danger">停課</.button>
                 </form>
               </div>
-            </li>
-          </ul>
-        </section>
-      </div>
-
-      <Layouts.bottom_nav active={:month} />
+            </details>
+          </li>
+        </ul>
+      </section>
     </Layouts.app>
     """
   end

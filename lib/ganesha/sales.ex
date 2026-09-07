@@ -46,6 +46,23 @@ defmodule Ganesha.Sales do
     )
   end
 
+  @doc """
+  The set of package ids this student has ever bought.
+
+  Feeds `Catalog.package_available?/2`: a package closed to new students may
+  still be open to renewal for whoever already holds it.
+  """
+  @spec purchased_package_ids_for_student(integer()) :: MapSet.t(integer())
+  def purchased_package_ids_for_student(student_id) do
+    Repo.all(
+      from p in Purchase,
+        where: p.student_id == ^student_id,
+        distinct: true,
+        select: p.package_id
+    )
+    |> MapSet.new()
+  end
+
   alias Ganesha.Sales.Payment
 
   def record_payment(attrs) do

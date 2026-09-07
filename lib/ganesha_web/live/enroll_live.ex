@@ -2,6 +2,7 @@ defmodule GaneshaWeb.EnrollLive do
   use GaneshaWeb, :live_view
 
   alias Ganesha.{Catalog, Clock, Enrolling, People, Reporting, Roster, Sales, Studio}
+  alias GaneshaWeb.Fmt
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -37,7 +38,7 @@ defmodule GaneshaWeb.EnrollLive do
     |> assign(:sessions, sessions)
     |> assign(:scheduled, scheduled)
     |> assign(:students, People.list_active_students())
-    |> assign(:packages, Catalog.list_active_packages())
+    |> assign(:packages, Catalog.list_selectable_packages())
     |> assign(:enrollments, enrollments_for(scheduled))
   end
 
@@ -77,14 +78,21 @@ defmodule GaneshaWeb.EnrollLive do
     chosen =
       Enum.filter(socket.assigns.scheduled, &(to_string(&1.id) in session_ids))
 
+    student = Enum.find(socket.assigns.students, &(to_string(&1.id) == params["student_id"]))
+    package = Enum.find(socket.assigns.packages, &(to_string(&1.id) == params["package_id"]))
+
     cond do
       chosen == [] ->
         {:noreply, put_flash(socket, :error, "請選擇上課日期")}
 
-      true ->
-        student = Enum.find(socket.assigns.students, &(to_string(&1.id) == params["student_id"]))
-        package = Enum.find(socket.assigns.packages, &(to_string(&1.id) == params["package_id"]))
+      student && package &&
+          not Catalog.package_available?(
+            package,
+            Sales.purchased_package_ids_for_student(student.id)
+          ) ->
+        {:noreply, put_flash(socket, :error, "此方案已停用，僅開放曾購買過的學生續購")}
 
+      true ->
         case Enrolling.enroll_month(%{
                student: student,
                slot: socket.assigns.slot,
@@ -126,152 +134,213 @@ defmodule GaneshaWeb.EnrollLive do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
+  defp student_options(students), do: Enum.map(students, &{&1.display_name, &1.id})
+
+  defp package_options(packages) do
+    Enum.map(packages, &{"#{&1.name}（#{Fmt.amount(&1.price_per_class)}／堂）", &1.id})
+  end
+
+  defp payment_methods do
+    Enum.map(~w(line_pay line_bank cash other), &{Fmt.method(&1), &1})
+  end
+
+  # The left rule carries how much of this month is still owed.
+  defp purchase_rule(%{payable: payable, paid: paid}) when payable > 0 and paid >= payable,
+    do: "border-celadon"
+
+  defp purchase_rule(%{payable: payable, paid: paid}) when payable - paid > 0,
+    do: "border-turmeric"
+
+  defp purchase_rule(_row), do: "border-ink"
+
+  # `Reporting.purchase_period/1` aggregates the date column, so the value
+  # arrives as a Date or as its ISO string depending on the adapter.
+  defp period_text(%{first: first, last: last}), do: "#{period_date(first)}–#{period_date(last)}"
+
+  defp period_date(%Date{} = date), do: Fmt.short_date(date)
+
+  defp period_date(iso) when is_binary(iso) do
+    case Date.from_iso8601(iso) do
+      {:ok, date} -> Fmt.short_date(date)
+      _ -> iso
+    end
+  end
+
+  defp summary_class do
+    "flex min-h-11 w-fit cursor-pointer list-none items-center text-sm text-ink-faint transition-colors hover:text-ink [&::-webkit-details-marker]:hidden"
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="pb-24">
-        <h1 class="text-lg font-semibold">{@slot.label}</h1>
-        <p class="text-sm text-zinc-500">{@month.year} 年 {@month.month} 月報名</p>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      nav={:month}
+      back={~p"/month/#{@month.year}/#{@month.month}"}
+    >
+      <div class="flex items-start gap-3" aria-label={@slot.label}>
+        <.seal weekday={@slot.weekday} size="lg" class="mt-1" />
+        <div class="min-w-0 flex-1">
+          <.page_header title={Fmt.slot_title(@slot.label)}>
+            <:subtitle>{Fmt.month_title(@month)}</:subtitle>
+          </.page_header>
+        </div>
+      </div>
 
-        <form
-          id="enroll-form"
-          phx-submit="enroll"
-          class="mt-4 space-y-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
-        >
-          <label class="block text-sm">
-            學生
-            <select
-              name="student_id"
-              class="mt-1 min-h-[44px] w-full rounded-lg border-zinc-300 dark:bg-zinc-900"
-            >
-              <option :for={student <- @students} value={student.id}>{student.display_name}</option>
-            </select>
-          </label>
+      <.section title="新增名單">
+        <form id="enroll-form" phx-submit="enroll" class="space-y-4">
+          <.input
+            type="select"
+            name="student_id"
+            value={nil}
+            label="學生"
+            options={student_options(@students)}
+          />
 
-          <label class="block text-sm">
-            方案
-            <select
-              name="package_id"
-              class="mt-1 min-h-[44px] w-full rounded-lg border-zinc-300 dark:bg-zinc-900"
-            >
-              <option :for={package <- @packages} value={package.id}>
-                {package.name}（{package.price_per_class}／堂）
-              </option>
-            </select>
-          </label>
+          <.input
+            type="select"
+            name="package_id"
+            value={nil}
+            label="方案"
+            options={package_options(@packages)}
+          />
 
           <fieldset>
-            <legend class="text-sm">上課日期</legend>
-            <div class="mt-1 flex flex-wrap gap-2">
-              <label
-                :for={session <- @scheduled}
-                class="flex min-h-[44px] items-center gap-2 rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700"
-              >
+            <legend class="mb-1.5 text-xs text-ink-soft">上課日期</legend>
+
+            <div :if={@scheduled != []} class="flex flex-wrap gap-2">
+              <label :for={session <- @scheduled} class="cursor-pointer">
                 <input
                   type="checkbox"
                   id={"session-check-#{session.id}"}
                   name="session_ids[]"
                   value={session.id}
                   checked
-                  class="size-5"
+                  class="peer sr-only"
                 />
-                {session.date.month}/{session.date.day}
+                <span class="flex min-h-11 items-center gap-1 border border-rule-strong px-3 text-ink transition-colors peer-checked:border-turmeric peer-checked:bg-turmeric-lift peer-checked:text-turmeric-ink peer-focus-visible:border-turmeric peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-turmeric">
+                  <span class="font-display tabular-nums">{Fmt.short_date(session.date)}</span>
+                  <span :if={session.style != @slot.default_style} class="text-xs">
+                    *{session.style}
+                  </span>
+                </span>
               </label>
             </div>
+
+            <p :if={@scheduled == []} class="text-sm text-ink-soft">
+              本月尚未建立課程，請先回到課表建立。
+            </p>
           </fieldset>
 
-          <div class="flex flex-wrap gap-2 border-t border-zinc-200 pt-3 dark:border-zinc-800">
-            <.link
-              :for={session <- @scheduled}
-              id={"open-session-#{session.id}"}
-              navigate={~p"/sessions/#{session.id}"}
-              class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm leading-[44px] dark:border-zinc-700"
-            >
-              {session.date.month}/{session.date.day} 名單
-            </.link>
-          </div>
-
-          <div class="flex flex-wrap gap-2">
-            <input
+          <div>
+            <.input
               type="number"
               name="custom_amount"
-              placeholder="自訂金額（可留空）"
-              class="min-h-[44px] flex-1 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+              value=""
+              label="整月金額（留空則依方案計算）"
+              inputmode="numeric"
             />
-            <input
-              type="text"
-              name="note"
-              placeholder="備註"
-              class="min-h-[44px] flex-1 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
+            <p class="mt-1 text-xs text-ink-faint">常用金額 400、450、800、900、1,200、1,600</p>
           </div>
 
-          <button class="min-h-[44px] w-full rounded-lg bg-emerald-600 text-sm text-white">
-            加入名單
-          </button>
+          <.input type="text" name="note" value="" label="備註" placeholder="例如：友情價" />
+
+          <.button variant="primary">加入名單</.button>
         </form>
 
-        <h2 class="mt-6 text-sm font-medium text-zinc-500">本月名單</h2>
-        <section
+        <div :if={@scheduled != []} class="mt-6 border-t border-rule pt-2">
+          <p class="text-xs text-ink-soft">開啟單日名單</p>
+          <div class="flex flex-wrap">
+            <.button
+              :for={session <- @scheduled}
+              variant="quiet"
+              id={"open-session-#{session.id}"}
+              navigate={~p"/sessions/#{session.id}"}
+            >
+              <span class="font-display tabular-nums">{Fmt.short_date(session.date)}</span>
+            </.button>
+          </div>
+        </div>
+      </.section>
+
+      <.section title="本月名單" count={length(@enrollments)}>
+        <.empty :if={@enrollments == []} id="no-enrollments">
+          本月還沒有人報名。在上面選好學生與日期，加入第一位。
+        </.empty>
+
+        <div
           :for={row <- @enrollments}
           id={"purchase-#{row.purchase.id}"}
-          class="mt-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
+          class={["mt-5 border-l-[3px] pl-4", purchase_rule(row)]}
         >
-          <header class="flex items-baseline justify-between gap-2">
-            <.link navigate={~p"/students/#{row.student.id}"} class="font-medium">
+          <div class="flex items-baseline justify-between gap-3">
+            <.link
+              navigate={~p"/students/#{row.student.id}"}
+              class="font-display text-lg text-ink transition-colors hover:text-turmeric-ink"
+            >
               {row.student.display_name}
             </.link>
-            <span class="font-mono text-sm">
-              NT$ {row.paid} / {row.payable}
-            </span>
-          </header>
 
-          <p :if={row.period} class="mt-1 text-xs text-zinc-500">
-            {row.period.first} – {row.period.last}
-          </p>
+            <.money
+              :if={row.payable - row.paid > 0}
+              amount={row.payable - row.paid}
+              label="待收"
+              tone="turmeric"
+            />
+            <.pill :if={row.paid >= row.payable} tone="celadon">已收齊</.pill>
+          </div>
 
-          <form
-            id={"payment-form-#{row.purchase.id}"}
-            phx-submit="record_payment"
-            class="mt-3 flex flex-wrap gap-2"
+          <div
+            class="mt-1 flex flex-wrap items-baseline gap-x-4"
+            aria-label={"NT$ #{row.paid} / #{row.payable}"}
           >
-            <input type="hidden" name="purchase-id" value={row.purchase.id} />
-            <input
-              type="number"
-              name="amount"
-              placeholder="金額"
-              value={row.payable - row.paid}
-              class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-            <select
-              name="method"
-              class="min-h-[44px] rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            <span :if={row.period} class="font-display text-xs tabular-nums text-ink-faint">
+              {period_text(row.period)}
+            </span>
+            <.money amount={row.paid} label="已收" size="sm" tone="soft" />
+            <.money amount={row.payable} label="應收" size="sm" tone="soft" />
+          </div>
+
+          <details class="mt-1">
+            <summary class={summary_class()}>記錄收款</summary>
+
+            <form
+              id={"payment-form-#{row.purchase.id}"}
+              phx-submit="record_payment"
+              class="mt-1 space-y-3 pb-3"
             >
-              <option value="line_pay">Line Pay</option>
-              <option value="line_bank">LINE Bank</option>
-              <option value="cash">現金</option>
-              <option value="other">其他</option>
-            </select>
-            <input
-              type="text"
-              name="reported_last5"
-              placeholder="帳後五碼"
-              inputmode="numeric"
-              class="min-h-[44px] w-28 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
-            />
-            <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
-              記錄
-            </button>
-          </form>
-        </section>
+              <input type="hidden" name="purchase-id" value={row.purchase.id} />
 
-        <p :if={@enrollments == []} id="no-enrollments" class="mt-3 text-sm text-zinc-400">
-          還沒有人報名
-        </p>
-      </div>
+              <.input
+                type="number"
+                name="amount"
+                value={row.payable - row.paid}
+                label="金額"
+                inputmode="numeric"
+              />
 
-      <Layouts.bottom_nav active={:month} />
+              <.input
+                type="select"
+                name="method"
+                value="line_pay"
+                label="收款方式"
+                options={payment_methods()}
+              />
+
+              <.input
+                type="text"
+                name="reported_last5"
+                value=""
+                label="帳號末五碼（選填）"
+                inputmode="numeric"
+              />
+
+              <.button variant="accent">記錄收款</.button>
+            </form>
+          </details>
+        </div>
+      </.section>
     </Layouts.app>
     """
   end

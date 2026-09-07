@@ -29,29 +29,35 @@ defmodule GaneshaWeb.StudentLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="pb-24">
-        <h1 class="text-lg font-semibold">學生</h1>
+    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:students}>
+      <.page_header title="學生" />
 
-        <.form for={@form} id="student-form" phx-submit="save" class="mt-3 flex items-end gap-2">
-          <.input field={@form[:display_name]} type="text" placeholder="姓名" />
-          <button class="min-h-[44px] rounded-lg bg-emerald-600 px-4 text-sm text-white">新增</button>
+      <.section title="新增學生">
+        <.form for={@form} id="student-form" phx-submit="save" class="flex items-start gap-2">
+          <div class="flex-1">
+            <.input field={@form[:display_name]} type="text" placeholder="姓名" />
+          </div>
+          <.button variant="primary">加入學生</.button>
         </.form>
+      </.section>
 
-        <ul id="students" phx-update="stream" class="mt-4 space-y-2">
-          <li :for={{dom_id, student} <- @streams.students} id={dom_id}>
+      <.section title="全部學生">
+        <ul id="students" phx-update="stream" class="space-y-1">
+          <li
+            :for={{dom_id, student} <- @streams.students}
+            id={dom_id}
+            class="border-l-[3px] border-rule"
+          >
             <.link
               navigate={~p"/students/#{student.id}"}
-              class="flex min-h-[56px] items-center justify-between rounded-xl border border-zinc-200 px-4 dark:border-zinc-800"
+              class="flex min-h-11 items-center justify-between gap-3 py-1.5 pl-4 transition-colors hover:bg-sunk"
             >
-              <span>{student.display_name}</span>
-              <.icon name="hero-chevron-right" class="w-5 h-5 text-zinc-400" />
+              <span class="font-display text-lg text-ink">{student.display_name}</span>
+              <.pill :if={!student.active} tone="quiet">停用</.pill>
             </.link>
           </li>
         </ul>
-      </div>
-
-      <Layouts.bottom_nav active={:students} />
+      </.section>
     </Layouts.app>
     """
   end

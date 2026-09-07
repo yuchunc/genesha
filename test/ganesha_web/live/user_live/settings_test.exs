@@ -12,8 +12,8 @@ defmodule GaneshaWeb.UserLive.SettingsTest do
         |> log_in_user(user_fixture())
         |> live(~p"/users/settings")
 
-      assert html =~ "變更電子郵件"
-      assert html =~ "儲存密碼"
+      assert html =~ ~s(id="email_form")
+      assert html =~ ~s(id="password_form")
     end
 
     test "redirects if user is not logged in", %{conn: conn} do
@@ -70,7 +70,7 @@ defmodule GaneshaWeb.UserLive.SettingsTest do
           "user" => %{"email" => "with spaces"}
         })
 
-      assert result =~ "變更電子郵件"
+      assert result =~ "更新 Email"
       assert result =~ "must have the @ sign and no spaces"
     end
 
@@ -84,7 +84,7 @@ defmodule GaneshaWeb.UserLive.SettingsTest do
         })
         |> render_submit()
 
-      assert result =~ "變更電子郵件"
+      assert result =~ "更新 Email"
       assert result =~ "did not change"
     end
   end
@@ -136,7 +136,7 @@ defmodule GaneshaWeb.UserLive.SettingsTest do
           }
         })
 
-      assert result =~ "儲存密碼"
+      assert result =~ "更新密碼"
       assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
     end
@@ -154,7 +154,7 @@ defmodule GaneshaWeb.UserLive.SettingsTest do
         })
         |> render_submit()
 
-      assert result =~ "儲存密碼"
+      assert result =~ "更新密碼"
       assert result =~ "should be at least 12 character(s)"
       assert result =~ "does not match password"
     end

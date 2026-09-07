@@ -13,6 +13,40 @@ defmodule Ganesha.Catalog do
     Repo.all(from p in Package, where: p.active, order_by: p.name)
   end
 
+  @doc """
+  Active packages, plus inactive ones still open to grandfathered renewal.
+
+  This is the pool a package dropdown draws from before a specific student is
+  known. `package_available?/2` narrows it to what one student may actually
+  buy.
+  """
+  def list_selectable_packages do
+    Repo.all(
+      from p in Package,
+        where: p.active or p.grandfather_strategy == "past_purchasers",
+        order_by: p.name
+    )
+  end
+
+  @doc """
+  Whether `package` is open to a student who has previously bought the
+  packages in `purchased_package_ids`.
+
+  An active package is open to anyone. An inactive one is open only under its
+  grandfather strategy — today, only to a student who already holds it.
+  """
+  @spec package_available?(Package.t(), MapSet.t(integer()) | [integer()]) :: boolean()
+  def package_available?(%Package{active: true}, _purchased_package_ids), do: true
+
+  def package_available?(
+        %Package{active: false, grandfather_strategy: "past_purchasers"} = package,
+        purchased_package_ids
+      ) do
+    package.id in purchased_package_ids
+  end
+
+  def package_available?(%Package{active: false}, _purchased_package_ids), do: false
+
   def get_package!(id), do: Repo.get!(Package, id)
 
   def create_package(attrs) do

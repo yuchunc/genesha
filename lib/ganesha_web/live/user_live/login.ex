@@ -7,89 +7,79 @@ defmodule GaneshaWeb.UserLive.Login do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="mx-auto max-w-sm space-y-4">
-        <div class="text-center">
-          <.header>
-            <p>登入</p>
-            <:subtitle :if={@current_scope}>
-              進行敏感操作前請重新驗證身分
-            </:subtitle>
-          </.header>
-        </div>
+      <div class="mx-auto max-w-sm py-8">
+        <.page_header title="登入">
+          <:subtitle :if={@current_scope}>進行敏感操作前請重新驗證身分</:subtitle>
+          <:subtitle :if={!@current_scope}>教室的課表與帳簿</:subtitle>
+        </.page_header>
 
         <div
           :if={local_mail_adapter?()}
-          class="flex gap-3 rounded-lg border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900 dark:border-sky-800 dark:bg-sky-950 dark:text-sky-100"
+          class="mb-8 border-l-[3px] border-turmeric bg-turmeric-lift py-3 pl-4 text-sm text-ink-soft"
         >
-          <.icon name="hero-information-circle" class="size-6 shrink-0" />
-          <div>
-            <p>目前使用本機郵件轉接器。</p>
-            <p>
-              若要查看已寄出的郵件，請前往 <.link href="/dev/mailbox" class="underline">信箱頁面</.link>。
-            </p>
-          </div>
+          <p>目前使用本機郵件轉接器。</p>
+          <p>
+            若要查看已寄出的郵件，請前往 <.link href="/dev/mailbox" class="text-turmeric-ink underline">信箱頁面</.link>。
+          </p>
         </div>
 
-        <.form
-          :let={f}
-          for={@form}
-          id="login_form_magic"
-          action={~p"/users/log-in"}
-          phx-submit="submit_magic"
-        >
-          <.input
-            readonly={!!@current_scope}
-            field={f[:email]}
-            type="email"
-            label="電子郵件"
-            autocomplete="username"
-            spellcheck="false"
-            required
-            phx-mounted={JS.focus()}
-          />
-          <.button variant="primary">
-            以電子郵件登入 <span aria-hidden="true">→</span>
-          </.button>
-        </.form>
+        <.section title="用電子郵件連結登入">
+          <.form
+            :let={f}
+            for={@form}
+            id="login_form_magic"
+            action={~p"/users/log-in"}
+            phx-submit="submit_magic"
+            class="grid gap-4"
+          >
+            <.input
+              readonly={!!@current_scope}
+              field={f[:email]}
+              type="email"
+              label="電子郵件"
+              autocomplete="username"
+              spellcheck="false"
+              required
+              phx-mounted={JS.focus()}
+            />
+            <.button variant="primary">以電子郵件登入</.button>
+          </.form>
+        </.section>
 
-        <div class="flex items-center gap-3 text-sm text-stone-500">
-          <span class="h-px flex-1 bg-stone-200 dark:bg-stone-700"></span>
-          或 <span class="h-px flex-1 bg-stone-200 dark:bg-stone-700"></span>
-        </div>
-
-        <.form
-          :let={f}
-          for={@form}
-          id="login_form_password"
-          action={~p"/users/log-in"}
-          phx-submit="submit_password"
-          phx-trigger-action={@trigger_submit}
-        >
-          <.input
-            readonly={!!@current_scope}
-            field={f[:email]}
-            type="email"
-            label="電子郵件"
-            autocomplete="username"
-            spellcheck="false"
-            required
-          />
-          <.input
-            field={@form[:password]}
-            type="password"
-            label="密碼"
-            autocomplete="current-password"
-            spellcheck="false"
-          />
-          <div class="space-y-2">
-            <.button variant="primary" name={@form[:remember_me].name} value="true">
-              登入並保持登入 <span aria-hidden="true">→</span>
-            </.button>
-            <.button variant="primary">
-              僅此次登入
-            </.button>
-          </div>
-        </.form>
+        <.section title="用密碼登入">
+          <.form
+            :let={f}
+            for={@form}
+            id="login_form_password"
+            action={~p"/users/log-in"}
+            phx-submit="submit_password"
+            phx-trigger-action={@trigger_submit}
+            class="grid gap-4"
+          >
+            <.input
+              readonly={!!@current_scope}
+              field={f[:email]}
+              type="email"
+              label="電子郵件"
+              autocomplete="username"
+              spellcheck="false"
+              required
+            />
+            <.input
+              field={f[:password]}
+              type="password"
+              label="密碼"
+              autocomplete="current-password"
+              spellcheck="false"
+            />
+            <div class="grid gap-2">
+              <.button variant="primary" name={f[:remember_me].name} value="true">
+                登入並保持登入
+              </.button>
+              <.button>僅此次登入</.button>
+            </div>
+          </.form>
+        </.section>
       </div>
     </Layouts.app>
     """

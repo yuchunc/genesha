@@ -6,7 +6,8 @@ defmodule Ganesha.ReportingTest do
     Catalog.create_package(%{
       name: "月課程-#{System.unique_integer([:positive])}",
       kind: "monthly",
-      price_per_class: 400
+      price_per_class: 400,
+      included_makeups: 1
     })
   end
 
@@ -97,6 +98,57 @@ defmodule Ganesha.ReportingTest do
     assert Reporting.revenue_for_month(~D[2026-09-01]) == 0
   end
 
+  describe "revenue_by_method_for_month/1" do
+    test "groups confirmed revenue by method, ordered, zero-filled" do
+      {:ok, student} = People.create_student(%{display_name: "彩華"})
+      {:ok, pkg} = monthly_package()
+
+      {:ok, cash_purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, cash_payment} =
+        Sales.record_payment(%{
+          purchase_id: cash_purchase.id,
+          amount: 400,
+          method: "cash",
+          paid_on: ~D[2026-08-05]
+        })
+
+      {:ok, _} = Sales.confirm_payment(cash_payment, "teacher@example.com")
+
+      {:ok, line_pay_purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 800})
+
+      {:ok, line_pay_payment} =
+        Sales.record_payment(%{
+          purchase_id: line_pay_purchase.id,
+          amount: 800,
+          method: "line_pay",
+          paid_on: ~D[2026-08-10]
+        })
+
+      {:ok, _} = Sales.confirm_payment(line_pay_payment, "teacher@example.com")
+
+      assert Reporting.revenue_by_method_for_month(~D[2026-08-01]) == [
+               {"line_pay", 800},
+               {"line_bank", 0},
+               {"cash", 400},
+               {"other", 0}
+             ]
+    end
+
+    test "leaves out unconfirmed claims and other months" do
+      august_sale(1200, confirm: false)
+
+      assert Reporting.revenue_by_method_for_month(~D[2026-08-01]) == [
+               {"line_pay", 0},
+               {"line_bank", 0},
+               {"cash", 0},
+               {"other", 0}
+             ]
+    end
+  end
+
   test "tax_threshold_status/1 stays quiet at low revenue" do
     august_sale(1200)
     status = Reporting.tax_threshold_status(~D[2026-08-01])
@@ -132,5 +184,159 @@ defmodule Ganesha.ReportingTest do
       Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1600})
 
     assert Reporting.purchase_period(purchase.id) == nil
+  end
+
+  describe "month_lanes/1" do
+    test "a makeup that did not show up is counted as both" do
+      # kind and state are independent facts. A makeup can also be a no-show,
+      # and a tally that lets one claim the row loses the other.
+      month = ~D[2026-08-01]
+      {_slot_a, [to_cancel | _]} = slot_with_sessions(1, month)
+      {slot_b, [target | _]} = slot_with_sessions(3, month)
+
+      {:ok, student} = People.create_student(%{display_name: "蘭子"})
+      {:ok, pkg} = monthly_package()
+
+      {:ok, purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, _} = Roster.enroll(to_cancel, student, purchase)
+      {:ok, cancelled} = Studio.cancel_session(to_cancel, "颱風假")
+      {:ok, [credit]} = Roster.issue_cancellation_credits(cancelled)
+      {:ok, attendance} = Roster.book_makeup(target, student, credit)
+      {:ok, _} = Roster.mark_no_show(attendance)
+
+      entry = lane_entry(Reporting.month_lanes(month), slot_b.id, target.id)
+
+      assert entry.total == 1
+      assert entry.makeup == 1
+      assert entry.no_show == 1
+      assert entry.expected == 0
+    end
+
+    test "a date nobody signed up for tallies zero rather than going missing" do
+      month = ~D[2026-08-01]
+      {slot, [first | _]} = slot_with_sessions(1, month)
+
+      entry = lane_entry(Reporting.month_lanes(month), slot.id, first.id)
+
+      assert entry.total == 0
+      assert entry.expected == 0
+    end
+
+    test "counts only the month asked for" do
+      {slot, _august} = slot_with_sessions(1, ~D[2026-08-01])
+      {:ok, [september | _]} = Studio.generate_month(slot, ~D[2026-09-01])
+
+      {:ok, student} = People.create_student(%{display_name: "彩華"})
+      {:ok, pkg} = monthly_package()
+
+      {:ok, purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, _} = Roster.enroll(september, student, purchase)
+
+      august_lane = Enum.find(Reporting.month_lanes(~D[2026-08-01]), &(&1.slot.id == slot.id))
+
+      assert Enum.all?(august_lane.sessions, &(&1.total == 0))
+      refute Enum.any?(august_lane.sessions, &(&1.session.date.month == 9))
+    end
+  end
+
+  describe "open_credits/0" do
+    test "orders by expiry with never-expiring credits last" do
+      month = ~D[2026-08-01]
+      {_slot, [early, late | _]} = slot_with_sessions(1, month)
+
+      {:ok, student} = People.create_student(%{display_name: "宜群"})
+      {:ok, pkg} = monthly_package()
+
+      # A package credit expires at the end of its month; a cancellation credit
+      # never expires, so it is never the urgent one.
+      {:ok, package_purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, _} = Roster.enroll(early, student, package_purchase)
+      {:ok, [package_credit]} = Roster.mint_package_credits(package_purchase)
+
+      {:ok, other_purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, _} = Roster.enroll(late, student, other_purchase)
+      {:ok, cancelled} = Studio.cancel_session(late, "颱風假")
+      {:ok, [cancellation_credit]} = Roster.issue_cancellation_credits(cancelled)
+
+      assert cancellation_credit.expires_on == nil
+
+      assert Enum.map(Reporting.open_credits(~D[2026-08-01]), & &1.id) == [
+               package_credit.id,
+               cancellation_credit.id
+             ]
+    end
+
+    test "leaves out credits that are spent or already lapsed" do
+      month = ~D[2026-08-01]
+      {_slot_a, [origin | _]} = slot_with_sessions(1, month)
+      {_slot_b, [target | _]} = slot_with_sessions(3, month)
+
+      {:ok, student} = People.create_student(%{display_name: "允一"})
+      {:ok, pkg} = monthly_package()
+
+      {:ok, purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, _} = Roster.enroll(origin, student, purchase)
+      {:ok, [credit]} = Roster.mint_package_credits(purchase)
+
+      # Past its August expiry, the credit is gone from the open list.
+      assert Reporting.open_credits(~D[2026-09-01]) == []
+
+      # And spending it removes it even inside its own month.
+      {:ok, _attendance} = Roster.book_makeup(target, student, credit)
+      assert Reporting.open_credits(~D[2026-08-01]) == []
+    end
+  end
+
+  describe "payments_for_month/1" do
+    test "includes claims she has not confirmed yet" do
+      # Revenue counts confirmed money only, but this list is her work queue:
+      # dropping unconfirmed rows would hide the payments needing a decision.
+      august_sale(1200, confirm: false)
+
+      assert [payment] = Reporting.payments_for_month(~D[2026-08-01])
+      assert payment.state == "claimed"
+      assert payment.amount == 1200
+      assert payment.purchase.student.display_name
+    end
+
+    test "keys on when the money arrived, not on the classes it paid for" do
+      august_sale(1200)
+
+      assert Reporting.payments_for_month(~D[2026-09-01]) == []
+      assert length(Reporting.payments_for_month(~D[2026-08-01])) == 1
+    end
+  end
+
+  defp slot_with_sessions(weekday, month) do
+    start_time = Time.add(~T[09:30:00], System.unique_integer([:positive]), :second)
+
+    {:ok, slot} =
+      Studio.create_slot(%{
+        weekday: weekday,
+        start_time: start_time,
+        end_time: Time.add(start_time, 75, :minute),
+        default_style: "基礎",
+        label: "slot-#{System.unique_integer([:positive])}"
+      })
+
+    {:ok, sessions} = Studio.generate_month(slot, month)
+    {slot, sessions}
+  end
+
+  defp lane_entry(lanes, slot_id, session_id) do
+    lanes
+    |> Enum.find(&(&1.slot.id == slot_id))
+    |> Map.fetch!(:sessions)
+    |> Enum.find(&(&1.session.id == session_id))
   end
 end
