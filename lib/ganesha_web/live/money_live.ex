@@ -57,14 +57,15 @@ defmodule GaneshaWeb.MoneyLive do
   end
 
   # A page of history, strictly before the current cycle — which already has
-  # its own card above and would be a redundant first row here.
+  # its own card above and would be a redundant first row here. Only months
+  # that have actually closed appear; there is no synthetic zero-revenue
+  # filler for months before the studio had any data.
   defp previous_cycles(current_month, page) do
-    first_offset = 1 + page * @cycles_per_page
-
-    for offset <- first_offset..(first_offset + @cycles_per_page - 1) do
-      month = Date.shift(current_month, month: -offset)
-      %{month: month, revenue: Reporting.revenue_for_month(month)}
-    end
+    Reporting.list_closed_months(
+      before: current_month,
+      limit: @cycles_per_page,
+      offset: page * @cycles_per_page
+    )
   end
 
   defp bar_height(_revenue, 0), do: 0
@@ -214,6 +215,8 @@ defmodule GaneshaWeb.MoneyLive do
             </.link>
           </li>
         </ul>
+
+        <.empty :if={@cycles == []} id="no-history">尚無歷史紀錄。</.empty>
       </.section>
     </Layouts.app>
     """

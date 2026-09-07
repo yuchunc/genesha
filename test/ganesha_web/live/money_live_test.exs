@@ -1,7 +1,7 @@
 defmodule GaneshaWeb.MoneyLiveTest do
   use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
-  alias Ganesha.{Catalog, Clock, People, Sales}
+  alias Ganesha.{Catalog, Clock, People, Reporting, Sales}
 
   setup :register_and_log_in_user
 
@@ -93,5 +93,38 @@ defmodule GaneshaWeb.MoneyLiveTest do
     assert_patch(view, ~p"/money?page=1")
 
     assert has_element?(view, "a", "較近")
+  end
+
+  test "shows a closed month's frozen revenue in history", %{conn: conn} do
+    past_month = Date.shift(Date.beginning_of_month(Clock.today()), month: -1)
+    {:ok, student} = People.create_student(%{display_name: "Lulu"})
+
+    {:ok, pkg} =
+      Catalog.create_package(%{name: "月課程", kind: "monthly", price_per_class: 400})
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1600})
+
+    {:ok, payment} =
+      Sales.record_payment(%{
+        purchase_id: purchase.id,
+        amount: 1600,
+        method: "cash",
+        paid_on: past_month
+      })
+
+    {:ok, _} = Sales.confirm_payment(payment, "teacher@example.com")
+    {:ok, _} = Reporting.close_month(past_month)
+
+    {:ok, view, _html} = live(conn, ~p"/money")
+
+    assert has_element?(view, "#cycle-#{past_month.year}-#{past_month.month}")
+    html = view |> element("#cycle-#{past_month.year}-#{past_month.month}") |> render()
+    assert html =~ "1,600"
+  end
+
+  test "history shows nothing when no month has closed yet", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/money")
+    assert has_element?(view, "#no-history")
   end
 end
