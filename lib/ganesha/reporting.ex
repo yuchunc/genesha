@@ -124,6 +124,10 @@ defmodule Ganesha.Reporting do
   Upserts — calling this again for an already-closed month overwrites it.
   That's how a payment confirmed after its month has closed refreshes the
   frozen snapshot.
+
+  `tax_threshold` is recorded for potential future use; nothing in this
+  codebase reads it back today — the tax gauge always uses the live
+  `@monthly_threshold` module attribute.
   """
   @spec close_month(Date.t()) :: {:ok, MonthlyClose.t()}
   def close_month(%Date{} = month) do

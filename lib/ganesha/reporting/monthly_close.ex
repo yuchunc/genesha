@@ -5,6 +5,9 @@ defmodule Ganesha.Reporting.MonthlyClose do
   One row per month. `revenue` and `revenue_by_method` are snapshots taken
   at close time (or refreshed by a later confirmation landing in an
   already-closed month) — never recomputed on read.
+
+  `tax_threshold` is a snapshot of the threshold in effect at close time,
+  recorded for potential future use. Nothing currently reads it back.
   """
   use Ecto.Schema
   import Ecto.Changeset

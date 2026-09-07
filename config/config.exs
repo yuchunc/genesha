@@ -26,7 +26,12 @@ config :ganesha,
 
 config :ganesha, Oban,
   repo: Ganesha.Repo,
-  engine: Oban.Engines.Lite
+  engine: Oban.Engines.Lite,
+  queues: [default: 5],
+  plugins: [
+    Oban.Plugins.Pruner,
+    {Oban.Plugins.Cron, crontab: [{"10 16 * * *", Ganesha.Reporting.CloseMonthWorker}]}
+  ]
 
 # Configure the endpoint
 config :ganesha, GaneshaWeb.Endpoint,

@@ -7,6 +7,8 @@ defmodule Ganesha.Application do
 
   @impl true
   def start(_type, _args) do
+    Oban.Telemetry.attach_default_logger(level: :info)
+
     children = [
       GaneshaWeb.Telemetry,
       Ganesha.Repo,

@@ -7,13 +7,6 @@ config :ganesha, Ganesha.Repo,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
 
-config :ganesha, Oban,
-  queues: [default: 5],
-  plugins: [
-    Oban.Plugins.Pruner,
-    {Oban.Plugins.Cron, crontab: [{"10 16 * * *", Ganesha.Reporting.CloseMonthWorker}]}
-  ]
-
 # For development, we disable any cache and enable
 # debugging and code reloading.
 #

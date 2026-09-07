@@ -3,9 +3,10 @@ defmodule Ganesha.Reporting.CloseMonthWorker do
   Closes the most recently elapsed month, if it isn't closed yet.
 
   Runs daily rather than exactly at the month boundary. Idempotent by
-  construction: running it twice in a day, or missing a day entirely
-  (deploy downtime), is harmless — the next run just catches up. No
-  separate backfill/catch-up mechanism is needed.
+  construction: running it twice in a day, or missing a day, is harmless
+  — any successful run during month M closes M-1. The recovery window is
+  one calendar month: if no run succeeds for a whole month, that month's
+  predecessor is never closed and there is no backfill path to recover it.
   """
   use Oban.Worker, queue: :default
 

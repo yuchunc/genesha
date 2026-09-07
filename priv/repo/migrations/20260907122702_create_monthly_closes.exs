@@ -9,8 +9,8 @@ defmodule Ganesha.Repo.Migrations.CreateMonthlyCloses do
       add :month, :date, null: false
       add :revenue, :integer, null: false
       add :revenue_by_method, :map, null: false
-      # The tax threshold as it was when this month closed, so a future
-      # change to the tax law doesn't silently rewrite past history.
+      # Snapshot of the tax threshold at close time, recorded for
+      # potential future use. Nothing in the codebase reads it back today.
       add :tax_threshold, :integer, null: false
 
       timestamps(type: :utc_datetime)
