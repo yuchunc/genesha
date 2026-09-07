@@ -83,16 +83,24 @@ defmodule GaneshaWeb.MoneyLiveTest do
     assert has_element?(view, "#revenue-chart")
   end
 
-  test "pages into history without repeating the current cycle", %{conn: conn} do
+  test "pages into history without repeating the current cycle, hiding 更早 once exhausted",
+       %{conn: conn} do
     today = Clock.today()
+
+    for offset <- 1..13 do
+      Reporting.close_month(Date.shift(Date.beginning_of_month(today), month: -offset))
+    end
+
     {:ok, view, _html} = live(conn, ~p"/money")
 
     refute has_element?(view, "#cycle-#{today.year}-#{today.month}")
+    assert has_element?(view, "a", "更早")
 
     view |> element("a", "更早") |> render_click()
     assert_patch(view, ~p"/money?page=1")
 
     assert has_element?(view, "a", "較近")
+    refute has_element?(view, "a", "更早")
   end
 
   test "shows a closed month's frozen revenue in history", %{conn: conn} do

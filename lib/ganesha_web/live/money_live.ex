@@ -36,7 +36,8 @@ defmodule GaneshaWeb.MoneyLive do
      |> assign(:expired_credits, Roster.expired_credits())
      |> assign(:chart_months, chart)
      |> assign(:chart_max, chart |> Enum.map(& &1.revenue) |> Enum.max(fn -> 0 end))
-     |> assign(:cycles, previous_cycles(current_month, page))}
+     |> assign(:cycles, previous_cycles(current_month, page))
+     |> assign(:has_more_history, has_more_history?(current_month, page))}
   end
 
   defp parse_page(nil), do: 0
@@ -66,6 +67,17 @@ defmodule GaneshaWeb.MoneyLive do
       limit: @cycles_per_page,
       offset: page * @cycles_per_page
     )
+  end
+
+  # Whether at least one closed month exists beyond the current page, so
+  # the 更早 button and its dead-end empty state never appear once history
+  # is exhausted.
+  defp has_more_history?(current_month, page) do
+    Reporting.list_closed_months(
+      before: current_month,
+      limit: 1,
+      offset: (page + 1) * @cycles_per_page
+    ) != []
   end
 
   defp bar_height(_revenue, 0), do: 0
@@ -197,7 +209,9 @@ defmodule GaneshaWeb.MoneyLive do
           >
             較近
           </.button>
-          <.button variant="quiet" patch={~p"/money?#{[page: @page + 1]}"}>更早</.button>
+          <.button :if={@has_more_history} variant="quiet" patch={~p"/money?#{[page: @page + 1]}"}>
+            更早
+          </.button>
         </:actions>
 
         <ul class="space-y-1">
@@ -216,7 +230,7 @@ defmodule GaneshaWeb.MoneyLive do
           </li>
         </ul>
 
-        <.empty :if={@cycles == []} id="no-history">尚無歷史紀錄。</.empty>
+        <.empty :if={@cycles == [] and @page == 0} id="no-history">尚無歷史紀錄。</.empty>
       </.section>
     </Layouts.app>
     """
