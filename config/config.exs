@@ -24,6 +24,10 @@ config :ganesha,
   ecto_repos: [Ganesha.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :ganesha, Oban,
+  repo: Ganesha.Repo,
+  engine: Oban.Engines.Lite
+
 # Configure the endpoint
 config :ganesha, GaneshaWeb.Endpoint,
   url: [host: "localhost"],

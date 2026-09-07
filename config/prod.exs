@@ -19,6 +19,13 @@ config :ganesha, GaneshaWeb.Endpoint,
     ]
   ]
 
+config :ganesha, Oban,
+  queues: [default: 5],
+  plugins: [
+    Oban.Plugins.Pruner,
+    {Oban.Plugins.Cron, crontab: [{"10 16 * * *", Ganesha.Reporting.CloseMonthWorker}]}
+  ]
+
 # Configure Swoosh API Client
 config :swoosh, api_client: Swoosh.ApiClient.Req
 
