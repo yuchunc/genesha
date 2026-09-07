@@ -34,13 +34,11 @@ defmodule GaneshaWeb.MoneyLive.Cycle do
 
   defp load(socket) do
     month = socket.assigns.month
+    summary = Reporting.cycle_summary(month)
 
     socket
-    |> assign(:revenue, Reporting.revenue_for_month(month))
-    |> assign(
-      :by_method,
-      Enum.reject(Reporting.revenue_by_method_for_month(month), &match?({_, 0}, &1))
-    )
+    |> assign(:revenue, summary.revenue)
+    |> assign(:by_method, Enum.reject(summary.by_method, &match?({_, 0}, &1)))
     |> assign(:payments, payments_with_flags(month))
   end
 

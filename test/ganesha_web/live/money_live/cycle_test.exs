@@ -1,7 +1,7 @@
 defmodule GaneshaWeb.MoneyLive.CycleTest do
   use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
-  alias Ganesha.{Catalog, People, Repo, Sales}
+  alias Ganesha.{Catalog, People, Repo, Reporting, Sales}
 
   setup :register_and_log_in_user
 
@@ -113,5 +113,30 @@ defmodule GaneshaWeb.MoneyLive.CycleTest do
   test "shows an empty state when nothing was recorded that cycle", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/money/2020/1")
     assert has_element?(view, "#no-payments")
+  end
+
+  test "a closed month reads its frozen snapshot instead of recomputing live", %{conn: conn} do
+    %{purchase: purchase} = student_with_purchase()
+    past_month = ~D[2026-07-01]
+
+    {:ok, payment} =
+      Sales.record_payment(%{
+        purchase_id: purchase.id,
+        amount: 1600,
+        method: "cash",
+        paid_on: past_month
+      })
+
+    {:ok, _} = Sales.confirm_payment(payment, "teacher@example.com")
+    {:ok, closed} = Reporting.close_month(past_month)
+
+    # Overwrite the frozen row directly, bypassing what live computation
+    # would currently produce, to prove the detail view reads the snapshot
+    # rather than recomputing it on every visit.
+    closed |> Ecto.Changeset.change(revenue: 9999) |> Repo.update!()
+
+    {:ok, view, _html} = live(conn, ~p"/money/2026/7")
+
+    assert has_element?(view, "#cycle-revenue[data-amount='9999']")
   end
 end
