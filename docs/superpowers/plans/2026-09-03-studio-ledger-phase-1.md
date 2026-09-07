@@ -32,7 +32,8 @@
 
 **Files:**
 - Modify: `mix.exs` (remove the daisyUI dep block at lines 61-67)
-- Modify: `assets/css/app.css`
+- Modify: `assets/css/app.css` (subtract the daisyUI plugins only — see Step 2)
+- Modify: `lib/ganesha_web/components/core_components.ex` (replace daisyUI `btn`/`toast` classes)
 - Create: `lib/ganesha/clock.ex`
 - Test: `test/ganesha/clock_test.exs`
 
@@ -56,16 +57,43 @@ Delete this block from `mix.exs`:
 
 Then run `mix deps.unlock daisyui && mix deps.clean daisyui`.
 
-- [ ] **Step 2: Ensure `app.css` has no daisyUI plugin and uses the required import syntax**
+- [ ] **Step 2: Subtract the daisyUI plugins from `app.css` — and nothing else**
 
-`assets/css/app.css` must start with exactly this, with any `@plugin "daisyui"` line removed:
+This is a deletion of three blocks, **not** a replacement of the file. Delete only:
 
 ```css
-@import "tailwindcss" source(none);
-@source "../css";
-@source "../js";
-@source "../../lib/ganesha_web";
+@plugin "daisyui/packages/bundle/daisyui" { themes: false; }
+@plugin "daisyui/packages/bundle/daisyui-theme" { name: "dark"; ... }
+@plugin "daisyui/packages/bundle/daisyui-theme" { name: "light"; ... }
 ```
+
+Every other line stays verbatim. These five in particular are load-bearing and unrelated
+to daisyUI — removing any of them breaks the app while leaving all tests green:
+
+| Line | Why it must survive |
+|---|---|
+| `@plugin "../vendor/heroicons";` | `core_components.ex` renders `<.icon>` as `<span class={[@name, @class]}>`, so `hero-x-mark` is *only* a CSS class. Without the plugin every icon is an invisible empty span. `heroicons` stays a `mix.exs` dep. |
+| `@import "phoenix-colocated/ganesha/colocated.css";` + `@source "../../_build/dev/phoenix-colocated/ganesha/*/";` | Colocated asset pickup. `assets/js/app.js` imports `phoenix-colocated/ganesha`, and Global Constraints mandate `ColocatedHook` for all JS. |
+| `@custom-variant phx-click-loading` / `phx-submit-loading` / `phx-change-loading` | LiveView loading-state styling on buttons and forms. |
+| `@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));` | `layouts/root.html.heex` sets `data-theme` on `<html>`. Without this variant every `dark:` class in this plan's screens keys off `prefers-color-scheme` instead, and the app's own theme toggle stops working. |
+| `[data-phx-session], [data-phx-teleported-src] { display: contents }` | Keeps LiveView wrapper divs transparent to layout; without it they become flex/grid participants and the phone layouts break. |
+
+Verify the plugin actually still emits classes rather than trusting the file text: after
+the asset build, grep the built stylesheet for `.hero-` and confirm a non-zero count.
+
+- [ ] **Step 2b: Replace daisyUI classes in `core_components.ex`**
+
+Removing the framework while its class names still ship is an incomplete removal, and no
+later task touches this file. Two components carry daisyUI classes:
+
+- `<.button>` uses `btn` and its variants
+- `<.flash>` uses `toast` and its variants
+
+Swap them for hand-written Tailwind. Keep each component's attrs, slots, and call sites
+unchanged — this is styling only. Buttons keep a ≥44px tap target (phone-first).
+
+Do **not** touch `layouts.ex` or `page_html/home.html.heex`: Task 12 rewrites the first
+and deletes the second, so their daisyUI classes resolve themselves.
 
 - [ ] **Step 3: Write the failing clock test**
 
@@ -304,7 +332,7 @@ end
 
 ```elixir
 defmodule Ganesha.CatalogTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.Catalog
   alias Ganesha.Catalog.Package
 
@@ -546,7 +574,7 @@ end
 
 ```elixir
 defmodule Ganesha.PeopleTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.People
 
   test "creates a student with only a display name" do
@@ -789,7 +817,7 @@ end
 
 ```elixir
 defmodule Ganesha.StudioTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.Studio
 
   defp monday_slot do
@@ -1162,7 +1190,7 @@ end
 
 ```elixir
 defmodule Ganesha.Sales.PurchaseTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Sales}
 
   defp student_and_monthly do
@@ -1450,7 +1478,7 @@ end
 
 ```elixir
 defmodule Ganesha.Sales.PaymentTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, Clock, People, Sales}
 
   defp purchase_fixture(student_name \\ nil) do
@@ -1795,7 +1823,7 @@ Add inside `defmodule Ganesha.Sales`, after the purchase functions:
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `mix ecto.migrate && mix test test/ganesha/sales/payment_test.exs`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 7: Commit**
 
@@ -1857,7 +1885,7 @@ end
 
 ```elixir
 defmodule Ganesha.Roster.AttendanceTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Roster, Sales, Studio}
 
   defp august_setup do
@@ -2173,7 +2201,7 @@ end
 
 ```elixir
 defmodule Ganesha.Roster.CreditTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Repo, Roster, Sales, Studio}
 
   defp monday_slot_with_sessions do
@@ -2585,19 +2613,30 @@ Add inside `defmodule Ganesha.Roster`, after the attendance functions:
 
   defp insert_makeup(session, student, credit) do
     Repo.transaction(fn ->
-      {:ok, attendance} =
-        create_attendance(%{
-          session_id: session.id,
-          student_id: student.id,
-          kind: "makeup",
-          purchase_id: nil,
-          credit_id: credit.id,
-          note: credit.note
-        })
+      attendance =
+        case create_attendance(%{
+               session_id: session.id,
+               student_id: student.id,
+               kind: "makeup",
+               purchase_id: nil,
+               credit_id: credit.id,
+               note: credit.note
+             }) do
+          {:ok, attendance} -> attendance
+          {:error, changeset} -> Repo.rollback(changeset)
+        end
 
-      {:ok, _credit} = credit |> Credit.consumption_changeset(attendance) |> Repo.update()
+      # Compare-and-set, not an unconditional overwrite: two calls racing on
+      # the same unreloaded %Credit{} (the brief's own idempotency test needs
+      # Repo.reload!/1 before its second attempt to avoid exactly this) must
+      # not both succeed in spending it, or one credit buys two makeup classes.
+      claim = from(c in Credit, where: c.id == ^credit.id and is_nil(c.consumed_by_attendance_id))
+      stamp = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      attendance
+      case Repo.update_all(claim, set: [consumed_by_attendance_id: attendance.id, updated_at: stamp]) do
+        {1, _} -> attendance
+        {0, _} -> Repo.rollback(:credit_already_consumed)
+      end
     end)
   end
 
@@ -2663,7 +2702,7 @@ git commit -m "feat: add makeup credits with guarded consumption and idempotent 
 
 ```elixir
 defmodule Ganesha.ReportingTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Reporting, Roster, Sales, Studio}
 
   defp monthly_package do
@@ -2678,9 +2717,11 @@ defmodule Ganesha.ReportingTest do
   defp august_sale(paid_amount, opts \\ []) do
     confirm? = Keyword.get(opts, :confirm, true)
 
+    start_time = Time.add(~T[09:30:00], System.unique_integer([:positive]), :second)
+
     {:ok, slot} =
       Studio.create_slot(%{
-        weekday: 1, start_time: ~T[09:30:00], end_time: ~T[10:45:00],
+        weekday: 1, start_time: start_time, end_time: Time.add(start_time, 75, :minute),
         default_style: "基礎", label: "slot-#{System.unique_integer([:positive])}"
       })
 
@@ -2765,6 +2806,25 @@ defmodule Ganesha.ReportingTest do
     assert status.revenue == 46_400
     assert status.warn?, "46,400 of 50,000 is past the 90% warning line"
   end
+
+  test "purchase_period/1 spans the first and last attended dates" do
+    %{purchase: purchase} = august_sale(1600)
+
+    assert Reporting.purchase_period(purchase.id) == %{
+             first: ~D[2026-08-03],
+             last: ~D[2026-08-31]
+           }
+  end
+
+  test "purchase_period/1 is nil for a purchase with no attendance" do
+    {:ok, student} = People.create_student(%{display_name: "Nobody"})
+    {:ok, pkg} = monthly_package()
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1600})
+
+    assert Reporting.purchase_period(purchase.id) == nil
+  end
 end
 ```
 
@@ -2789,6 +2849,7 @@ defmodule Ganesha.Reporting do
   """
 
   import Ecto.Query, warn: false
+  alias Ganesha.Clock
   alias Ganesha.People
   alias Ganesha.Repo
   alias Ganesha.Roster.Attendance
@@ -2823,18 +2884,41 @@ defmodule Ganesha.Reporting do
     payable - confirmed
   end
 
-  @doc "Every student with a non-zero balance, largest first."
+  @doc "Every student with a positive balance, largest first."
   def outstanding_by_student do
+    payable_by_student =
+      Repo.all(
+        from p in Purchase,
+          group_by: p.student_id,
+          select: {p.student_id, sum(coalesce(p.custom_amount, p.list_price))}
+      )
+      |> Map.new()
+
+    confirmed_by_student =
+      Repo.all(
+        from pay in Payment,
+          join: pur in Purchase,
+          on: pur.id == pay.purchase_id,
+          where: pay.state == "confirmed",
+          group_by: pur.student_id,
+          select: {pur.student_id, sum(pay.amount)}
+      )
+      |> Map.new()
+
     People.list_students()
-    |> Enum.map(&%{student: &1, outstanding: outstanding_for_student(&1.id)})
-    |> Enum.reject(&(&1.outstanding == 0))
+    |> Enum.map(fn student ->
+      payable = Map.get(payable_by_student, student.id, 0)
+      confirmed = Map.get(confirmed_by_student, student.id, 0)
+      %{student: student, outstanding: payable - confirmed}
+    end)
+    |> Enum.reject(&(&1.outstanding <= 0))
     |> Enum.sort_by(& &1.outstanding, :desc)
   end
 
   @spec revenue_for_month(Date.t()) :: integer()
   def revenue_for_month(%Date{} = month) do
     first = Date.beginning_of_month(month)
-    last = Date.end_of_month(month)
+    last = Clock.end_of_month(month)
 
     Repo.one(
       from pay in Payment,
@@ -2855,15 +2939,21 @@ defmodule Ganesha.Reporting do
     }
   end
 
-  @doc "The first and last dates a purchase's attendance rows fall on, for display."
+  @doc """
+  The first and last dates a purchase's attendance rows fall on, for display.
+  Returns `nil` when the purchase has no attendance rows yet.
+  """
   def purchase_period(purchase_id) do
-    Repo.one(
-      from a in Attendance,
-        join: s in Session,
-        on: s.id == a.session_id,
-        where: a.purchase_id == ^purchase_id,
-        select: %{first: min(s.date), last: max(s.date)}
-    )
+    case Repo.one(
+           from a in Attendance,
+             join: s in Session,
+             on: s.id == a.session_id,
+             where: a.purchase_id == ^purchase_id,
+             select: %{first: min(s.date), last: max(s.date)}
+         ) do
+      %{first: nil, last: nil} -> nil
+      period -> period
+    end
   end
 end
 ```
@@ -2926,7 +3016,7 @@ end
 
 ```elixir
 defmodule Ganesha.PublishingTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, People, Publishing, Roster, Sales, Studio}
 
   defp august_monday do
@@ -3036,6 +3126,43 @@ defmodule Ganesha.PublishingTest do
     assert Publishing.roster_block(~D[2026-08-01]) =~ "素容（未到）"
   end
 
+  test "roster_block/1 omits a cancelled session, matching schedule_block/1" do
+    {_slot, sessions} = august_monday()
+    {:ok, _} = Studio.cancel_session(hd(sessions), "颱風假")
+
+    text = Publishing.roster_block(~D[2026-08-01])
+
+    refute text =~ "8/3：", "a cancelled date must not appear in either block"
+    assert text =~ "8/10"
+  end
+
+  test "roster_block/1 keeps the kind marker on a no-show drop-in" do
+    {slot, sessions} = august_monday()
+    {:ok, jennifer} = People.create_student(%{display_name: "Jennifer"})
+
+    {:ok, drop_pkg} =
+      Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 450})
+
+    {:ok, drop_purchase} =
+      Sales.create_purchase(%{student_id: jennifer.id, package_id: drop_pkg.id, list_price: 450})
+
+    {:ok, attendance} = Roster.add_drop_in(hd(sessions), jennifer, drop_purchase)
+    {:ok, _} = Roster.mark_no_show(attendance)
+
+    assert Publishing.roster_block(~D[2026-08-01]) =~ "（單）Jennifer（未到）"
+  end
+
+  test "announcement/1 renders only the settings fields that are present" do
+    august_monday()
+
+    {:ok, _} = Publishing.update_settings(%{account_number: "111001756051"})
+
+    text = Publishing.announcement(~D[2026-08-01])
+
+    refute text =~ "銀行代號", "no bank_code means no bank-name line"
+    assert text =~ "帳號： 111001756051"
+  end
+
   test "announcement/1 includes the bank footer from settings" do
     august_monday()
 
@@ -3141,16 +3268,18 @@ defmodule Ganesha.Publishing do
 
   @doc "The ✨開課時間表 block: one entry per active slot with its dates and price."
   def schedule_block(%Date{} = month) do
+    price = monthly_price_per_class()
+
     entries =
       Studio.list_active_slots()
-      |> Enum.map(&slot_entry(&1, month))
+      |> Enum.map(&slot_entry(&1, month, price))
       |> Enum.reject(&is_nil/1)
       |> Enum.join("\n\n")
 
     "✨ #{month.month}月開課時間表\n\n" <> entries
   end
 
-  defp slot_entry(slot, month) do
+  defp slot_entry(slot, month, price) do
     sessions =
       slot
       |> Studio.sessions_for_slot_in_month(month)
@@ -3166,7 +3295,7 @@ defmodule Ganesha.Publishing do
       #{slot.label}
       時間：#{format_time(slot.start_time)}－#{format_time(slot.end_time)}
       日期：#{dates}
-      （#{count * monthly_price_per_class()}元 /#{count} 堂）
+      （#{count * price}元 /#{count} 堂）
       """)
     end
   end
@@ -3215,6 +3344,7 @@ defmodule Ganesha.Publishing do
       lines =
         slot
         |> Studio.sessions_for_slot_in_month(month)
+        |> Enum.filter(&(&1.state == "scheduled"))
         |> Enum.map_join("\n", fn session ->
           names =
             session
@@ -3228,17 +3358,18 @@ defmodule Ganesha.Publishing do
     end)
   end
 
-  defp attendee_name(attendance) do
-    name = attendance.student.display_name
+  # Kind and state are independent: a drop-in or a makeup can also be a
+  # no-show, and both markers must survive rather than one short-circuiting
+  # the other.
+  defp attendee_name(attendance), do: kind_marker(attendance) <> no_show_marker(attendance)
 
-    cond do
-      attendance.state == "no_show" -> "#{name}（未到）"
-      attendance.kind == "makeup" -> "#{name}（補課#{note_suffix(attendance)}）"
-      attendance.kind == "drop_in" -> "（單）#{name}"
-      attendance.kind == "trial" -> "#{name}（體驗）"
-      true -> name
-    end
-  end
+  defp kind_marker(%{kind: "drop_in"} = a), do: "（單）#{a.student.display_name}"
+  defp kind_marker(%{kind: "makeup"} = a), do: "#{a.student.display_name}（補課#{note_suffix(a)}）"
+  defp kind_marker(%{kind: "trial"} = a), do: "#{a.student.display_name}（體驗）"
+  defp kind_marker(a), do: a.student.display_name
+
+  defp no_show_marker(%{state: "no_show"}), do: "（未到）"
+  defp no_show_marker(_), do: ""
 
   defp note_suffix(%{note: nil}), do: ""
   defp note_suffix(%{note: ""}), do: ""
@@ -3267,19 +3398,29 @@ defmodule Ganesha.Publishing do
     "麻煩於#{deadline}前轉帳，並告知帳後五碼。"
   end
 
-  defp bank_lines(%Settings{bank_code: nil}), do: nil
-  defp bank_lines(%Settings{bank_code: ""}), do: nil
-
   defp bank_lines(%Settings{} = settings) do
-    "LINE Bank 銀行代號：#{settings.bank_code} #{settings.bank_name}\n帳號： #{settings.account_number}"
+    [bank_line(settings), account_line(settings)]
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> case do
+      [] -> nil
+      lines -> Enum.join(lines, "\n")
+    end
   end
+
+  defp bank_line(%Settings{bank_code: nil}), do: nil
+  defp bank_line(%Settings{bank_code: ""}), do: nil
+  defp bank_line(%Settings{} = s), do: String.trim_trailing("LINE Bank 銀行代號：#{s.bank_code} #{s.bank_name}")
+
+  defp account_line(%Settings{account_number: nil}), do: nil
+  defp account_line(%Settings{account_number: ""}), do: nil
+  defp account_line(%Settings{} = s), do: "帳號： #{s.account_number}"
 end
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
 
 Run: `mix ecto.migrate && mix test test/ganesha/publishing_test.exs`
-Expected: PASS, 8 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 7: Seed the real bank details**
 
@@ -3324,7 +3465,7 @@ git commit -m "feat: generate the monthly LINE announcement from the ledger"
 
 ```elixir
 defmodule GaneshaWeb.TodayLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Clock, People, Roster, Sales, Studio}
 
@@ -3396,6 +3537,61 @@ end
 Run: `mix test test/ganesha_web/live/today_live_test.exs`
 Expected: FAIL — `~p"/"` does not serve a LiveView.
 
+- [ ] **Step 2b: Rewrite the layout shell — remove the Phoenix scaffold header and daisyUI**
+
+`Layouts.app/1` still ships the `phx.new` scaffold: a header linking to
+phoenixframework.org, the Phoenix GitHub repo, and hexdocs "Get Started", plus the
+Phoenix logo — none of which belong in her app — and it, along with `theme_toggle/1`,
+still carries daisyUI classes (`navbar`, `btn btn-ghost`, `btn btn-primary`, `card`,
+`border-base-300`, `bg-base-300`, `bg-base-100`, `border-base-200`) even though
+daisyUI was removed from `assets/css/app.css` in Task 1. No later task touches this
+function, so it is this task's responsibility. Replace both functions in
+`lib/ganesha_web/components/layouts.ex` with:
+
+```elixir
+  def app(assigns) do
+    ~H"""
+    <header class="flex items-center justify-end px-4 py-2 sm:px-6">
+      <.theme_toggle />
+    </header>
+
+    <main class="mx-auto max-w-2xl px-4 pb-4 sm:px-6">
+      {render_slot(@inner_block)}
+    </main>
+
+    <.flash_group flash={@flash} />
+    """
+  end
+```
+
+```elixir
+  def theme_toggle(assigns) do
+    ~H"""
+    <div class="relative flex items-center rounded-full border border-zinc-300 bg-zinc-100 dark:border-zinc-600 dark:bg-zinc-800">
+      <div class="absolute left-0 h-full w-1/3 rounded-full border border-zinc-300 bg-white shadow-sm transition-[left] [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 [[data-theme-source=system]_&]:!left-0 dark:border-zinc-500 dark:bg-zinc-600" />
+
+      <button class="flex w-1/3 cursor-pointer p-2" phx-click={JS.dispatch("phx:set-theme")} data-phx-theme="system">
+        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
+      </button>
+
+      <button class="flex w-1/3 cursor-pointer p-2" phx-click={JS.dispatch("phx:set-theme")} data-phx-theme="light">
+        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+      </button>
+
+      <button class="flex w-1/3 cursor-pointer p-2" phx-click={JS.dispatch("phx:set-theme")} data-phx-theme="dark">
+        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+      </button>
+    </div>
+    """
+  end
+```
+
+`app/1`'s attrs (`flash`, `current_scope`) and `@doc`/`attr` declarations above it are
+unchanged — only the two function bodies above change. `current_scope` is unused in
+the new body, same as it was in the scaffold's; the user-context/settings/logout row
+already lives in `root.html.heex` (translated to Traditional Chinese in Task 2's fix
+round) and is out of scope here.
+
 - [ ] **Step 3: Add the bottom navigation to Layouts**
 
 Add to `lib/ganesha_web/components/layouts.ex`:
@@ -3413,14 +3609,15 @@ Add to `lib/ganesha_web/components/layouts.ex`:
     ~H"""
     <nav
       id="bottom-nav"
+      aria-label="主要導覽"
       class="fixed bottom-0 inset-x-0 z-40 flex border-t border-zinc-200 bg-white/95 backdrop-blur
              pb-[env(safe-area-inset-bottom)] dark:border-zinc-800 dark:bg-zinc-900/95"
     >
       <.nav_item active={@active} key={:today} path={~p"/"} icon="hero-sun" label="今天" />
-      <.nav_item active={@active} key={:month} path={~p"/month"} icon="hero-calendar-days" label="月課表" />
-      <.nav_item active={@active} key={:money} path={~p"/money"} icon="hero-banknotes" label="收款" />
-      <.nav_item active={@active} key={:students} path={~p"/students"} icon="hero-users" label="學生" />
-      <.nav_item active={@active} key={:publish} path={~p"/publish"} icon="hero-share" label="發布" />
+      <.nav_item active={@active} key={:month} path="/month" icon="hero-calendar-days" label="月課表" />
+      <.nav_item active={@active} key={:money} path="/money" icon="hero-banknotes" label="收款" />
+      <.nav_item active={@active} key={:students} path="/students" icon="hero-users" label="學生" />
+      <.nav_item active={@active} key={:publish} path="/publish" icon="hero-share" label="發布" />
     </nav>
     """
   end
@@ -3436,6 +3633,7 @@ Add to `lib/ganesha_web/components/layouts.ex`:
     <.link
       id={"nav-#{@key}"}
       navigate={@path}
+      aria-current={@active == @key && "page"}
       class={[
         "flex flex-1 flex-col items-center justify-center gap-1 py-3 min-h-[56px] text-xs",
         @active == @key && "text-emerald-600 dark:text-emerald-400",
@@ -3467,12 +3665,17 @@ defmodule GaneshaWeb.TodayLive do
   defp load(socket) do
     case Studio.next_session() do
       nil ->
-        socket |> assign(:session, nil) |> stream(:attendances, [], reset: true)
+        socket
+        |> assign(:session, nil)
+        |> stream(:attendances, [], reset: true, dom_id: &"attendance-#{&1.id}")
 
       session ->
         socket
         |> assign(:session, session)
-        |> stream(:attendances, Roster.list_for_session(session), reset: true)
+        |> stream(:attendances, Roster.list_for_session(session),
+          reset: true,
+          dom_id: &"attendance-#{&1.id}"
+        )
     end
   end
 
@@ -3480,14 +3683,22 @@ defmodule GaneshaWeb.TodayLive do
   def handle_event("toggle_no_show", %{"id" => id}, socket) do
     attendance = Roster.get_attendance!(id)
 
-    {:ok, updated} =
+    {:ok, _updated} =
       case attendance.state do
         "expected" -> Roster.mark_no_show(attendance)
         "no_show" -> Roster.mark_expected(attendance)
       end
 
-    # Re-insert so the row's data-state attribute reflects the new value.
-    {:noreply, stream_insert(socket, :attendances, Roster.get_attendance!(updated.id))}
+    # get_attendance!/1 preloads [:student, session: :slot], which does not
+    # match the [:student, purchase: :package] shape every other row in this
+    # stream has (from list_for_session/1). Re-derive the row through that
+    # same accessor so the stream never mixes preload shapes across rows.
+    refreshed =
+      socket.assigns.session
+      |> Roster.list_for_session()
+      |> Enum.find(&(&1.id == attendance.id))
+
+    {:noreply, stream_insert(socket, :attendances, refreshed)}
   end
 
   @impl true
@@ -3542,7 +3753,12 @@ defmodule GaneshaWeb.TodayLive do
 end
 ```
 
-Note the DOM id: the stream produces `id="attendances-<id>"` for the `<li>`, while the test asserts on `#attendance-<id>`. Set the `<li>` id explicitly to keep the test's selector honest — change `id={dom_id}` to `id={"attendance-#{attendance.id}"}` and keep `phx-update="stream"` on the `<ul>`.
+Note the DOM id: `stream/4`'s `dom_id:` option (used in `load/1` above) makes the
+stream itself produce `id="attendance-<id>"`, matching the test's `#attendance-<id>`
+selector, so `id={dom_id}` on the `<li>` needs no further override. Do not hardcode
+the `<li>` id separately — that disconnects the row from LiveView's stream-ref
+bookkeeping (`reset`, `stream_delete`, and `:at` positional inserts all key off the
+element actually carrying `data-phx-stream`, which only the stream's own dom id gets).
 
 - [ ] **Step 5: Add the route and remove the scaffold page**
 
@@ -3593,7 +3809,7 @@ git commit -m "feat: add phone-first layout shell and Today roster screen"
 
 ```elixir
 defmodule GaneshaWeb.MonthLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, People, Roster, Sales, Studio}
 
@@ -3693,7 +3909,7 @@ Expected: FAIL — no route matches `/month/2026/8`.
 defmodule GaneshaWeb.MonthLive do
   use GaneshaWeb, :live_view
 
-  alias Ganesha.{Clock, Roster, Studio}
+  alias Ganesha.{Clock, Repo, Roster, Studio}
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -3704,7 +3920,13 @@ defmodule GaneshaWeb.MonthLive do
   end
 
   defp assign_month(socket, %{"year" => year, "month" => month}) do
-    assign(socket, :month, Date.new!(String.to_integer(year), String.to_integer(month), 1))
+    with {y, ""} <- Integer.parse(year),
+         {m, ""} <- Integer.parse(month),
+         {:ok, date} <- Date.new(y, m, 1) do
+      assign(socket, :month, date)
+    else
+      _ -> assign_month(socket, %{})
+    end
   end
 
   defp assign_month(socket, _params) do
@@ -3739,12 +3961,25 @@ defmodule GaneshaWeb.MonthLive do
   def handle_event("cancel", %{"session-id" => id, "reason" => reason}, socket) do
     session = Studio.get_session!(id)
 
-    case Studio.cancel_session(session, reason) do
-      {:ok, cancelled} ->
-        # Credits are issued here rather than inside Studio so both steps are
-        # visible at the call site.
-        {:ok, credits} = Roster.issue_cancellation_credits(cancelled)
+    # Credits are issued here rather than inside Studio so both steps are
+    # visible at the call site; wrapped in one transaction so a session is
+    # never left cancelled without its students' makeup credits, or the
+    # reverse — the render guard hides the cancel form once state flips, so
+    # there is no UI path to retry a partial failure.
+    result =
+      Repo.transaction(fn ->
+        case Studio.cancel_session(session, reason) do
+          {:ok, cancelled} ->
+            {:ok, credits} = Roster.issue_cancellation_credits(cancelled)
+            credits
 
+          {:error, changeset} ->
+            Repo.rollback(changeset)
+        end
+      end)
+
+    case result do
+      {:ok, credits} ->
         {:noreply,
          socket
          |> put_flash(:info, "已停課，發出 #{length(credits)} 張補課額度")
@@ -3808,6 +4043,7 @@ defmodule GaneshaWeb.MonthLive do
                     type="text"
                     name="style"
                     value={session.style}
+                    required
                     class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
                   />
                   <button class="min-h-[44px] rounded-lg border border-zinc-300 px-3 text-sm dark:border-zinc-700">
@@ -3880,7 +4116,7 @@ git commit -m "feat: add month screen with style override and cancellation credi
 
 ```elixir
 defmodule GaneshaWeb.StudentLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Clock, People, Repo, Sales}
 
@@ -4017,7 +4253,7 @@ defmodule GaneshaWeb.StudentLive.Index do
     {:ok,
      socket
      |> assign(:form, to_form(People.change_student(%Student{})))
-     |> stream(:students, People.list_students())}
+     |> stream(:students, People.list_students(), dom_id: &"student-#{&1.id}")}
   end
 
   @impl true
@@ -4047,7 +4283,7 @@ defmodule GaneshaWeb.StudentLive.Index do
         </.form>
 
         <ul id="students" phx-update="stream" class="mt-4 space-y-2">
-          <li :for={{_dom_id, student} <- @streams.students} id={"student-#{student.id}"}>
+          <li :for={{dom_id, student} <- @streams.students} id={dom_id}>
             <.link
               navigate={~p"/students/#{student.id}"}
               class="flex min-h-[56px] items-center justify-between rounded-xl border border-zinc-200 px-4 dark:border-zinc-800"
@@ -4269,7 +4505,7 @@ git commit -m "feat: add student screens with payment confirmation and amount ov
 
 ```elixir
 defmodule GaneshaWeb.MoneyLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Clock, People, Sales}
 
@@ -4339,7 +4575,7 @@ end
 
 ```elixir
 defmodule GaneshaWeb.PublishLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Studio}
 
@@ -4500,7 +4736,13 @@ defmodule GaneshaWeb.PublishLive do
   end
 
   defp assign_month(socket, %{"year" => year, "month" => month}) do
-    put_month(socket, Date.new!(String.to_integer(year), String.to_integer(month), 1))
+    with {y, ""} <- Integer.parse(year),
+         {m, ""} <- Integer.parse(month),
+         {:ok, date} <- Date.new(y, m, 1) do
+      put_month(socket, date)
+    else
+      _ -> assign_month(socket, %{})
+    end
   end
 
   defp assign_month(socket, _params) do
@@ -4608,8 +4850,9 @@ git commit -m "feat: add money screen with tax gauge and publish screen with cop
 **Files:**
 - Create: `lib/ganesha_web/controllers/health_controller.ex`
 - Create (generated): `Dockerfile`, `.dockerignore`, `rel/`
-- Create: `fly.toml`, `litestream.yml`
-- Modify: `config/runtime.exs`, `lib/ganesha_web/router.ex`
+- Modify (generated): `rel/overlays/bin/server` (migrate-on-boot), `Dockerfile` (Litestream + volume-ownership entrypoint)
+- Create: `fly.toml`, `litestream.yml`, `rel/overlays/bin/docker-entrypoint.sh`
+- Modify: `config/runtime.exs`, `config/prod.exs`, `lib/ganesha_web/router.ex`
 - Test: `test/ganesha_web/health_test.exs`
 
 **Interfaces:**
@@ -4644,8 +4887,18 @@ Expected: FAIL — no route matches `/health`.
 defmodule GaneshaWeb.HealthController do
   use GaneshaWeb, :controller
 
-  @doc "Unauthenticated liveness probe for the platform health check."
-  def index(conn, _params), do: send_resp(conn, 200, "ok")
+  @doc """
+  Unauthenticated liveness+readiness probe for the platform health check.
+
+  Touches the database rather than answering unconditionally: a machine
+  whose volume failed to mount or whose SQLite file is unwritable would
+  otherwise report healthy while every real page 500s, and Fly would keep
+  routing traffic to it instead of rolling the deploy back.
+  """
+  def index(conn, _params) do
+    Ganesha.Repo.query!("select 1")
+    send_resp(conn, 200, "ok")
+  end
 end
 ```
 
@@ -4664,10 +4917,61 @@ In `lib/ganesha_web/router.ex`, in a scope that is NOT behind authentication:
 Run: `mix test test/ganesha_web/health_test.exs`
 Expected: PASS.
 
+- [ ] **Step 4b: Exclude `/health` from `force_ssl`**
+
+Fly's `[[http_service.checks]]` (Step 8) hit the app directly over plain HTTP on
+the machine's internal port — they never pass through the Fly proxy, so no
+`x-forwarded-proto: https` header is added and the request's Host is the
+machine's private address, not `localhost`/`127.0.0.1`. Without an exclusion,
+`Plug.SSL` 301-redirects `/health` to `https://`, which Fly's checker does not
+follow, and the machine never becomes healthy.
+
+In `config/prod.exs`, uncomment the generator's own hint so the `exclude:` list
+reads:
+
+```elixir
+config :ganesha, GaneshaWeb.Endpoint,
+  force_ssl: [
+    rewrite_on: [:x_forwarded_proto],
+    exclude: [
+      paths: ["/health"],
+      hosts: ["localhost", "127.0.0.1"]
+    ]
+  ]
+```
+
+`:force_ssl` is compile-time config and must be changed here, not in
+`runtime.exs`.
+
 - [ ] **Step 5: Generate the release scaffolding**
 
 ```bash
 mix phx.gen.release --docker
+```
+
+- [ ] **Step 5b: Migrate on boot**
+
+`mix phx.gen.release --docker` writes `rel/overlays/bin/server` as a thin
+wrapper that only starts the release. Nothing in this deployment runs
+migrations automatically otherwise — the `[deploy] release_command` pattern is
+wrong here because Fly's release-command machine does not mount the app's
+volume, so it would migrate an ephemeral file instead of the real database.
+Migrating on the boot path is safe specifically because exactly one machine
+ever owns the SQLite file (Step 8's `min_machines_running = 1`).
+
+Edit `rel/overlays/bin/server` to:
+
+```sh
+#!/bin/sh
+set -eu
+
+cd -P -- "$(dirname -- "$0")"
+
+# Exactly one machine owns the SQLite file (see fly.toml's
+# min_machines_running = 1), so migrating on boot is safe here in a way it
+# would not be with a horizontally-scaled release_command.
+./ganesha eval Ganesha.Release.migrate
+PHX_SERVER=true exec ./ganesha start
 ```
 
 - [ ] **Step 6: Point the production database at the mounted volume**
@@ -4742,17 +5046,178 @@ primary_region = "nrt"
   memory = "512mb"
 ```
 
+- [ ] **Step 8b: Fix volume ownership and wire Litestream into the image**
+
+Two problems with the Dockerfile as generated, both real and both reachable
+on the very first deploy:
+
+1. **Volume ownership.** The runner stage does `USER nobody` after `RUN chown
+   nobody /app`, but `/data` is a Fly volume mounted at container start, not
+   part of the image — a freshly created volume is `root:root`. The release
+   (and `rel/overlays/bin/server`'s migrate-on-boot call) opens
+   `${DATABASE_PATH}` as `nobody` and fails with `EACCES` before the endpoint
+   ever starts.
+2. **Litestream is inert.** `litestream.yml` (Step 7) is never copied into the
+   image, no `litestream` binary is installed, and `CMD` starts only the
+   release. The continuous-replication goal stated in `litestream.yml`'s own
+   header is not achieved by anything in the repo as generated.
+
+Fix both together with a root entrypoint that fixes ownership once, then drops
+privilege — and that only wraps the release in `litestream replicate` when a
+replica is actually configured, rather than unconditionally. **Litestream
+fails closed, not open**: with `type: s3` and an empty `bucket`, it exits
+non-zero before `-exec` ever runs the wrapped command (verified against the
+real binary: `bucket required for s3 replica`, exit 1). An unconditional
+wrapper means the app cannot boot at all — not degraded, not unreplicated,
+*down* — the moment `LITESTREAM_BUCKET` and friends aren't set, which is true
+of a fresh deploy before those secrets are configured and of every local/dev
+container run.
+
+`rel/overlays/bin/docker-entrypoint.sh` (new file; `mix release`'s overlay
+mechanism ships anything under `rel/overlays/` at the same relative path
+inside the release, so this lands at `/app/bin/docker-entrypoint.sh` in the
+final image with no separate `COPY` needed):
+
+```sh
+#!/bin/sh
+set -eu
+
+# The Fly volume mounted at DATABASE_PATH's directory is root:root on first
+# boot; the release runs as nobody, so ownership must be fixed here, as
+# root, before dropping privilege and exec'ing the real command.
+if [ -n "${DATABASE_PATH:-}" ]; then
+  mkdir -p "$(dirname "$DATABASE_PATH")"
+  chown -R nobody:root "$(dirname "$DATABASE_PATH")"
+fi
+
+# Litestream fails closed when its S3 replica is unconfigured (exits before
+# -exec ever runs), so only wrap the release in it when a bucket is actually
+# set. Otherwise the release runs unreplicated rather than not running at
+# all — true on a fresh deploy before secrets are configured, and true of
+# every local/dev container run.
+if [ -n "${LITESTREAM_BUCKET:-}" ]; then
+  exec gosu nobody litestream replicate -config /etc/litestream.yml -exec "$1"
+else
+  echo "LITESTREAM_BUCKET not set; starting without replication" >&2
+  exec gosu nobody "$@"
+fi
+```
+
+Make it executable (`chmod +x rel/overlays/bin/docker-entrypoint.sh`) — match
+the existing `rel/overlays/bin/server`/`migrate` convention. It must be
+**root-owned**, not `nobody`-owned: it is the only thing that runs as root at
+container start, so if it inherited the release tree's `nobody:root`
+ownership, the app process (which runs as `nobody`) could rewrite it and
+escalate to root on the next container start. Explicitly `chown root:root`
+it in the Dockerfile after the release is copied in — do not rely on
+whatever ownership the `COPY --chown=nobody:root` line gives the rest of the
+tree.
+
+In the Dockerfile's runner stage, in one combined `RUN` layer (so `curl` does
+not remain permanently installed in the final image — installing and purging
+it across two separate layers does not shrink the image, only removing it
+within the same layer it was added does):
+
+```dockerfile
+ARG LITESTREAM_VERSION=<resolve the current release yourself; see below>
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libstdc++6 openssl libncurses6 locales ca-certificates gosu curl \
+  && set -eu; \
+     case "$(dpkg --print-architecture)" in \
+       amd64) litestream_arch="x86_64" ;; \
+       arm64) litestream_arch="arm64" ;; \
+       *) echo "unsupported architecture: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+     esac; \
+     litestream_asset="litestream-${LITESTREAM_VERSION}-linux-${litestream_arch}.tar.gz"; \
+     curl -fsSL -o "/tmp/${litestream_asset}" \
+       "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/${litestream_asset}" \
+  && curl -fsSL -o /tmp/checksums.txt \
+       "https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/checksums.txt" \
+  && (cd /tmp && grep " ${litestream_asset}\$" checksums.txt | sha256sum -c -) \
+  && tar -C /usr/local/bin -xzf "/tmp/${litestream_asset}" litestream \
+  && rm "/tmp/${litestream_asset}" /tmp/checksums.txt \
+  && apt-get purge -y curl \
+  && apt-get autoremove -y \
+  && rm -rf /var/lib/apt/lists/*
+```
+
+Do not hardcode `LITESTREAM_VERSION` from memory — resolve the current
+release yourself (e.g.
+`curl -fsSL https://api.github.com/repos/benbjohnson/litestream/releases/latest`
+to read the tag and confirm the asset naming, since it has changed across
+versions) at the time you write this.
+
+Also:
+
+- `COPY litestream.yml /etc/litestream.yml`.
+- Remove the `USER nobody` line (the entrypoint now handles the privilege
+  drop after fixing volume ownership as root).
+- `RUN chown root:root /app/bin/docker-entrypoint.sh` after the release COPY.
+- Set `ENTRYPOINT ["/app/bin/docker-entrypoint.sh"]`.
+- `CMD` stays `["/app/bin/server"]` — unchanged from the generator's default.
+  The entrypoint script itself decides whether to wrap it in `litestream
+  replicate`, not the Dockerfile.
+
+**Verify empirically, not by inspection alone** — Docker is available in this
+environment:
+
+1. `docker build -t ganesha-test .` must succeed.
+2. Run it against a bind-mounted directory simulating a fresh Fly volume,
+   owned by root, and confirm the container does NOT crash with `EACCES` and
+   that the mounted directory ends up owned by `nobody` after boot — e.g.:
+   ```bash
+   mkdir -p /tmp/ganesha-data && sudo chown root:root /tmp/ganesha-data
+   docker run --rm \
+     -e DATABASE_PATH=/data/ganesha.db \
+     -e SECRET_KEY_BASE="$(mix phx.gen.secret)" \
+     -e PHX_HOST=localhost \
+     -v /tmp/ganesha-data:/data \
+     ganesha-test whoami
+   ```
+   (a plain `whoami` as the container command is enough to prove the
+   entrypoint's chown-then-drop-privilege sequence runs without error; it does
+   not need to boot the full release to prove this specific fix).
+3. Confirm `litestream` is on `PATH` in the image:
+   `docker run --rm ganesha-test litestream version`.
+4. Confirm the entrypoint's fail-open gate actually works: run the image
+   with `LITESTREAM_BUCKET` unset (the default — do not set it) and confirm
+   the container does NOT immediately exit 1 the way a bare
+   `litestream replicate -config /etc/litestream.yml -exec ...` with an
+   empty bucket would. A minimal check: run with a command that would only
+   succeed past the gate, e.g. `docker run --rm -e DATABASE_PATH=/data/ganesha.db
+   -v /tmp/ganesha-data:/data ganesha-test echo booted-without-litestream`
+   and confirm it prints and exits 0, not `bucket required for s3 replica`.
+5. Confirm the entrypoint script itself is root-owned in the image:
+   `docker run --rm --entrypoint sh ganesha-test -c 'stat -c "%U" /app/bin/docker-entrypoint.sh'`
+   must print `root`, not `nobody`.
+
+If any of these five fail, the fix is not done — do not report success on
+`docker build` succeeding alone, since that would not catch a broken
+entrypoint, a wrong binary path, or the crash-loop this exact design was
+meant to prevent.
+
 - [ ] **Step 9: Deploy and verify against the running app**
 
 ```bash
 fly launch --no-deploy --copy-config --name ganesha --region nrt
 fly volumes create ganesha_data --region nrt --size 1
 fly secrets set SECRET_KEY_BASE="$(mix phx.gen.secret)" \
-  TEACHER_EMAIL="<her email>" TEACHER_PASSWORD="<a strong password>"
+  TEACHER_EMAIL="<her email>" TEACHER_PASSWORD="<a strong password>" \
+  LITESTREAM_ENDPOINT="<S3-compatible endpoint>" \
+  LITESTREAM_BUCKET="<bucket name>" \
+  LITESTREAM_ACCESS_KEY_ID="<access key>" \
+  LITESTREAM_SECRET_ACCESS_KEY="<secret key>"
 fly deploy
-fly ssh console -C "/app/bin/ganesha eval 'Ganesha.Release.migrate()'"
 fly ssh console -C "/app/bin/ganesha eval 'Code.eval_file(\"/app/lib/ganesha-0.1.0/priv/repo/seeds.exs\")'"
 ```
+
+The four `LITESTREAM_*` secrets are optional for the app to boot (Step 8b's
+entrypoint degrades to running unreplicated if `LITESTREAM_BUCKET` is unset),
+but required for the actual replication `litestream.yml` exists for — set
+them before relying on this as the payment-record backup path. The manual
+`Ganesha.Release.migrate()` step is redundant now that Step 5b migrates on
+boot; harmless to run, since it's idempotent, but no longer necessary.
+
 
 Then verify, in this order:
 1. `curl -sS https://ganesha.fly.dev/health` returns `ok`.
@@ -4795,7 +5260,7 @@ LiveView stays thin and the transaction is testable without a browser.
 
 ```elixir
 defmodule Ganesha.EnrollingTest do
-  use Ganesha.DataCase, async: true
+  use Ganesha.DataCase
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
 
   defp context do
@@ -5073,7 +5538,7 @@ git commit -m "feat: add enrolling use case joining purchases to rosters"
 
 ```elixir
 defmodule GaneshaWeb.EnrollLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, People, Roster, Sales, Studio}
 
@@ -5105,6 +5570,13 @@ defmodule GaneshaWeb.EnrollLiveTest do
     assert has_element?(view, "#enroll-form")
     assert has_element?(view, "#session-check-#{Enum.at(Studio.sessions_for_slot_in_month(slot, ~D[2026-08-01]), 0).id}")
     assert render(view) =~ student.display_name
+  end
+
+  test "falls back instead of crashing on malformed year or month", %{conn: conn} do
+    __omp_magic("", "{slot: slot} = august_monday()")
+
+    assert {:ok, _view, html} = live(conn, ~p"/enroll/#{slot.id}/oops/13")
+    assert html =~ slot.label
   end
 
   test "enrolls a student in every session of the month", %{conn: conn} do
@@ -5231,14 +5703,26 @@ defmodule GaneshaWeb.EnrollLive do
   def mount(_params, _session, socket), do: {:ok, socket}
 
   @impl true
-  def handle_params(%{"slot_id" => slot_id, "year" => year, "month" => month}, _uri, socket) do
-    month = Date.new!(String.to_integer(year), String.to_integer(month), 1)
-
+  def handle_params(%{"slot_id" => slot_id} = params, _uri, socket) do
     {:noreply,
      socket
      |> assign(:slot, Studio.get_slot!(slot_id))
-     |> assign(:month, month)
+     |> assign_month(params)
      |> load()}
+  end
+
+  defp assign_month(socket, %{"year" => year, "month" => month}) do
+    with {y, ""} <- Integer.parse(year),
+         {m, ""} <- Integer.parse(month),
+         {:ok, date} <- Date.new(y, m, 1) do
+      assign(socket, :month, date)
+    else
+      _ -> assign_month(socket, %{})
+    end
+  end
+
+  defp assign_month(socket, _params) do
+    assign(socket, :month, Date.beginning_of_month(Clock.today()))
   end
 
   defp load(socket) do
@@ -5514,7 +5998,7 @@ git commit -m "feat: add enroll screen for monthly signups and payment recording
 
 ```elixir
 defmodule GaneshaWeb.SessionLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
 
@@ -5855,7 +6339,7 @@ git commit -m "feat: add session screen for drop-ins, trials, and makeup booking
 
 **Files:**
 - Create: `lib/ganesha_web/live/settings_live.ex`
-- Modify: `lib/ganesha_web/router.ex`, `lib/ganesha_web/components/layouts.ex`
+- Modify: `lib/ganesha_web/router.ex`, `lib/ganesha_web/components/layouts.ex`, `lib/ganesha_web/live/publish_live.ex`
 - Test: `test/ganesha_web/live/settings_live_test.exs`
 
 **Interfaces:**
@@ -5868,7 +6352,7 @@ git commit -m "feat: add session screen for drop-ins, trials, and makeup booking
 
 ```elixir
 defmodule GaneshaWeb.SettingsLiveTest do
-  use GaneshaWeb.ConnCase, async: true
+  use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Ganesha.{Catalog, Publishing}
 
@@ -5889,6 +6373,24 @@ defmodule GaneshaWeb.SettingsLiveTest do
     updated = Catalog.get_package!(pkg.id)
     assert updated.price_per_class == 450
     assert updated.included_makeups == 1
+  end
+
+  test "creates a new package", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/settings")
+
+    view
+    |> form("#new-package-form", %{
+      "package" => %{
+        "name" => "暑期加開",
+        "kind" => "drop_in",
+        "price_per_class" => "500",
+        "included_makeups" => "0"
+      }
+    })
+    |> render_submit()
+
+    assert Enum.any?(Catalog.list_packages(), &(&1.name == "暑期加開" and &1.price_per_class == 500))
+    assert render(view) =~ "暑期加開"
   end
 
   test "saves the bank details used by the announcement footer", %{conn: conn} do
@@ -5958,6 +6460,13 @@ defmodule GaneshaWeb.SettingsLive do
   end
 
   @impl true
+  def handle_event("create_package", %{"package" => params}, socket) do
+    case Catalog.create_package(params) do
+      {:ok, _package} -> {:noreply, socket |> put_flash(:info, "已新增方案") |> load()}
+      {:error, _changeset} -> {:noreply, put_flash(socket, :error, "方案資料不正確")}
+    end
+  end
+
   def handle_event("save_package", %{"package-id" => id} = params, socket) do
     package = Catalog.get_package!(id)
 
@@ -5985,6 +6494,42 @@ defmodule GaneshaWeb.SettingsLive do
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="pb-24">
         <h1 class="text-lg font-semibold">方案與設定</h1>
+
+        <form
+          id="new-package-form"
+          phx-submit="create_package"
+          class="mt-3 space-y-2 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800"
+        >
+          <h2 class="font-medium">新增方案</h2>
+          <input
+            type="text"
+            name="package[name]"
+            placeholder="方案名稱"
+            required
+            class="min-h-[44px] w-full rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+          />
+          <select name="package[kind]" class="min-h-[44px] w-full rounded-lg border-zinc-300 dark:bg-zinc-900">
+            <option value="monthly">月課程</option>
+            <option value="drop_in">單堂</option>
+            <option value="trial">體驗</option>
+          </select>
+          <div class="flex gap-2">
+            <input
+              type="number"
+              name="package[price_per_class]"
+              placeholder="每堂"
+              required
+              class="min-h-[44px] flex-1 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            />
+            <input
+              type="number"
+              name="package[included_makeups]"
+              value="0"
+              class="min-h-[44px] w-24 rounded-lg border-zinc-300 text-sm dark:bg-zinc-900"
+            />
+          </div>
+          <button class="min-h-[44px] w-full rounded-lg bg-emerald-600 text-sm text-white">新增</button>
+        </form>
 
         <section
           :for={package <- @packages}
@@ -6067,7 +6612,7 @@ In `lib/ganesha_web/live/publish_live.ex`, beside the 複製 button:
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `mix test test/ganesha_web/live/settings_live_test.exs`
-Expected: PASS, 3 tests.
+Expected: PASS, 4 tests.
 
 - [ ] **Step 6: Sweep dead code**
 

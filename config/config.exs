@@ -7,9 +7,31 @@
 # General application configuration
 import Config
 
+config :ganesha, :scopes,
+  user: [
+    default: true,
+    module: Ganesha.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:user, :id],
+    schema_key: :user_id,
+    schema_type: :id,
+    schema_table: :users,
+    test_data_fixture: Ganesha.AccountsFixtures,
+    test_setup_helper: :register_and_log_in_user
+  ]
+
 config :ganesha,
   ecto_repos: [Ganesha.Repo],
   generators: [timestamp_type: :utc_datetime]
+
+config :ganesha, Oban,
+  repo: Ganesha.Repo,
+  engine: Oban.Engines.Lite,
+  queues: [default: 5],
+  plugins: [
+    Oban.Plugins.Pruner,
+    {Oban.Plugins.Cron, crontab: [{"10 16 * * *", Ganesha.Reporting.CloseMonthWorker}]}
+  ]
 
 # Configure the endpoint
 config :ganesha, GaneshaWeb.Endpoint,

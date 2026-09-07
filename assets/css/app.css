@@ -1,5 +1,5 @@
-/* See the Tailwind configuration guide for advanced usage
-   https://tailwindcss.com/docs/configuration */
+/* Ganesha — 藍染 indigo ink on 青瓷 celadon paper.
+   Design system: docs/superpowers/specs/2026-09-06-ui-design-system.md */
 
 @import "tailwindcss" source(none);
 @import "phoenix-colocated/ganesha/colocated.css";
@@ -13,84 +13,6 @@
    The heroicons installation itself is managed by your mix.exs */
 @plugin "../vendor/heroicons";
 
-/* daisyUI Tailwind Plugin. */
-@plugin "daisyui/packages/bundle/daisyui" {
-  themes: false;
-}
-
-/* daisyUI theme plugin.
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
-@plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "dark";
-  default: false;
-  prefersdark: true;
-  color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
-  --color-base-content: oklch(97.807% 0.029 256.847);
-  --color-primary: oklch(58% 0.233 277.117);
-  --color-primary-content: oklch(96% 0.018 272.314);
-  --color-secondary: oklch(58% 0.233 277.117);
-  --color-secondary-content: oklch(96% 0.018 272.314);
-  --color-accent: oklch(60% 0.25 292.717);
-  --color-accent-content: oklch(96% 0.016 293.756);
-  --color-neutral: oklch(37% 0.044 257.287);
-  --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
-}
-
-@plugin "daisyui/packages/bundle/daisyui-theme" {
-  name: "light";
-  default: true;
-  prefersdark: false;
-  color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: oklch(98% 0.002 247.839);
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
-  --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
-  --radius-selector: 0.25rem;
-  --radius-field: 0.25rem;
-  --radius-box: 0.5rem;
-  --size-selector: 0.21875rem;
-  --size-field: 0.21875rem;
-  --border: 1.5px;
-  --depth: 1;
-  --noise: 0;
-}
-
 /* Add variants based on LiveView classes */
 @custom-variant phx-click-loading (.phx-click-loading&, .phx-click-loading &);
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
@@ -99,7 +21,225 @@
 /* Use the data attribute for dark mode  */
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
 
-/* Make LiveView wrapper divs transparent for layout */
-[data-phx-session], [data-phx-teleported-src] { display: contents }
+/* Display face. Latin first so numerals get Literata and Chinese falls to a 宋體. */
+@font-face {
+  font-family: "Literata";
+  font-style: normal;
+  font-weight: 300 700;
+  font-display: swap;
+  src: url("/fonts/literata-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
 
-/* This file is for your main application CSS */
+/* ── Palette ──────────────────────────────────────────────────────────────── */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --c-paper: #edf0ea;
+  --c-paper-raised: #f7f9f4;
+  --c-paper-sunk: #e2e7de;
+  --c-rule: #c5cfc2;
+  --c-rule-strong: #a3b0a0;
+  --c-ink: #16233f;
+  --c-ink-soft: #4f5f7c;
+  --c-ink-faint: #67748a;
+  --c-turmeric: #b87513;
+  --c-turmeric-ink: #8f5a0d;
+  --c-turmeric-lift: #eee0c2;
+  --c-sindoor: #a02a26;
+  --c-sindoor-ink: #8e241f;
+  --c-sindoor-lift: #f0dbd7;
+  --c-celadon: #416b4f;
+  --c-celadon-ink: #35593f;
+  --c-celadon-lift: #dae7dc;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --c-paper: #131b2c;
+  --c-paper-raised: #1b2438;
+  --c-paper-sunk: #0d1420;
+  --c-rule: #2e3a52;
+  --c-rule-strong: #43516e;
+  --c-ink: #e4e8ef;
+  --c-ink-soft: #a6b1c4;
+  --c-ink-faint: #7c8899;
+  --c-turmeric: #e0a64a;
+  --c-turmeric-ink: #e9b968;
+  --c-turmeric-lift: #3a2e14;
+  --c-sindoor: #e2726a;
+  --c-sindoor-ink: #ef8f88;
+  --c-sindoor-lift: #3a1d1c;
+  --c-celadon: #7fb08d;
+  --c-celadon-ink: #96c3a3;
+  --c-celadon-lift: #16301f;
+}
+
+@theme inline {
+  --color-paper: var(--c-paper);
+  --color-raised: var(--c-paper-raised);
+  --color-sunk: var(--c-paper-sunk);
+  --color-rule: var(--c-rule);
+  --color-rule-strong: var(--c-rule-strong);
+  --color-ink: var(--c-ink);
+  --color-ink-soft: var(--c-ink-soft);
+  --color-ink-faint: var(--c-ink-faint);
+  --color-turmeric: var(--c-turmeric);
+  --color-turmeric-ink: var(--c-turmeric-ink);
+  --color-turmeric-lift: var(--c-turmeric-lift);
+  --color-sindoor: var(--c-sindoor);
+  --color-sindoor-ink: var(--c-sindoor-ink);
+  --color-sindoor-lift: var(--c-sindoor-lift);
+  --color-celadon: var(--c-celadon);
+  --color-celadon-ink: var(--c-celadon-ink);
+  --color-celadon-lift: var(--c-celadon-lift);
+}
+
+@theme {
+  --font-display:
+    Literata, "Songti TC", "Noto Serif TC", "Source Han Serif TC",
+    "Source Han Serif TW", serif;
+  --font-ui:
+    -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC",
+    "Microsoft JhengHei", "Helvetica Neue", sans-serif;
+  --font-sans: var(--font-ui);
+  --font-serif: var(--font-display);
+
+  /* 1.25 major third off 16px */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.6;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.7;
+  --text-base: 1rem;
+  --text-base--line-height: 1.75;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.5;
+  --text-xl: 1.5625rem;
+  --text-xl--line-height: 1.32;
+  --text-2xl: 1.9375rem;
+  --text-2xl--line-height: 1.2;
+  --text-3xl: 2.4375rem;
+  --text-3xl--line-height: 1.1;
+  --text-4xl: 3rem;
+  --text-4xl--line-height: 1.04;
+
+  /* Two radii, and they mean different things. */
+  --radius-xs: 2px;
+  --radius-sm: 2px;
+  --radius: 2px;
+  --radius-md: 2px;
+  --radius-lg: 2px;
+  --radius-xl: 2px;
+  --radius-2xl: 2px;
+  --radius-3xl: 2px;
+
+  /* Reading measure. */
+  --container-measure: 34rem;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  html {
+    background-color: var(--c-paper);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--c-paper);
+    color: var(--c-ink);
+    font-family: var(--font-ui);
+    font-size: 1rem;
+    line-height: 1.75;
+    letter-spacing: 0.02em;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Every figure in this app is money, a date, or a count. Align them. */
+  .font-display,
+  [class*="font-display"] {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+  }
+
+  :where(a, button, input, select, textarea, summary):focus-visible {
+    outline: 2px solid var(--c-turmeric);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--c-turmeric-lift);
+    color: var(--c-ink);
+  }
+}
+
+/* Make LiveView wrapper divs transparent for layout */
+[data-phx-session],
+[data-phx-teleported-src] {
+  display: contents;
+}
+
+/* ── Ledger devices ───────────────────────────────────────────────────────── */
+
+/* A name crossed out in the book. The strike draws so the change is visible. */
+.struck {
+  position: relative;
+  color: var(--c-ink-faint);
+}
+
+.struck::after {
+  content: "";
+  position: absolute;
+  left: -0.1em;
+  right: -0.1em;
+  top: 55%;
+  height: 1.5px;
+  background: var(--c-sindoor);
+  transform-origin: left center;
+  animation: strike 160ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* The one orchestrated moment in the app: on the dashboard, a measure fills
+   once on load. Nothing else animates without being asked to. */
+.fills-across {
+  transform-origin: left center;
+  animation: fill-across 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fill-across {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* A measure that rises from its baseline, like a level being filled. */
+.fills-up {
+  transform-origin: bottom;
+  animation: fill-up 760ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes fill-up {
+  from {
+    transform: scaleY(0);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .struck::after,
+  .fills-across,
+  .fills-up {
+    animation: none;
+  }
+}

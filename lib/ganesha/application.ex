@@ -7,11 +7,14 @@ defmodule Ganesha.Application do
 
   @impl true
   def start(_type, _args) do
+    Oban.Telemetry.attach_default_logger(level: :info)
+
     children = [
       GaneshaWeb.Telemetry,
       Ganesha.Repo,
       {Ecto.Migrator,
        repos: Application.fetch_env!(:ganesha, :ecto_repos), skip: skip_migrations?()},
+      {Oban, Application.fetch_env!(:ganesha, Oban)},
       {DNSCluster, query: Application.get_env(:ganesha, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Ganesha.PubSub},
       # Start a worker by calling: Ganesha.Worker.start_link(arg)

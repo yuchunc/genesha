@@ -1,0 +1,12 @@
+# Continuous replication of the SQLite database.
+# A nightly dump would leave a 24-hour RPO on payment records, which is not
+# acceptable when the alternative is one sidecar process.
+dbs:
+  - path: ${DATABASE_PATH}
+    replicas:
+      - type: s3
+        endpoint: ${LITESTREAM_ENDPOINT}
+        bucket: ${LITESTREAM_BUCKET}
+        path: ganesha
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}

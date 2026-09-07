@@ -1,50 +1,251 @@
 defmodule GaneshaWeb.CoreComponents do
   @moduledoc """
-  Provides core UI components.
+  The studio ledger's component vocabulary.
 
-  At first glance, this module may seem daunting, but its goal is to provide
-  core building blocks for your application, such as tables, forms, and
-  inputs. The components consist mostly of markup and are well-documented
-  with doc strings and declarative assigns. You may customize and style
-  them in any way you want, based on your application growth and needs.
+  Two groups. Form and feedback primitives (`input/1`, `button/1`, `flash/1`)
+  restyled onto the design tokens, and the ledger devices that carry meaning:
 
-  The foundation for styling is Tailwind CSS, a utility-first CSS framework,
-  augmented with daisyUI, a Tailwind CSS plugin that provides UI components
-  and themes. Here are useful references:
+    * `seal/1` — the weekday stamp that identifies a recurring class
+    * `pill/1` — how a place on a roster was paid for
+    * `money/1` — a figure and its label on one baseline, tabular
+    * `section/1` — a ruled heading, the only structure most screens need
+    * `empty/1` — an empty state written as an invitation
 
-    * [daisyUI](https://daisyui.com/docs/intro/) - a good place to get
-      started and see the available components.
-
-    * [Tailwind CSS](https://tailwindcss.com) - the foundational framework
-      we build on. You will use it for layout, sizing, flexbox, grid, and
-      spacing.
-
-    * [Heroicons](https://heroicons.com) - see `icon/1` for usage.
-
-    * [Phoenix.Component](https://phoenix-live-view.hexdocs.pm/Phoenix.Component.html) -
-      the component system used by Phoenix. Some components, such as `<.link>`
-      and `<.form>`, are defined there.
-
+  Each device encodes something. See
+  `docs/superpowers/specs/2026-09-06-ui-design-system.md` for why there are no
+  four-sided cards, no numbered markers outside the signup list, and no icons
+  outside the bottom navigation.
   """
   use Phoenix.Component
   use Gettext, backend: GaneshaWeb.Gettext
 
+  alias GaneshaWeb.Fmt
   alias Phoenix.LiveView.JS
+
+  # Outline tone: a hairline and a matching ink. The filled variants live in
+  # `seal/1`, which is the only device that ever reverses out.
+  defp outline_tone("ink"), do: "border-ink text-ink"
+  defp outline_tone("quiet"), do: "border-rule text-ink-faint"
+  defp outline_tone("turmeric"), do: "border-turmeric text-turmeric-ink"
+  defp outline_tone("sindoor"), do: "border-sindoor text-sindoor-ink"
+  defp outline_tone("celadon"), do: "border-celadon text-celadon-ink"
+
+  defp filled_tone("ink"), do: "border-ink bg-ink text-paper"
+  defp filled_tone("quiet"), do: "border-rule-strong bg-rule-strong text-paper"
+  defp filled_tone("turmeric"), do: "border-turmeric bg-turmeric text-paper"
+  defp filled_tone("sindoor"), do: "border-sindoor bg-sindoor text-paper"
+  defp filled_tone("celadon"), do: "border-celadon bg-celadon text-paper"
+
+  defp seal_size("sm"), do: "size-7 text-sm"
+  defp seal_size("md"), do: "size-10 text-lg"
+  defp seal_size("lg"), do: "size-14 text-xl"
+
+  @doc """
+  The weekday stamp for a recurring class.
+
+  A 印章 is the mark of authority in a hand-kept ledger. Here it answers "which
+  class" before a word is read. Two classes on the same weekday share a glyph
+  and are told apart by the time beside it, which is true to the domain.
+
+  ## Examples
+
+      <.seal weekday={1} />
+      <.seal weekday={3} tone="sindoor" filled />
+  """
+  attr :weekday, :any, required: true, doc: "1..7, or a Date"
+  attr :tone, :string, default: "ink", values: ~w(ink quiet turmeric sindoor celadon)
+  attr :filled, :boolean, default: false
+  attr :size, :string, default: "md", values: ~w(sm md lg)
+  attr :class, :any, default: nil
+
+  def seal(assigns) do
+    ~H"""
+    <span
+      aria-hidden="true"
+      class={[
+        "inline-flex shrink-0 items-center justify-center border-[1.5px] font-display leading-none",
+        seal_size(@size),
+        if(@filled, do: filled_tone(@tone), else: outline_tone(@tone)),
+        @class
+      ]}
+    >
+      {Fmt.weekday_glyph(@weekday)}
+    </span>
+    """
+  end
+
+  @doc """
+  How a place on a roster was paid for, or what state a record is in.
+
+  ## Examples
+
+      <.pill tone="celadon">已確認</.pill>
+      <.pill tone="turmeric">補課</.pill>
+  """
+  attr :tone, :string, default: "quiet", values: ~w(ink quiet turmeric sindoor celadon)
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+
+  def pill(assigns) do
+    ~H"""
+    <span class={[
+      "inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs whitespace-nowrap",
+      outline_tone(@tone),
+      @class
+    ]}>
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  @doc """
+  A money figure with its label on the same baseline.
+
+  Integer TWD only, thousands-separated, tabular so columns of figures line up.
+  The label follows the figure rather than sitting above it: a ledger line, not
+  a statistic in a box.
+
+  ## Examples
+
+      <.money amount={18_400} label="本月已確認" size="xl" />
+      <.money amount={1200} tone="turmeric" />
+  """
+  attr :amount, :integer, required: true
+  attr :label, :string, default: nil
+  attr :size, :string, default: "md", values: ~w(sm md lg xl)
+  attr :tone, :string, default: "ink", values: ~w(ink soft turmeric sindoor celadon)
+  attr :prefix, :string, default: "NT$"
+  attr :class, :any, default: nil
+  attr :rest, :global
+
+  def money(assigns) do
+    sizes = %{
+      "sm" => "text-sm",
+      "md" => "text-lg",
+      "lg" => "text-xl",
+      "xl" => "text-3xl"
+    }
+
+    colors = %{
+      "ink" => "text-ink",
+      "soft" => "text-ink-soft",
+      "turmeric" => "text-turmeric-ink",
+      "sindoor" => "text-sindoor-ink",
+      "celadon" => "text-celadon-ink"
+    }
+
+    assigns = assign(assigns, sizes: sizes, colors: colors)
+
+    ~H"""
+    <span class={["inline-flex items-baseline gap-2", @class]} {@rest}>
+      <span class={[
+        "font-display tabular-nums",
+        Map.fetch!(@sizes, @size),
+        Map.fetch!(@colors, @tone)
+      ]}>
+        <span class="text-[0.7em] font-light">{@prefix}</span>{Fmt.amount(@amount)}
+      </span>
+      <span :if={@label} class="text-xs text-ink-faint">{@label}</span>
+    </span>
+    """
+  end
+
+  @doc """
+  A screen's title.
+
+  ## Examples
+
+      <.page_header title="收款">
+        <:subtitle>2026年9月</:subtitle>
+        <:actions><.button navigate={~p"/publish"}>發布課表</.button></:actions>
+      </.page_header>
+  """
+  attr :title, :string, required: true
+  slot :subtitle
+  slot :actions
+
+  def page_header(assigns) do
+    ~H"""
+    <header class="mb-6 flex items-end justify-between gap-4">
+      <div>
+        <h1 class="font-display text-2xl leading-tight text-ink">{@title}</h1>
+        <p :if={@subtitle != []} class="mt-1 text-sm text-ink-soft">
+          {render_slot(@subtitle)}
+        </p>
+      </div>
+      <div :if={@actions != []} class="flex shrink-0 items-center gap-2">
+        {render_slot(@actions)}
+      </div>
+    </header>
+    """
+  end
+
+  @doc """
+  A ruled section heading. The rule is the structure; there is no card.
+
+  ## Examples
+
+      <.section title="未收款" count={3}>
+        …rows…
+      </.section>
+  """
+  attr :title, :string, required: true
+  attr :count, :any, default: nil, doc: "an integer shown beside the title"
+  attr :class, :any, default: nil
+  attr :rest, :global
+  slot :actions
+  slot :inner_block, required: true
+
+  def section(assigns) do
+    ~H"""
+    <section class={["mt-8", @class]} {@rest}>
+      <div class="flex items-center gap-3 border-b border-rule pb-2">
+        <h2 class="text-sm font-medium text-ink">{@title}</h2>
+        <span :if={@count} class="font-display text-sm tabular-nums text-ink-faint">
+          {@count}
+        </span>
+        <div :if={@actions != []} class="ml-auto flex items-center gap-2">
+          {render_slot(@actions)}
+        </div>
+      </div>
+      <div class="mt-3">{render_slot(@inner_block)}</div>
+    </section>
+    """
+  end
+
+  @doc """
+  An empty state, written as an invitation to act rather than a shrug.
+
+  ## Examples
+
+      <.empty id="no-enrollments">
+        本月還沒有人報名。
+        <:action><.button phx-click="generate">建立本月課程</.button></:action>
+      </.empty>
+  """
+  attr :id, :string, default: nil
+  attr :class, :any, default: nil
+  slot :inner_block, required: true
+  slot :action
+
+  def empty(assigns) do
+    ~H"""
+    <div id={@id} class={["border-l-[3px] border-rule py-3 pl-4", @class]}>
+      <p class="text-sm text-ink-soft">{render_slot(@inner_block)}</p>
+      <div :if={@action != []} class="mt-3">{render_slot(@action)}</div>
+    </div>
+    """
+  end
 
   @doc """
   Renders flash notices.
 
+  Anchored to the bottom on a phone, above the navigation bar, so the message
+  lands within thumb reach of the hand that caused it.
+
   ## Examples
 
       <.flash kind={:info} flash={@flash} />
-      <.flash
-        id="welcome-back"
-        kind={:info}
-        phx-mounted={show("#welcome-back") |> JS.remove_attribute("hidden")}
-        hidden
-      >
-        Welcome Back!
-      </.flash>
   """
   attr :id, :string, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
@@ -63,23 +264,24 @@ defmodule GaneshaWeb.CoreComponents do
       id={@id}
       phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
       role="alert"
-      class="toast toast-top toast-end z-50"
+      class="fixed inset-x-4 bottom-[calc(72px+env(safe-area-inset-bottom))] z-50 sm:inset-x-auto sm:right-6 sm:bottom-6 sm:w-96"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
-        @kind == :info && "alert-info",
-        @kind == :error && "alert-error"
+        "flex items-start gap-3 border-l-[3px] px-4 py-3 text-sm text-wrap shadow-[0_2px_16px_rgba(22,35,63,0.14)]",
+        @kind == :info && "border-celadon bg-celadon-lift text-ink",
+        @kind == :error && "border-sindoor bg-sindoor-lift text-ink"
       ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
+        <div class="min-w-0 flex-1">
+          <p :if={@title} class="font-medium">{@title}</p>
           <p>{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <button
+          type="button"
+          class="shrink-0 cursor-pointer text-ink-faint hover:text-ink"
+          aria-label={gettext("關閉")}
+        >
+          <.icon name="hero-x-mark-micro" class="size-4" />
         </button>
       </div>
     </div>
@@ -89,23 +291,35 @@ defmodule GaneshaWeb.CoreComponents do
   @doc """
   Renders a button with navigation support.
 
+  Variants say what the button does, not how loud it is: `primary` commits a
+  record, `accent` moves money, `danger` cancels a class, the default is
+  everything else.
+
   ## Examples
 
-      <.button>Send!</.button>
-      <.button phx-click="go" variant="primary">Send!</.button>
-      <.button navigate={~p"/"}>Home</.button>
+      <.button variant="primary" phx-click="save">建立本月課程</.button>
+      <.button navigate={~p"/"}>回到總覽</.button>
   """
-  attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
+  attr :rest, :global, include: ~w(href navigate patch method download name value disabled type)
   attr :class, :any
-  attr :variant, :string, values: ~w(primary)
+  attr :variant, :string, default: nil, values: [nil, "primary", "accent", "danger", "quiet"]
   slot :inner_block, required: true
 
   def button(%{rest: rest} = assigns) do
-    variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
+    variants = %{
+      "primary" => "border-ink bg-ink text-paper hover:bg-ink-soft hover:border-ink-soft",
+      "accent" => "border-turmeric bg-turmeric text-paper hover:brightness-110",
+      "danger" => "border-sindoor bg-transparent text-sindoor-ink hover:bg-sindoor-lift",
+      "quiet" => "border-transparent bg-transparent text-ink-soft hover:text-ink",
+      nil => "border-rule-strong bg-transparent text-ink hover:bg-sunk"
+    }
 
     assigns =
       assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
+        [
+          "inline-flex min-h-11 cursor-pointer items-center justify-center gap-2 border px-4 py-2 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+          Map.fetch!(variants, assigns[:variant])
+        ]
       end)
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
@@ -212,7 +426,7 @@ defmodule GaneshaWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="space-y-1">
       <label for={@id}>
         <input
           type="hidden"
@@ -221,14 +435,14 @@ defmodule GaneshaWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
+        <span class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink">
           <input
             type="checkbox"
             id={@id}
             name={@name}
             value="true"
             checked={@checked}
-            class={@class || "checkbox checkbox-sm"}
+            class={@class || "size-5 shrink-0 rounded-none accent-[var(--c-turmeric)]"}
             {@rest}
           />{@label}
         </span>
@@ -240,13 +454,13 @@ defmodule GaneshaWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="space-y-1">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1.5 block text-xs text-ink-soft">{@label}</span>
         <select
           id={@id}
           name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
+          class={[@class || control_class(@errors, @error_class)]}
           multiple={@multiple}
           {@rest}
         >
@@ -261,16 +475,13 @@ defmodule GaneshaWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="space-y-1">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1.5 block text-xs text-ink-soft">{@label}</span>
         <textarea
           id={@id}
           name={@name}
-          class={[
-            @class || "w-full textarea",
-            @errors != [] && (@error_class || "textarea-error")
-          ]}
+          class={[@class || control_class(@errors, @error_class)]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
       </label>
@@ -282,18 +493,15 @@ defmodule GaneshaWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="fieldset mb-2">
+    <div class="space-y-1">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="mb-1.5 block text-xs text-ink-soft">{@label}</span>
         <input
           type={@type}
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            @class || "w-full input",
-            @errors != [] && (@error_class || "input-error")
-          ]}
+          class={[@class || control_class(@errors, @error_class)]}
           {@rest}
         />
       </label>
@@ -302,146 +510,35 @@ defmodule GaneshaWeb.CoreComponents do
     """
   end
 
+  # Inputs are sunk into the paper rather than raised off it, and figures typed
+  # into them are set in the display face so an amount reads the same in the
+  # field as it will in the ledger.
+  defp control_class(errors, error_class) do
+    [
+      "w-full min-h-11 border bg-sunk px-3 py-2 text-base text-ink font-display placeholder:font-ui placeholder:text-ink-faint focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+      if(errors == [],
+        do: "border-rule-strong focus:border-turmeric",
+        else: error_class || "border-sindoor"
+      )
+    ]
+  end
+
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
-      {render_slot(@inner_block)}
-    </p>
-    """
-  end
-
-  @doc """
-  Renders a header with title.
-  """
-  slot :inner_block, required: true
-  slot :subtitle
-  slot :actions
-
-  def header(assigns) do
-    ~H"""
-    <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
-      <div>
-        <h1 class="text-lg font-semibold leading-8">
-          {render_slot(@inner_block)}
-        </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
-          {render_slot(@subtitle)}
-        </p>
-      </div>
-      <div class="flex-none">{render_slot(@actions)}</div>
-    </header>
-    """
-  end
-
-  @doc """
-  Renders a table with generic styling.
-
-  ## Examples
-
-      <.table id="users" rows={@users}>
-        <:col :let={user} label="id">{user.id}</:col>
-        <:col :let={user} label="username">{user.username}</:col>
-      </.table>
-  """
-  attr :id, :string, required: true
-  attr :rows, :list, required: true
-  attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
-
-  attr :row_item, :any,
-    default: &Function.identity/1,
-    doc: "the function for mapping each row before calling the :col and :action slots"
-
-  slot :col, required: true do
-    attr :label, :string
-  end
-
-  slot :action, doc: "the slot for showing user actions in the last table column"
-
-  def table(assigns) do
-    assigns =
-      with %{rows: %Phoenix.LiveView.LiveStream{}} <- assigns do
-        assign(assigns, row_id: assigns.row_id || fn {id, _item} -> id end)
-      end
-
-    ~H"""
-    <table class="table table-zebra">
-      <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
-          <th :if={@action != []}>
-            <span class="sr-only">{gettext("Actions")}</span>
-          </th>
-        </tr>
-      </thead>
-      <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
-          <td
-            :for={col <- @col}
-            phx-click={@row_click && @row_click.(row)}
-            class={@row_click && "hover:cursor-pointer"}
-          >
-            {render_slot(col, @row_item.(row))}
-          </td>
-          <td :if={@action != []} class="w-0 font-semibold">
-            <div class="flex gap-4">
-              <%= for action <- @action do %>
-                {render_slot(action, @row_item.(row))}
-              <% end %>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-    """
-  end
-
-  @doc """
-  Renders a data list.
-
-  ## Examples
-
-      <.list>
-        <:item title="Title">{@post.title}</:item>
-        <:item title="Views">{@post.views}</:item>
-      </.list>
-  """
-  slot :item, required: true do
-    attr :title, :string, required: true
-  end
-
-  def list(assigns) do
-    ~H"""
-    <ul class="list">
-      <li :for={item <- @item} class="list-row">
-        <div class="list-col-grow">
-          <div class="font-bold">{item.title}</div>
-          <div>{render_slot(item)}</div>
-        </div>
-      </li>
-    </ul>
+    <p class="text-xs text-sindoor-ink">{render_slot(@inner_block)}</p>
     """
   end
 
   @doc """
   Renders a [Heroicon](https://heroicons.com).
 
-  Heroicons come in three styles – outline, solid, and mini.
-  By default, the outline style is used, but solid and mini may
-  be applied by using the `-solid` and `-mini` suffix.
-
-  You can customize the size and colors of the icons by setting
-  width, height, and background color classes.
-
-  Icons are extracted from the `deps/heroicons` directory and bundled within
-  your compiled app.css by the plugin in `assets/vendor/heroicons.js`.
+  Icons appear in the bottom navigation and on back and control affordances.
+  They do not appear in content: the Chinese labels already say what things are.
 
   ## Examples
 
-      <.icon name="hero-x-mark" />
-      <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+      <.icon name="hero-arrow-left" class="size-5" />
   """
   attr :name, :string, required: true
   attr :class, :any, default: "size-4"
@@ -457,21 +554,16 @@ defmodule GaneshaWeb.CoreComponents do
   def show(js \\ %JS{}, selector) do
     JS.show(js,
       to: selector,
-      time: 300,
-      transition:
-        {"transition-all ease-out duration-300",
-         "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95",
-         "opacity-100 translate-y-0 sm:scale-100"}
+      time: 200,
+      transition: {"transition-opacity ease-out duration-200", "opacity-0", "opacity-100"}
     )
   end
 
   def hide(js \\ %JS{}, selector) do
     JS.hide(js,
       to: selector,
-      time: 200,
-      transition:
-        {"transition-all ease-in duration-200", "opacity-100 translate-y-0 sm:scale-100",
-         "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
+      time: 150,
+      transition: {"transition-opacity ease-in duration-150", "opacity-100", "opacity-0"}
     )
   end
 
