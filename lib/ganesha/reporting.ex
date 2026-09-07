@@ -129,19 +129,25 @@ defmodule Ganesha.Reporting do
   def close_month(%Date{} = month) do
     first = Date.beginning_of_month(month)
 
-    attrs = %{
-      month: first,
-      revenue: revenue_for_month(first),
-      revenue_by_method: Map.new(revenue_by_method_for_month(first)),
-      tax_threshold: @monthly_threshold
-    }
+    Repo.transaction(fn ->
+      attrs = %{
+        month: first,
+        revenue: revenue_for_month(first),
+        revenue_by_method: Map.new(revenue_by_method_for_month(first)),
+        tax_threshold: @monthly_threshold
+      }
 
-    %MonthlyClose{}
-    |> MonthlyClose.changeset(attrs)
-    |> Repo.insert(
-      on_conflict: {:replace, [:revenue, :revenue_by_method, :tax_threshold, :updated_at]},
-      conflict_target: :month
-    )
+      case %MonthlyClose{}
+           |> MonthlyClose.changeset(attrs)
+           |> Repo.insert(
+             returning: true,
+             on_conflict: {:replace, [:revenue, :revenue_by_method, :tax_threshold, :updated_at]},
+             conflict_target: :month
+           ) do
+        {:ok, closed} -> closed
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
   end
 
   @doc "The frozen snapshot for a month, or nil if it hasn't closed yet."

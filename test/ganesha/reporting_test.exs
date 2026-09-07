@@ -375,7 +375,7 @@ defmodule Ganesha.ReportingTest do
 
       assert Reporting.cycle_summary(~D[2026-08-01]) == %{
                revenue: 1600,
-               by_method: Reporting.revenue_by_method_for_month(~D[2026-08-01])
+               by_method: [{"line_pay", 1600}, {"line_bank", 0}, {"cash", 0}, {"other", 0}]
              }
     end
 
