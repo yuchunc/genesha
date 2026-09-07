@@ -35,6 +35,24 @@ defmodule Ganesha.Reporting.CloseMonthWorkerTest do
   test "is a no-op when the month is already closed" do
     {:ok, _} = Reporting.close_month(last_month())
 
+    {:ok, student} = People.create_student(%{display_name: "Lulu"})
+
+    {:ok, pkg} =
+      Catalog.create_package(%{name: "月課程", kind: "monthly", price_per_class: 400})
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1600})
+
+    {:ok, payment} =
+      Sales.record_payment(%{
+        purchase_id: purchase.id,
+        amount: 1600,
+        method: "cash",
+        paid_on: last_month()
+      })
+
+    {:ok, _} = Sales.confirm_payment(payment, "teacher@example.com")
+
     assert :ok = perform_job(CloseMonthWorker, %{})
 
     assert Reporting.get_closed_month(last_month()).revenue == 0
