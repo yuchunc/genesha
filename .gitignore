@@ -42,3 +42,6 @@ npm-debug.log
 
 # SDD workspace (scratch for subagent-driven development)
 .superpowers/
+
+# Local git worktrees (subagent-driven-development)
+.worktrees/
