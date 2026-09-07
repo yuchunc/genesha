@@ -9,6 +9,7 @@ defmodule Ganesha.Sales do
 
   import Ecto.Query, warn: false
   alias Ganesha.Repo
+  alias Ganesha.Reporting
   alias Ganesha.Sales.Purchase
 
   def get_purchase!(id) do
@@ -75,9 +76,26 @@ defmodule Ganesha.Sales do
   Only ever called from a human action in the UI. No API in Taiwan can tell
   this application that a personal transfer landed, so this is an assertion by
   the teacher, and the schema records who made it.
+
+  If the payment's month has already closed, refreshes that month's frozen
+  snapshot to include it — a payment confirmed while its month is still open
+  is picked up whenever that month eventually closes, so no refresh is
+  needed there.
   """
   def confirm_payment(%Payment{} = payment, confirmed_by) do
-    payment |> Payment.confirmation_changeset(confirmed_by) |> Repo.update()
+    with {:ok, confirmed} <-
+           payment |> Payment.confirmation_changeset(confirmed_by) |> Repo.update() do
+      refresh_closed_month(confirmed.paid_on)
+      {:ok, confirmed}
+    end
+  end
+
+  defp refresh_closed_month(paid_on) do
+    month = Date.beginning_of_month(paid_on)
+
+    if Reporting.get_closed_month(month) do
+      {:ok, _} = Reporting.close_month(month)
+    end
   end
 
   def list_payments_for_purchase(purchase_id) do

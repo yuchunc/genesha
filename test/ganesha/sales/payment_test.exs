@@ -1,6 +1,6 @@
 defmodule Ganesha.Sales.PaymentTest do
   use Ganesha.DataCase
-  alias Ganesha.{Catalog, Clock, People, Sales}
+  alias Ganesha.{Catalog, Clock, People, Reporting, Sales}
 
   defp purchase_fixture(student_name \\ nil) do
     name = student_name || "S#{System.unique_integer([:positive])}"
@@ -85,6 +85,42 @@ defmodule Ganesha.Sales.PaymentTest do
 
     assert {:error, cs} = Sales.confirm_payment(payment, "")
     assert "can't be blank" in errors_on(cs).confirmed_by
+  end
+
+  test "confirming a payment refreshes an already-closed month" do
+    purchase = purchase_fixture()
+    past_month = Date.shift(Date.beginning_of_month(Clock.today()), month: -2)
+
+    {:ok, _} = Reporting.close_month(past_month)
+    assert Reporting.get_closed_month(past_month).revenue == 0
+
+    {:ok, payment} =
+      Sales.record_payment(%{
+        purchase_id: purchase.id,
+        amount: 1600,
+        method: "cash",
+        paid_on: past_month
+      })
+
+    {:ok, _} = Sales.confirm_payment(payment, "teacher@example.com")
+
+    assert Reporting.get_closed_month(past_month).revenue == 1600
+  end
+
+  test "confirming a payment in a month that hasn't closed does not create a close row" do
+    purchase = purchase_fixture()
+
+    {:ok, payment} =
+      Sales.record_payment(%{
+        purchase_id: purchase.id,
+        amount: 1600,
+        method: "cash",
+        paid_on: Clock.today()
+      })
+
+    {:ok, _} = Sales.confirm_payment(payment, "teacher@example.com")
+
+    assert Reporting.get_closed_month(Clock.today()) == nil
   end
 
   test "rejects an unknown method, a negative amount, and a bad last5" do
