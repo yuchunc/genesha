@@ -11,6 +11,7 @@ defmodule Ganesha.Reporting do
   import Ecto.Query, warn: false
   alias Ganesha.Clock
   alias Ganesha.People
+  alias Ganesha.Reporting.MonthlyClose
   alias Ganesha.Repo
   alias Ganesha.Roster.{Attendance, Credit}
   alias Ganesha.Sales
@@ -109,7 +110,79 @@ defmodule Ganesha.Reporting do
       )
       |> Map.new()
 
+    ordered_methods(totals)
+  end
+
+  defp ordered_methods(totals) do
     for method <- Payment.methods(), do: {method, Map.get(totals, method, 0)}
+  end
+
+  @doc """
+  Freezes a month's confirmed revenue, its breakdown by payment method, and
+  the tax threshold in effect, into a permanent `MonthlyClose` row.
+
+  Upserts — calling this again for an already-closed month overwrites it.
+  That's how a payment confirmed after its month has closed refreshes the
+  frozen snapshot.
+  """
+  @spec close_month(Date.t()) :: {:ok, MonthlyClose.t()}
+  def close_month(%Date{} = month) do
+    first = Date.beginning_of_month(month)
+
+    attrs = %{
+      month: first,
+      revenue: revenue_for_month(first),
+      revenue_by_method: Map.new(revenue_by_method_for_month(first)),
+      tax_threshold: @monthly_threshold
+    }
+
+    %MonthlyClose{}
+    |> MonthlyClose.changeset(attrs)
+    |> Repo.insert(
+      on_conflict: {:replace, [:revenue, :revenue_by_method, :tax_threshold, :updated_at]},
+      conflict_target: :month
+    )
+  end
+
+  @doc "The frozen snapshot for a month, or nil if it hasn't closed yet."
+  @spec get_closed_month(Date.t()) :: MonthlyClose.t() | nil
+  def get_closed_month(%Date{} = month) do
+    Repo.get_by(MonthlyClose, month: Date.beginning_of_month(month))
+  end
+
+  @doc """
+  Closed months strictly before `before`, most recent first — the page of
+  history `MoneyLive`'s 歷史款項 list shows.
+  """
+  @spec list_closed_months(before: Date.t(), limit: pos_integer(), offset: non_neg_integer()) ::
+          [MonthlyClose.t()]
+  def list_closed_months(opts) do
+    before = Keyword.fetch!(opts, :before)
+    limit = Keyword.fetch!(opts, :limit)
+    offset = Keyword.get(opts, :offset, 0)
+
+    Repo.all(
+      from c in MonthlyClose,
+        where: c.month < ^Date.beginning_of_month(before),
+        order_by: [desc: c.month],
+        limit: ^limit,
+        offset: ^offset
+    )
+  end
+
+  @doc """
+  A cycle's revenue and per-method breakdown — live for the current month
+  or one that hasn't closed yet, frozen for one that has.
+  """
+  @spec cycle_summary(Date.t()) :: %{revenue: integer(), by_method: [{String.t(), integer()}]}
+  def cycle_summary(%Date{} = month) do
+    case get_closed_month(month) do
+      nil ->
+        %{revenue: revenue_for_month(month), by_method: revenue_by_method_for_month(month)}
+
+      %MonthlyClose{} = closed ->
+        %{revenue: closed.revenue, by_method: ordered_methods(closed.revenue_by_method)}
+    end
   end
 
   @doc "Where a month sits against the tax registration threshold."

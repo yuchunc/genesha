@@ -317,6 +317,79 @@ defmodule Ganesha.ReportingTest do
     end
   end
 
+  describe "close_month/1, get_closed_month/1, list_closed_months/1" do
+    test "closes a month, freezing its revenue and per-method breakdown" do
+      %{} = august_sale(1600)
+
+      {:ok, closed} = Reporting.close_month(~D[2026-08-15])
+
+      assert closed.month == ~D[2026-08-01]
+      assert closed.revenue == 1600
+
+      assert closed.revenue_by_method == %{
+               "line_pay" => 1600,
+               "line_bank" => 0,
+               "cash" => 0,
+               "other" => 0
+             }
+
+      assert closed.tax_threshold == Reporting.monthly_threshold()
+      assert Reporting.get_closed_month(~D[2026-08-01]).id == closed.id
+    end
+
+    test "get_closed_month/1 is nil for a month that hasn't closed" do
+      assert Reporting.get_closed_month(~D[2026-08-01]) == nil
+    end
+
+    test "close_month/1 overwrites cleanly when called again" do
+      {:ok, _first} = Reporting.close_month(~D[2026-08-01])
+      %{} = august_sale(1600)
+
+      {:ok, second} = Reporting.close_month(~D[2026-08-01])
+
+      assert second.revenue == 1600
+
+      assert Reporting.list_closed_months(before: ~D[2026-09-01], limit: 12, offset: 0) == [
+               second
+             ]
+    end
+
+    test "list_closed_months/1 is most-recent-first, strictly before the boundary, paginated" do
+      {:ok, jun} = Reporting.close_month(~D[2026-06-01])
+      {:ok, jul} = Reporting.close_month(~D[2026-07-01])
+      {:ok, aug} = Reporting.close_month(~D[2026-08-01])
+
+      assert Reporting.list_closed_months(before: ~D[2026-09-01], limit: 12, offset: 0) ==
+               [aug, jul, jun]
+
+      assert Reporting.list_closed_months(before: ~D[2026-08-01], limit: 12, offset: 0) ==
+               [jul, jun]
+
+      assert Reporting.list_closed_months(before: ~D[2026-09-01], limit: 1, offset: 1) == [jul]
+    end
+  end
+
+  describe "cycle_summary/1" do
+    test "reads live for a month that hasn't closed" do
+      %{} = august_sale(1600)
+
+      assert Reporting.cycle_summary(~D[2026-08-01]) == %{
+               revenue: 1600,
+               by_method: Reporting.revenue_by_method_for_month(~D[2026-08-01])
+             }
+    end
+
+    test "reads the frozen snapshot for a month that has closed" do
+      %{} = august_sale(1600)
+      {:ok, _} = Reporting.close_month(~D[2026-08-01])
+
+      assert Reporting.cycle_summary(~D[2026-08-01]) == %{
+               revenue: 1600,
+               by_method: [{"line_pay", 1600}, {"line_bank", 0}, {"cash", 0}, {"other", 0}]
+             }
+    end
+  end
+
   defp slot_with_sessions(weekday, month) do
     start_time = Time.add(~T[09:30:00], System.unique_integer([:positive]), :second)
 
