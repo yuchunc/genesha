@@ -34,7 +34,7 @@ defmodule GaneshaWeb.MonthLiveTest do
 
     {:ok, _} = Roster.enroll(session, student, purchase)
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/8")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/8")
 
     assert has_element?(view, "#cal-2026-08-03", "1")
     assert has_element?(view, "#date-2026-08-03")
@@ -46,7 +46,7 @@ defmodule GaneshaWeb.MonthLiveTest do
     slot = monday_slot()
     {:ok, _} = Studio.generate_month(slot, ~D[2026-08-01])
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/9")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/9")
     assert has_element?(view, "#copy-prompt")
 
     view |> element("#copy-previous-month") |> render_click()
@@ -59,7 +59,7 @@ defmodule GaneshaWeb.MonthLiveTest do
     slot = monday_slot()
     {:ok, _} = Studio.generate_month(slot, ~D[2026-08-01])
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/9")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/9")
 
     view |> element("#dismiss-copy-prompt") |> render_click()
 
@@ -74,7 +74,7 @@ defmodule GaneshaWeb.MonthLiveTest do
     {:ok, _} = Studio.generate_month(slot, ~D[2026-08-01])
     {:ok, _} = Studio.generate_month(slot, ~D[2026-09-01])
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/9")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/9")
 
     refute has_element?(view, "#copy-prompt")
   end
@@ -83,7 +83,7 @@ defmodule GaneshaWeb.MonthLiveTest do
     slot = monday_slot()
     {:ok, [session | _]} = Studio.generate_month(slot, ~D[2026-08-01])
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/8")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/8")
 
     view
     |> form("#style-form-#{session.id}", %{"style" => "流動"})
@@ -110,7 +110,7 @@ defmodule GaneshaWeb.MonthLiveTest do
 
     {:ok, _} = Roster.enroll(session, student, purchase)
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/8")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/8")
 
     view
     |> form("#cancel-form-#{session.id}", %{"reason" => "颱風假"})
@@ -127,7 +127,7 @@ defmodule GaneshaWeb.MonthLiveTest do
     slot = monday_slot()
     {:ok, [session | _]} = Studio.generate_month(slot, ~D[2026-08-01])
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/8")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/8")
 
     html =
       view
@@ -153,7 +153,7 @@ defmodule GaneshaWeb.MonthLiveTest do
     {:ok, [morning_session | _]} = Studio.generate_month(monday, ~D[2026-08-01])
     {:ok, [evening_session | _]} = Studio.generate_month(evening, ~D[2026-08-01])
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/8")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/8")
 
     assert has_element?(view, "#date-2026-08-03 #session-#{morning_session.id}")
     assert has_element?(view, "#date-2026-08-03 #session-#{evening_session.id}")
@@ -165,7 +165,7 @@ defmodule GaneshaWeb.MonthLiveTest do
     slot = monday_slot()
     {:ok, _} = Studio.generate_month(slot, ~D[2026-08-01])
 
-    {:ok, view, _html} = live(conn, ~p"/month/2026/8")
+    {:ok, view, _html} = live(conn, ~p"/class/2026/8")
 
     assert has_element?(view, "#enroll-slot-#{slot.id}")
   end

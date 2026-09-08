@@ -6,7 +6,7 @@ defmodule GaneshaWeb.ScheduleLiveTest do
   setup :register_and_log_in_user
 
   test "creates a standalone session and returns to its month", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/month/new?year=2026&month=8")
+    {:ok, view, _html} = live(conn, ~p"/class/new?year=2026&month=8")
 
     {:ok, _view, _html} =
       view
@@ -20,7 +20,7 @@ defmodule GaneshaWeb.ScheduleLiveTest do
         }
       })
       |> render_submit()
-      |> follow_redirect(conn, ~p"/month/2026/8")
+      |> follow_redirect(conn, ~p"/class/2026/8")
 
     assert [session] = Studio.sessions_in_month(~D[2026-08-01])
     assert session.slot_id == nil
@@ -29,7 +29,7 @@ defmodule GaneshaWeb.ScheduleLiveTest do
   end
 
   test "creates a recurring class and generates it for the viewed month", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/month/new?year=2026&month=8&mode=recurring")
+    {:ok, view, _html} = live(conn, ~p"/class/new?year=2026&month=8&mode=recurring")
 
     {:ok, _view, _html} =
       view
@@ -43,20 +43,20 @@ defmodule GaneshaWeb.ScheduleLiveTest do
         }
       })
       |> render_submit()
-      |> follow_redirect(conn, ~p"/month/2026/8")
+      |> follow_redirect(conn, ~p"/class/2026/8")
 
     assert [slot] = Studio.list_active_slots()
     assert length(Studio.sessions_for_slot_in_month(slot, ~D[2026-08-01])) == 5
   end
 
   test "switches between the standalone and recurring forms", %{conn: conn} do
-    {:ok, view, _html} = live(conn, ~p"/month/new?year=2026&month=8")
+    {:ok, view, _html} = live(conn, ~p"/class/new?year=2026&month=8")
 
     assert has_element?(view, "#standalone-form")
     refute has_element?(view, "#recurring-form")
 
     view |> element("#mode-recurring") |> render_click()
-    assert_patch(view, ~p"/month/new?year=2026&month=8&mode=recurring")
+    assert_patch(view, ~p"/class/new?year=2026&month=8&mode=recurring")
 
     assert has_element?(view, "#recurring-form")
     refute has_element?(view, "#standalone-form")
@@ -73,7 +73,7 @@ defmodule GaneshaWeb.ScheduleLiveTest do
         label: "早晨練習｜週一 基礎瑜伽"
       })
 
-    {:ok, view, _html} = live(conn, ~p"/month/new?year=2026&month=8&mode=recurring")
+    {:ok, view, _html} = live(conn, ~p"/class/new?year=2026&month=8&mode=recurring")
 
     html =
       view

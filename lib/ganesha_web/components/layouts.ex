@@ -28,7 +28,7 @@ defmodule GaneshaWeb.Layouts do
         <h1>Content</h1>
       </Layouts.app>
 
-      <Layouts.app flash={@flash} current_scope={@current_scope} nav={:none} back={~p"/month"}>
+      <Layouts.app flash={@flash} current_scope={@current_scope} nav={:none} back={~p"/class"}>
         <h1>A screen with no tab of its own</h1>
       </Layouts.app>
   """
@@ -205,8 +205,8 @@ defmodule GaneshaWeb.Layouts do
       />
       <.nav_item
         active={@active}
-        key={:month}
-        path={~p"/month"}
+        key={:class}
+        path={~p"/class"}
         icon="hero-calendar-days"
         label="課表"
       />

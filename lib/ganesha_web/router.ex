@@ -51,9 +51,9 @@ defmodule GaneshaWeb.Router do
       live "/dashboard/:variant", DashboardLive, :index
       live "/enroll/:slot_id/:year/:month", EnrollLive, :index
       live "/sessions/:id", SessionLive, :show
-      live "/month", MonthLive, :index
-      live "/month/:year/:month", MonthLive, :index
-      live "/month/new", ScheduleLive, :new
+      live "/class", MonthLive, :index
+      live "/class/:year/:month", MonthLive, :index
+      live "/class/new", ScheduleLive, :new
       live "/money", MoneyLive, :index
       live "/money/:year/:month", MoneyLive.Cycle, :show
       live "/publish", PublishLive, :index

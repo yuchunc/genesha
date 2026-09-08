@@ -208,7 +208,7 @@ defmodule GaneshaWeb.DashboardLive do
     <.empty :if={is_nil(@session)} id="dash-no-session">
       接下來沒有排定的課。建立本月課程後，名單就會出現在這裡。
       <:action>
-        <.button navigate={~p"/month"} variant="primary">建立本月課程</.button>
+        <.button navigate={~p"/class"} variant="primary">建立本月課程</.button>
       </:action>
     </.empty>
     """
@@ -268,7 +268,7 @@ defmodule GaneshaWeb.DashboardLive do
           <.empty :if={lane.sessions == []} id={"lane-empty-#{lane.slot.id}"} class="mt-4 ml-13">
             本月尚未建立課程。
             <:action>
-              <.button navigate={~p"/month/#{@month.year}/#{@month.month}"}>排這個月的課</.button>
+              <.button navigate={~p"/class/#{@month.year}/#{@month.month}"}>排這個月的課</.button>
             </:action>
           </.empty>
         </li>

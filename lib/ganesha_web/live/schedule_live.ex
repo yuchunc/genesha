@@ -40,7 +40,7 @@ defmodule GaneshaWeb.ScheduleLive do
     case Studio.create_session(attrs) do
       {:ok, session} ->
         {:noreply,
-         push_navigate(socket, to: ~p"/month/#{session.date.year}/#{session.date.month}")}
+         push_navigate(socket, to: ~p"/class/#{session.date.year}/#{session.date.month}")}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "請確認日期、時間與名稱都已填寫")}
@@ -54,7 +54,7 @@ defmodule GaneshaWeb.ScheduleLive do
       {:ok, slot} ->
         {:ok, _sessions} = Studio.generate_month(slot, socket.assigns.month)
         month = socket.assigns.month
-        {:noreply, push_navigate(socket, to: ~p"/month/#{month.year}/#{month.month}")}
+        {:noreply, push_navigate(socket, to: ~p"/class/#{month.year}/#{month.month}")}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, recurring_error(changeset))}
@@ -88,8 +88,8 @@ defmodule GaneshaWeb.ScheduleLive do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
-      nav={:month}
-      back={~p"/month/#{@month.year}/#{@month.month}"}
+      nav={:class}
+      back={~p"/class/#{@month.year}/#{@month.month}"}
     >
       <.page_header title="排課">
         <:subtitle>{Fmt.month_title(@month)}</:subtitle>
@@ -103,7 +103,7 @@ defmodule GaneshaWeb.ScheduleLive do
         <.link
           :for={{key, label} <- [{"standalone", "單次"}, {"recurring", "固定班次"}]}
           id={"mode-#{key}"}
-          patch={~p"/month/new?year=#{@month.year}&month=#{@month.month}&mode=#{key}"}
+          patch={~p"/class/new?year=#{@month.year}&month=#{@month.month}&mode=#{key}"}
           aria-current={@mode == key && "page"}
           class={[
             "flex min-h-11 flex-1 items-center justify-center px-2 py-2 font-display text-base",

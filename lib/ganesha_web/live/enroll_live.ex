@@ -176,8 +176,8 @@ defmodule GaneshaWeb.EnrollLive do
     <Layouts.app
       flash={@flash}
       current_scope={@current_scope}
-      nav={:month}
-      back={~p"/month/#{@month.year}/#{@month.month}"}
+      nav={:class}
+      back={~p"/class/#{@month.year}/#{@month.month}"}
     >
       <div class="flex items-start gap-3" aria-label={@slot.label}>
         <.seal weekday={@slot.weekday} size="lg" class="mt-1" />

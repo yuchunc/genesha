@@ -158,7 +158,7 @@ defmodule GaneshaWeb.MonthLive do
   defp prev_month(%Date{} = month), do: month |> Date.beginning_of_month() |> Date.add(-1)
   defp next_month(%Date{} = month), do: month |> Date.end_of_month() |> Date.add(1)
 
-  defp month_path(%Date{} = month), do: ~p"/month/#{month.year}/#{month.month}"
+  defp month_path(%Date{} = month), do: ~p"/class/#{month.year}/#{month.month}"
 
   # The left rule carries the date's state.
   defp session_rule(%{state: "cancelled"}), do: "border-sindoor"
@@ -205,7 +205,7 @@ defmodule GaneshaWeb.MonthLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:month}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:class}>
       <.page_header title={Fmt.month_title(@month)}>
         <:actions>
           <.button variant="quiet" navigate={month_path(prev_month(@month))} aria-label="上個月">
@@ -219,7 +219,7 @@ defmodule GaneshaWeb.MonthLive do
       </.page_header>
 
       <div class="mt-2">
-        <.button variant="primary" navigate={~p"/month/new?year=#{@month.year}&month=#{@month.month}"}>
+        <.button variant="primary" navigate={~p"/class/new?year=#{@month.year}&month=#{@month.month}"}>
           排課
         </.button>
       </div>

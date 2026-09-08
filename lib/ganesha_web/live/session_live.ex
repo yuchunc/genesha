@@ -147,7 +147,7 @@ defmodule GaneshaWeb.SessionLive do
       )
 
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:month} back={~p"/month"}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:class} back={~p"/class"}>
       <.page_header title={Fmt.date_with_weekday(@session.date)}>
         <:subtitle>
           <span class="inline-flex flex-wrap items-center gap-2">

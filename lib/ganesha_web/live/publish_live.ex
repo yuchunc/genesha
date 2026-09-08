@@ -36,7 +36,7 @@ defmodule GaneshaWeb.PublishLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:none} back={~p"/month"}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} nav={:none} back={~p"/class"}>
       <.page_header title="發布課表">
         <:subtitle>{Fmt.month_title(@month)}</:subtitle>
         <:actions>
