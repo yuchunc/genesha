@@ -256,6 +256,23 @@ defmodule GaneshaWeb.SessionLiveTest do
     assert Sales.list_purchases_for_student(student.id) == []
   end
 
+  test "shows a standalone session with no slot", %{conn: conn} do
+    {:ok, session} =
+      Studio.create_session(%{
+        date: ~D[2026-08-20],
+        start_time: ~T[19:00:00],
+        end_time: ~T[20:30:00],
+        label: "期間限定：滿月瑜伽",
+        style: "流動",
+        state: "scheduled"
+      })
+
+    {:ok, _view, html} = live(conn, ~p"/sessions/#{session.id}")
+
+    assert html =~ "滿月瑜伽"
+    assert html =~ "19:00–20:30"
+  end
+
   test "lets a returning student buy a grandfathered drop-in again", %{conn: conn} do
     %{mondays: mondays} = august()
     {:ok, student} = People.create_student(%{display_name: "素容"})

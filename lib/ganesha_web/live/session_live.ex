@@ -140,12 +140,7 @@ defmodule GaneshaWeb.SessionLive do
 
   @impl true
   def render(assigns) do
-    assigns =
-      assign(assigns,
-        cancelled: assigns.session.state == "cancelled",
-        style_override:
-          assigns.session.style && assigns.session.style != assigns.session.slot.default_style
-      )
+    assigns = assign(assigns, cancelled: assigns.session.state == "cancelled", style_override: style_override?(assigns.session))
 
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} nav={:month} back={~p"/month"}>
@@ -153,14 +148,12 @@ defmodule GaneshaWeb.SessionLive do
         <:subtitle>
           <span class="inline-flex flex-wrap items-center gap-2">
             <.seal
-              weekday={@session.slot.weekday}
+              weekday={@session.date}
               size="sm"
               tone={if @cancelled, do: "sindoor", else: "ink"}
             />
-            <span class="font-display text-ink">{Fmt.slot_title(@session.slot.label)}</span>
-            <span class="font-display">
-              {Fmt.time_range(@session.slot.start_time, @session.slot.end_time)}
-            </span>
+            <span class="font-display text-ink">{Fmt.session_label(@session)}</span>
+            <span class="font-display">{Fmt.session_time_range(@session)}</span>
             <.pill :if={@style_override} tone="turmeric">{@session.style}</.pill>
             <span :if={@session.style && !@style_override}>{@session.style}</span>
           </span>
@@ -259,6 +252,9 @@ defmodule GaneshaWeb.SessionLive do
     </Layouts.app>
     """
   end
+
+  defp style_override?(%{slot: %{default_style: default}} = session), do: session.style != default
+  defp style_override?(_session), do: false
 
   # The same left rule the Dashboard uses for a roster row, so every screen
   # reads as one ledger.
