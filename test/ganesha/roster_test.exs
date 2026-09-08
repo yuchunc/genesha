@@ -90,4 +90,39 @@ defmodule Ganesha.RosterTest do
     assert Enum.all?(credits, &(&1.origin_session_id == cancelled.id))
     assert Enum.all?(credits, &is_nil(&1.expires_on))
   end
+
+  describe "count_by_session/1" do
+    test "counts attendance rows per session, including no-shows" do
+      {monday, [session | _]} = slot_with_sessions(1, "週一")
+      {:ok, student_a} = People.create_student(%{display_name: "小美"})
+      {:ok, student_b} = People.create_student(%{display_name: "小華"})
+      {:ok, monthly} = package("monthly", 400)
+
+      {:ok, purchase_a} =
+        Sales.create_purchase(%{
+          student_id: student_a.id,
+          package_id: monthly.id,
+          slot_id: monday.id,
+          list_price: 2000
+        })
+
+      {:ok, purchase_b} =
+        Sales.create_purchase(%{
+          student_id: student_b.id,
+          package_id: monthly.id,
+          slot_id: monday.id,
+          list_price: 2000
+        })
+
+      {:ok, _} = Roster.enroll(session, student_a, purchase_a)
+      {:ok, attendance_b} = Roster.enroll(session, student_b, purchase_b)
+      {:ok, _} = Roster.mark_no_show(attendance_b)
+
+      assert Roster.count_by_session([session.id]) == %{session.id => 2}
+    end
+
+    test "returns an empty map for an empty list without querying" do
+      assert Roster.count_by_session([]) == %{}
+    end
+  end
 end

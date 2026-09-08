@@ -68,6 +68,24 @@ defmodule Ganesha.Roster do
     )
   end
 
+  @doc """
+  Attendee counts for a batch of sessions, keyed by session id.
+
+  Counts every attendance row regardless of state — a no-show still held a
+  seat. Backs the calendar's per-class attendee mark without one query per
+  session.
+  """
+  def count_by_session([]), do: %{}
+
+  def count_by_session(session_ids) do
+    Attendance
+    |> where([a], a.session_id in ^session_ids)
+    |> group_by([a], a.session_id)
+    |> select([a], {a.session_id, count(a.id)})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   def list_for_student(student_id) do
     Repo.all(
       from a in Attendance,
