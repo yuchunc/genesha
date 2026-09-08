@@ -58,6 +58,20 @@ defmodule GaneshaWeb.Fmt do
   def time_range(%Time{} = from, %Time{} = to), do: "#{time(from)}–#{time(to)}"
 
   @doc """
+  A session's display label — the slot's label when recurring, its own when
+  standalone. Requires `:slot` to be preloaded.
+  """
+  def session_label(%{slot: %{label: label}}), do: slot_title(label)
+  def session_label(%{label: label}), do: slot_title(label)
+
+  @doc """
+  A session's time range — the slot's when recurring, its own when
+  standalone. Requires `:slot` to be preloaded.
+  """
+  def session_time_range(%{slot: %{start_time: from, end_time: to}}), do: time_range(from, to)
+  def session_time_range(%{start_time: from, end_time: to}), do: time_range(from, to)
+
+  @doc """
   Thousands-separated integer TWD. Money is never a float in this app.
 
       iex> GaneshaWeb.Fmt.amount(0)
