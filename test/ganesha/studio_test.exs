@@ -149,4 +149,46 @@ defmodule Ganesha.StudioTest do
     {:ok, _} = Studio.cancel_session(soon, "颱風假")
     assert Studio.next_session().id == later.id
   end
+
+  describe "standalone sessions" do
+    test "creates a session with no slot when label, start_time and end_time are given" do
+      assert {:ok, session} =
+               Studio.create_session(%{
+                 date: ~D[2026-08-10],
+                 start_time: ~T[19:00:00],
+                 end_time: ~T[20:00:00],
+                 label: "期間限定：中秋瑜伽",
+                 style: "流動",
+                 state: "scheduled"
+               })
+
+      assert session.slot_id == nil
+      assert session.label == "期間限定：中秋瑜伽"
+      assert session.start_time == ~T[19:00:00]
+    end
+
+    test "rejects a session with neither a slot nor standalone fields" do
+      assert {:error, changeset} =
+               Studio.create_session(%{date: ~D[2026-08-10], style: "流動", state: "scheduled"})
+
+      assert "單次的課需要日期、時間與名稱" in errors_on(changeset).label
+    end
+
+    test "rejects a session with both a slot and standalone fields" do
+      slot = monday_slot()
+
+      assert {:error, changeset} =
+               Studio.create_session(%{
+                 slot_id: slot.id,
+                 date: ~D[2026-08-10],
+                 start_time: ~T[19:00:00],
+                 end_time: ~T[20:00:00],
+                 label: "多餘的名稱",
+                 style: "流動",
+                 state: "scheduled"
+               })
+
+      assert "固定班次的課不需要另外填寫名稱與時間" in errors_on(changeset).slot_id
+    end
+  end
 end
