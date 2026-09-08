@@ -90,6 +90,16 @@ defmodule Ganesha.ReportingTest do
     assert hd(rows).outstanding == 1600
   end
 
+  test "outstanding_map/0 includes every student, zero-balance included" do
+    %{student: owes} = august_sale(0)
+    %{student: settled} = august_sale(1600)
+
+    map = Reporting.outstanding_map()
+
+    assert map[owes.id] == 1600
+    assert map[settled.id] == 0
+  end
+
   test "revenue_for_month/1 counts only confirmed payments inside the month" do
     august_sale(1200)
     august_sale(1600, confirm: false)

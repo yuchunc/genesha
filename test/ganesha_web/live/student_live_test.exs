@@ -17,11 +17,21 @@ defmodule GaneshaWeb.StudentLiveTest do
     %{student: student, purchase: purchase}
   end
 
-  test "lists students", %{conn: conn} do
-    %{student: student} = student_with_purchase()
+  test "lists students, grouped by active state with outstanding balances shown", %{conn: conn} do
+    %{student: owing} = student_with_purchase()
+    {:ok, settled} = People.create_student(%{display_name: "Kelly"})
+    {:ok, inactive} = People.create_student(%{display_name: "Mia"})
+    {:ok, _} = People.update_student(inactive, %{active: false})
 
     {:ok, view, _html} = live(conn, ~p"/students")
-    assert has_element?(view, "#student-#{student.id}")
+
+    assert has_element?(view, "#active-students #student-#{owing.id}")
+    assert has_element?(view, "#active-students #student-#{settled.id}")
+    assert has_element?(view, "#inactive-students #student-#{inactive.id}")
+    refute has_element?(view, "#active-students #student-#{inactive.id}")
+
+    assert has_element?(view, "#student-#{owing.id}", "NT$1,600")
+    refute has_element?(view, "#student-#{settled.id}", "NT$")
   end
 
   test "creates a student", %{conn: conn} do

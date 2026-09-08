@@ -1,7 +1,7 @@
 defmodule GaneshaWeb.StudentLive.Index do
   use GaneshaWeb, :live_view
 
-  alias Ganesha.People
+  alias Ganesha.{People, Reporting}
   alias Ganesha.People.Student
 
   @impl true
@@ -9,7 +9,28 @@ defmodule GaneshaWeb.StudentLive.Index do
     {:ok,
      socket
      |> assign(:form, to_form(People.change_student(%Student{})))
-     |> stream(:students, People.list_students(), dom_id: &"student-#{&1.id}")}
+     |> load_students()}
+  end
+
+  defp load_students(socket) do
+    outstanding = Reporting.outstanding_map()
+    {active, inactive} = Enum.split_with(People.list_students(), & &1.active)
+
+    socket
+    |> stream(:active_students, Enum.map(active, &with_outstanding(&1, outstanding)),
+      dom_id: &"student-#{&1.student.id}",
+      reset: true
+    )
+    |> stream(:inactive_students, Enum.map(inactive, &with_outstanding(&1, outstanding)),
+      dom_id: &"student-#{&1.student.id}",
+      reset: true
+    )
+    |> assign(:active_count, length(active))
+    |> assign(:inactive_count, length(inactive))
+  end
+
+  defp with_outstanding(student, outstanding) do
+    %{student: student, outstanding: Map.get(outstanding, student.id, 0)}
   end
 
   @impl true
@@ -18,7 +39,8 @@ defmodule GaneshaWeb.StudentLive.Index do
       {:ok, student} ->
         {:noreply,
          socket
-         |> stream_insert(:students, student, at: 0)
+         |> stream_insert(:active_students, with_outstanding(student, %{}), at: 0)
+         |> update(:active_count, &(&1 + 1))
          |> assign(:form, to_form(People.change_student(%Student{})))}
 
       {:error, changeset} ->
@@ -41,24 +63,53 @@ defmodule GaneshaWeb.StudentLive.Index do
         </.form>
       </.section>
 
-      <.section title="全部學生">
-        <ul id="students" phx-update="stream" class="space-y-1">
-          <li
-            :for={{dom_id, student} <- @streams.students}
-            id={dom_id}
-            class="border-l-[3px] border-rule"
-          >
-            <.link
-              navigate={~p"/students/#{student.id}"}
-              class="flex min-h-11 items-center justify-between gap-3 py-1.5 pl-4 transition-colors hover:bg-sunk"
-            >
-              <span class="font-display text-lg text-ink">{student.display_name}</span>
-              <.pill :if={!student.active} tone="quiet">停用</.pill>
-            </.link>
-          </li>
+      <.section title="在班學生" count={@active_count}>
+        <.empty :if={@active_count == 0} id="no-active-students">
+          目前沒有在班學生。用上面的表單加入第一位。
+        </.empty>
+
+        <ul :if={@active_count > 0} id="active-students" phx-update="stream" class="space-y-1">
+          <.student_row
+            :for={{dom_id, entry} <- @streams.active_students}
+            dom_id={dom_id}
+            entry={entry}
+          />
+        </ul>
+      </.section>
+
+      <.section :if={@inactive_count > 0} title="已停用" count={@inactive_count}>
+        <ul id="inactive-students" phx-update="stream" class="space-y-1">
+          <.student_row
+            :for={{dom_id, entry} <- @streams.inactive_students}
+            dom_id={dom_id}
+            entry={entry}
+          />
         </ul>
       </.section>
     </Layouts.app>
+    """
+  end
+
+  attr :dom_id, :string, required: true
+  attr :entry, :map, required: true
+
+  defp student_row(assigns) do
+    ~H"""
+    <li
+      id={@dom_id}
+      class={[
+        "border-l-[3px] pl-4",
+        if(@entry.outstanding > 0, do: "border-turmeric", else: "border-rule")
+      ]}
+    >
+      <.link
+        navigate={~p"/students/#{@entry.student.id}"}
+        class="flex min-h-11 items-center justify-between gap-3 py-1.5 transition-colors hover:bg-sunk"
+      >
+        <span class="font-display text-lg text-ink">{@entry.student.display_name}</span>
+        <.money :if={@entry.outstanding > 0} amount={@entry.outstanding} tone="turmeric" size="sm" />
+      </.link>
+    </li>
     """
   end
 end

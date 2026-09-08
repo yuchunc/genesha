@@ -46,8 +46,9 @@ defmodule Ganesha.Reporting do
     payable - confirmed
   end
 
-  @doc "Every student with a positive balance, largest first."
-  def outstanding_by_student do
+  @doc "Every student's outstanding balance, `0` included, keyed by student id."
+  @spec outstanding_map() :: %{integer() => integer()}
+  def outstanding_map do
     payable_by_student =
       Repo.all(
         from p in Purchase,
@@ -68,11 +69,19 @@ defmodule Ganesha.Reporting do
       |> Map.new()
 
     People.list_students()
-    |> Enum.map(fn student ->
+    |> Map.new(fn student ->
       payable = Map.get(payable_by_student, student.id, 0)
       confirmed = Map.get(confirmed_by_student, student.id, 0)
-      %{student: student, outstanding: payable - confirmed}
+      {student.id, payable - confirmed}
     end)
+  end
+
+  @doc "Every student with a positive balance, largest first."
+  def outstanding_by_student do
+    outstanding = outstanding_map()
+
+    People.list_students()
+    |> Enum.map(&%{student: &1, outstanding: Map.get(outstanding, &1.id, 0)})
     |> Enum.reject(&(&1.outstanding <= 0))
     |> Enum.sort_by(& &1.outstanding, :desc)
   end
