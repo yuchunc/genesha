@@ -56,8 +56,8 @@ defmodule GaneshaWeb.ScheduleLive do
         month = socket.assigns.month
         {:noreply, push_navigate(socket, to: ~p"/month/#{month.year}/#{month.month}")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "請確認星期、時間與名稱都已填寫")}
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, recurring_error(changeset))}
     end
   end
 
@@ -71,6 +71,16 @@ defmodule GaneshaWeb.ScheduleLive do
   defp normalize_time(other), do: other
 
   defp weekday_options, do: Enum.map(1..7, &{Fmt.weekday(&1), &1})
+
+  defp recurring_error(changeset) do
+    if Enum.any?(changeset.errors, fn {_field, {msg, _opts}} ->
+         msg == "has already been taken"
+       end) do
+      "已經有相同星期與時間的固定班次了"
+    else
+      "請確認星期、時間與名稱都已填寫"
+    end
+  end
 
   @impl true
   def render(assigns) do

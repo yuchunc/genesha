@@ -61,4 +61,33 @@ defmodule GaneshaWeb.ScheduleLiveTest do
     assert has_element?(view, "#recurring-form")
     refute has_element?(view, "#standalone-form")
   end
+
+  test "shows a specific error when a recurring class already exists for that weekday and time",
+       %{conn: conn} do
+    {:ok, _existing} =
+      Ganesha.Studio.create_slot(%{
+        weekday: 1,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "基礎",
+        label: "早晨練習｜週一 基礎瑜伽"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/month/new?year=2026&month=8&mode=recurring")
+
+    html =
+      view
+      |> form("#recurring-form", %{
+        "slot" => %{
+          "weekday" => "1",
+          "start_time" => "09:30",
+          "end_time" => "11:00",
+          "label" => "另一堂課",
+          "default_style" => "流動"
+        }
+      })
+      |> render_submit()
+
+    assert html =~ "已經有相同星期與時間的固定班次了"
+  end
 end
