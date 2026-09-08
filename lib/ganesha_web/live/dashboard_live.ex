@@ -133,13 +133,13 @@ defmodule GaneshaWeb.DashboardLive do
         @session.state == "cancelled" && "border-sindoor",
         @session.state != "cancelled" && "border-ink"
       ]}>
-        <.seal weekday={@session.slot.weekday} size="lg" filled />
+        <.seal weekday={@session.date} size="lg" filled />
         <div class="min-w-0">
           <p class="font-display text-lg leading-snug text-ink">
-            {Fmt.slot_title(@session.slot.label)}
+            {Fmt.session_label(@session)}
           </p>
           <p class="font-display text-base text-ink-soft">
-            {Fmt.time_range(@session.slot.start_time, @session.slot.end_time)}
+            {Fmt.session_time_range(@session)}
           </p>
           <p :if={@session.state == "cancelled"} class="mt-1 text-sm text-sindoor-ink">
             已取消 · {@session.cancel_reason}
@@ -374,7 +374,10 @@ defmodule GaneshaWeb.DashboardLive do
 
   # A session whose style differs from its slot's default is the studio's own
   # `*基礎8/26` convention, and the only style worth calling out.
-  defp style_overridden?(session), do: session.style != session.slot.default_style
+  defp style_overridden?(%{slot: %{default_style: default}} = session),
+    do: session.style != default
+
+  defp style_overridden?(_session), do: false
 
   defp roster_rule(%{state: "no_show"}), do: "border-sindoor"
   defp roster_rule(%{kind: "makeup"}), do: "border-turmeric"

@@ -36,6 +36,25 @@ defmodule GaneshaWeb.DashboardLiveTest do
     session
   end
 
+  test "the day variant renders a standalone next session", %{conn: conn} do
+    today = Clock.today()
+
+    {:ok, _session} =
+      Studio.create_session(%{
+        date: today,
+        start_time: ~T[07:00:00],
+        end_time: ~T[08:00:00],
+        label: "體驗課",
+        style: "流動",
+        state: "scheduled"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#dash-next-session")
+    assert render(view) =~ "體驗課"
+  end
+
   test "the root path renders the day variant", %{conn: conn} do
     session = session_today()
 

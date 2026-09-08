@@ -85,9 +85,9 @@ defmodule Ganesha.Studio do
 
     Repo.one(
       from s in Session,
-        join: slot in assoc(s, :slot),
+        left_join: slot in assoc(s, :slot),
         where: s.date >= ^today and s.state == "scheduled",
-        order_by: [asc: s.date, asc: slot.start_time],
+        order_by: [asc: s.date, asc: fragment("coalesce(?, ?)", slot.start_time, s.start_time)],
         limit: 1,
         preload: [slot: slot]
     )

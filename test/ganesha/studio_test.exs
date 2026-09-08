@@ -150,6 +150,28 @@ defmodule Ganesha.StudioTest do
     assert Studio.next_session().id == later.id
   end
 
+  test "next_session/0 includes a standalone session and orders it against slot sessions" do
+    slot = monday_slot()
+    today = Ganesha.Clock.today()
+
+    {:ok, _later} =
+      Studio.create_session(%{slot_id: slot.id, date: Date.add(today, 7), style: "基礎"})
+
+    {:ok, standalone} =
+      Studio.create_session(%{
+        date: today,
+        start_time: ~T[07:00:00],
+        end_time: ~T[08:00:00],
+        label: "體驗課",
+        style: "流動",
+        state: "scheduled"
+      })
+
+    next = Studio.next_session()
+    assert next.id == standalone.id
+    assert next.slot == nil
+  end
+
   describe "standalone sessions" do
     test "creates a session with no slot when label, start_time and end_time are given" do
       assert {:ok, session} =
