@@ -208,7 +208,7 @@ defmodule GaneshaWeb.Layouts do
         key={:month}
         path={~p"/month"}
         icon="hero-calendar-days"
-        label="月課表"
+        label="課表"
       />
       <.nav_item active={@active} key={:money} path={~p"/money"} icon="hero-banknotes" label="款項" />
       <.nav_item
