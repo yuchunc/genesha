@@ -17,16 +17,29 @@ defmodule GaneshaWeb.StudentLive.Index do
     {active, inactive} = Enum.split_with(People.list_students(), & &1.active)
 
     socket
-    |> stream(:active_students, Enum.map(active, &with_outstanding(&1, outstanding)),
+    |> stream(
+      :active_students,
+      active |> Enum.map(&with_outstanding(&1, outstanding)) |> rank_by_urgency(),
       dom_id: &"student-#{&1.student.id}",
       reset: true
     )
-    |> stream(:inactive_students, Enum.map(inactive, &with_outstanding(&1, outstanding)),
+    |> stream(
+      :inactive_students,
+      inactive |> Enum.map(&with_outstanding(&1, outstanding)) |> rank_by_urgency(),
       dom_id: &"student-#{&1.student.id}",
       reset: true
     )
     |> assign(:active_count, length(active))
     |> assign(:inactive_count, length(inactive))
+    |> assign(:total_outstanding, outstanding |> Map.values() |> Enum.sum())
+    |> assign(:owing_count, outstanding |> Map.values() |> Enum.count(&(&1 > 0)))
+  end
+
+  # Owing students first, largest balance first — mirrors the 帳 ledger view's
+  # "outstanding by student, ranked". Settled students fall back to name order,
+  # since there is no money question left to answer for them.
+  defp rank_by_urgency(entries) do
+    Enum.sort_by(entries, &{&1.outstanding <= 0, -&1.outstanding, &1.student.display_name})
   end
 
   defp with_outstanding(student, outstanding) do
@@ -53,6 +66,15 @@ defmodule GaneshaWeb.StudentLive.Index do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} nav={:students}>
       <.page_header title="學生" />
+
+      <p id="outstanding-summary" data-amount={@total_outstanding} class="mt-1">
+        <.money
+          amount={@total_outstanding}
+          size="lg"
+          tone={if @total_outstanding > 0, do: "turmeric", else: "celadon"}
+          label={if @owing_count > 0, do: "#{@owing_count} 位學生未收款", else: "所有學生款項已收齊"}
+        />
+      </p>
 
       <.section title="新增學生">
         <.form for={@form} id="student-form" phx-submit="save" class="flex items-start gap-2">

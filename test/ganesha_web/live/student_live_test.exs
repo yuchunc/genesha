@@ -32,6 +32,35 @@ defmodule GaneshaWeb.StudentLiveTest do
 
     assert has_element?(view, "#student-#{owing.id}", "NT$1,600")
     refute has_element?(view, "#student-#{settled.id}", "NT$")
+
+    assert has_element?(view, "#outstanding-summary", "NT$1,600")
+    assert has_element?(view, "#outstanding-summary", "1 位學生未收款")
+  end
+
+  test "ranks students who owe money before settled students, largest first", %{conn: conn} do
+    {:ok, settled} = People.create_student(%{display_name: "Ada"})
+    %{student: owes_more} = student_with_purchase()
+
+    {:ok, view, _html} = live(conn, ~p"/students")
+
+    html = render(view)
+    active_section = html |> String.split("id=\"active-students\"") |> Enum.at(1)
+
+    assert String.contains?(active_section, "student-#{owes_more.id}")
+    assert String.contains?(active_section, "student-#{settled.id}")
+
+    owing_index = active_section |> :binary.match("student-#{owes_more.id}") |> elem(0)
+    settled_index = active_section |> :binary.match("student-#{settled.id}") |> elem(0)
+
+    assert owing_index < settled_index
+  end
+
+  test "shows a settled message when nobody owes anything", %{conn: conn} do
+    {:ok, _} = People.create_student(%{display_name: "Ada"})
+
+    {:ok, view, _html} = live(conn, ~p"/students")
+
+    assert has_element?(view, "#outstanding-summary", "所有學生款項已收齊")
   end
 
   test "creates a student", %{conn: conn} do
