@@ -28,7 +28,16 @@ defmodule Ganesha.Studio.Session do
 
   def changeset(session, attrs) do
     session
-    |> cast(attrs, [:slot_id, :date, :style, :state, :cancel_reason, :label, :start_time, :end_time])
+    |> cast(attrs, [
+      :slot_id,
+      :date,
+      :style,
+      :state,
+      :cancel_reason,
+      :label,
+      :start_time,
+      :end_time
+    ])
     |> validate_required([:date, :style, :state])
     |> validate_inclusion(:state, @states)
     |> validate_origin()
@@ -49,7 +58,12 @@ defmodule Ganesha.Studio.Session do
   # never neither.
   defp validate_origin(changeset) do
     slot_id = get_field(changeset, :slot_id)
-    standalone_fields = [get_field(changeset, :label), get_field(changeset, :start_time), get_field(changeset, :end_time)]
+
+    standalone_fields = [
+      get_field(changeset, :label),
+      get_field(changeset, :start_time),
+      get_field(changeset, :end_time)
+    ]
 
     cond do
       is_nil(slot_id) and Enum.all?(standalone_fields, &(!is_nil(&1))) ->

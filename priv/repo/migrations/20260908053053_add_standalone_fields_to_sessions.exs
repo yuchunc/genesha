@@ -42,11 +42,17 @@ defmodule Ganesha.Repo.Migrations.AddStandaloneFieldsToSessions do
 
         repo().query!("DROP TABLE \"sessions\"")
         repo().query!("ALTER TABLE \"sessions__tmp\" RENAME TO \"sessions\"")
-        repo().query!("CREATE UNIQUE INDEX \"sessions_slot_id_date_index\" ON \"sessions\" (\"slot_id\", \"date\")")
+
+        repo().query!(
+          "CREATE UNIQUE INDEX \"sessions_slot_id_date_index\" ON \"sessions\" (\"slot_id\", \"date\")"
+        )
+
         repo().query!("CREATE INDEX \"sessions_date_index\" ON \"sessions\" (\"date\")")
 
         case repo().query!("PRAGMA foreign_key_check") do
-          %{rows: []} -> :ok
+          %{rows: []} ->
+            :ok
+
           %{rows: violations} ->
             raise "foreign key violations after sessions rebuild: #{inspect(violations)}"
         end
@@ -88,11 +94,17 @@ defmodule Ganesha.Repo.Migrations.AddStandaloneFieldsToSessions do
 
         repo().query!("DROP TABLE \"sessions\"")
         repo().query!("ALTER TABLE \"sessions__tmp\" RENAME TO \"sessions\"")
-        repo().query!("CREATE UNIQUE INDEX \"sessions_slot_id_date_index\" ON \"sessions\" (\"slot_id\", \"date\")")
+
+        repo().query!(
+          "CREATE UNIQUE INDEX \"sessions_slot_id_date_index\" ON \"sessions\" (\"slot_id\", \"date\")"
+        )
+
         repo().query!("CREATE INDEX \"sessions_date_index\" ON \"sessions\" (\"date\")")
 
         case repo().query!("PRAGMA foreign_key_check") do
-          %{rows: []} -> :ok
+          %{rows: []} ->
+            :ok
+
           %{rows: violations} ->
             raise "foreign key violations after sessions rebuild: #{inspect(violations)}"
         end

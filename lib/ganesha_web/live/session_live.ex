@@ -140,7 +140,11 @@ defmodule GaneshaWeb.SessionLive do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, cancelled: assigns.session.state == "cancelled", style_override: style_override?(assigns.session))
+    assigns =
+      assign(assigns,
+        cancelled: assigns.session.state == "cancelled",
+        style_override: style_override?(assigns.session)
+      )
 
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} nav={:month} back={~p"/month"}>
