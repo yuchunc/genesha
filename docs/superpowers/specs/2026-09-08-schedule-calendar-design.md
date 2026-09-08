@@ -9,7 +9,7 @@
 recurring `Slot`, a card lists that slot's `Session` dates in the selected
 month. Generating a month's sessions is manual and per-slot (a "建立本月課程"
 button per card, calling `Studio.generate_month/2`). There is no calendar
-grid anywhere in the app, no way to schedule a one-off (non-recurring) class,
+grid anywhere in the app, no way to schedule a standalone (non-recurring) class,
 and no UI at all to create a recurring `Slot` — that currently has to happen
 outside the web app.
 
@@ -37,7 +37,7 @@ recurring `Slot` behind it.
 - Every place that currently assumes `session.slot` exists (enroll flow,
   session detail, cancellation) is updated to read label/time from the slot
   when present and from the session's own fields otherwise. The enroll flow
-  (`EnrollLive`, slot+month scoped) is unaffected — one-off sessions are never
+  (`EnrollLive`, slot+month scoped) is unaffected — standalone sessions are never
   reachable through it, since they don't belong to a slot.
 
 ### Attendee counts
@@ -108,12 +108,12 @@ Top to bottom:
 ## 4. Schedule creation flow
 
 New route, e.g. `/month/new`, navigated to by "排課". One LiveView, one page,
-a two-way segmented toggle at the top ("單堂" / "固定班次") in the same visual
+a two-way segmented toggle at the top ("單次" / "固定班次") in the same visual
 style as the existing dashboard variant-picker (`a`/`b`/`c` toggle on
 `/dashboard`).
 
-- **單堂** (single): date picker, start/end time, label, style. Submits by
-  creating a slot-less `Session` directly (the new one-off case above).
+- **單次** (single): date picker, start/end time, label, style. Submits by
+  creating a slot-less `Session` directly (the new standalone case above).
 - **固定班次** (recurring): the existing weekday, start/end time, style,
   label fields — creates a `Slot`. On success, immediately calls
   `generate_month/2` for the month currently being viewed on `/month`, so the
@@ -153,7 +153,7 @@ LiveView-level (`MonthLiveTest`, new schedule LiveView test):
   attendee count, sindoor when cancelled.
 - Copy-prompt appears only when the viewed month has zero sessions and the
   previous month has some; disappears after copying.
-- The new schedule page creates a one-off session via `render_submit` in
+- The new schedule page creates a standalone session via `render_submit` in
   single mode, and a slot (with sessions generated for the current month) in
   recurring mode.
 - Agenda list groups by date after navigating between months, including a
@@ -161,8 +161,8 @@ LiveView-level (`MonthLiveTest`, new schedule LiveView test):
 
 ## 7. Out of scope
 
-- Editing a one-off session's own label/time/date after creation (style
+- Editing a standalone session's own label/time/date after creation (style
   change and cancellation are already covered by the existing forms; renaming
   or rescheduling is unrequested new surface).
-- Copying one-off classes forward when copying a month.
+- Copying standalone classes forward when copying a month.
 - Directional (left/right) slide animation tied to prev vs. next.
