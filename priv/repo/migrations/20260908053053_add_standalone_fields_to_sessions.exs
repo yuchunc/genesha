@@ -1,6 +1,8 @@
 defmodule Ganesha.Repo.Migrations.AddStandaloneFieldsToSessions do
   use Ecto.Migration
 
+  @disable_ddl_transaction true
+
   def up do
     alter table(:sessions) do
       add :label, :string
@@ -42,6 +44,13 @@ defmodule Ganesha.Repo.Migrations.AddStandaloneFieldsToSessions do
   end
 
   def down do
+    %{rows: [[count]]} =
+      repo().query!("SELECT COUNT(*) FROM \"sessions\" WHERE \"slot_id\" IS NULL")
+
+    if count > 0 do
+      raise "cannot roll back: #{count} standalone session(s) exist and would be destroyed"
+    end
+
     execute("PRAGMA foreign_keys = OFF")
 
     execute("""
