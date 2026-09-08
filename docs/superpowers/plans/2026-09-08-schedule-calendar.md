@@ -1474,6 +1474,129 @@ git commit -m "chore: rename bottom-nav label 月課表 to 課表"
 
 ---
 
+## Task 9: `Studio.next_session/0` and the Dashboard day-variant see standalone sessions
+
+Discovered during Task 1's review: `Studio.next_session/0` inner-joins `:slot`, so once `slot_id` can be `nil` (Task 1), a standalone session can never be returned as "next" even when it is the soonest scheduled class — it is silently excluded, and the dashboard shows a later recurring session instead. `DashboardLive`'s day-variant and its `style_overridden?/1` helper also read `@session.slot.weekday`/`label`/`start_time`/`end_time`/`default_style` directly and would crash the moment a standalone session ever reaches them. This was missed during brainstorming (the spec scoped consumer updates to "enroll flow, session detail, cancellation" and did not audit the Dashboard). Not load-bearing for any other task in this plan — independent, can run any time after Task 1.
+
+**Files:**
+- Modify: `lib/ganesha/studio.ex` (`next_session/0`)
+- Modify: `lib/ganesha_web/live/dashboard_live.ex`
+- Test: `test/ganesha/studio_test.exs`
+- Test: `test/ganesha_web/live/dashboard_live_test.exs`
+
+**Interfaces:**
+- Consumes: nothing from other tasks (only Task 1's nullable `slot_id`).
+
+- [ ] **Step 1: Write the failing tests**
+
+Add to `test/ganesha/studio_test.exs`, inside the existing `next_session/0` tests area (after "next_session/0 skips cancelled sessions"):
+
+```elixir
+  test "next_session/0 includes a standalone session and orders it against slot sessions" do
+    slot = monday_slot()
+    today = Ganesha.Clock.today()
+
+    {:ok, _later} =
+      Studio.create_session(%{slot_id: slot.id, date: Date.add(today, 7), style: "基礎"})
+
+    {:ok, standalone} =
+      Studio.create_session(%{
+        date: today,
+        start_time: ~T[07:00:00],
+        end_time: ~T[08:00:00],
+        label: "體驗課",
+        style: "流動",
+        state: "scheduled"
+      })
+
+    next = Studio.next_session()
+    assert next.id == standalone.id
+    assert next.slot == nil
+  end
+```
+
+Add to `test/ganesha_web/live/dashboard_live_test.exs`, after `session_today/0`:
+
+```elixir
+  test "the day variant renders a standalone next session", %{conn: conn} do
+    today = Clock.today()
+
+    {:ok, _session} =
+      Studio.create_session(%{
+        date: today,
+        start_time: ~T[07:00:00],
+        end_time: ~T[08:00:00],
+        label: "體驗課",
+        style: "流動",
+        state: "scheduled"
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#dash-next-session")
+    assert render(view) =~ "體驗課"
+  end
+```
+
+Run: `mix test test/ganesha/studio_test.exs test/ganesha_web/live/dashboard_live_test.exs`
+Expected: FAIL — the new `studio_test.exs` case gets `nil` back from `next_session/0` (inner join excludes the standalone session); the new `dashboard_live_test.exs` case raises on `@session.slot.weekday` (`KeyError`/`ArgumentError` on `nil`).
+
+- [ ] **Step 2: Fix `Studio.next_session/0`**
+
+In `lib/ganesha/studio.ex`, replace the `next_session/0` function:
+
+```elixir
+  @doc "The next scheduled session today or later, in Taipei terms."
+  def next_session do
+    today = Clock.today()
+
+    Repo.one(
+      from s in Session,
+        left_join: slot in assoc(s, :slot),
+        where: s.date >= ^today and s.state == "scheduled",
+        order_by: [asc: s.date, asc: fragment("coalesce(?, ?)", slot.start_time, s.start_time)],
+        limit: 1,
+        preload: [slot: slot]
+    )
+  end
+```
+
+- [ ] **Step 3: Fix `DashboardLive`'s day-variant and `style_overridden?/1`**
+
+In `lib/ganesha_web/live/dashboard_live.ex`, replace the seal/label/time-range lines inside `day/1` (currently the three lines using `@session.slot.weekday`, `@session.slot.label`, `@session.slot.start_time`/`end_time`):
+
+```elixir
+        <.seal weekday={@session.date} size="lg" filled />
+        <div class="min-w-0">
+          <p class="font-display text-lg leading-snug text-ink">
+            {Fmt.session_label(@session)}
+          </p>
+          <p class="font-display text-base text-ink-soft">
+            {Fmt.session_time_range(@session)}
+          </p>
+```
+
+Replace `style_overridden?/1`:
+
+```elixir
+  defp style_overridden?(%{slot: %{default_style: default}} = session), do: session.style != default
+  defp style_overridden?(_session), do: false
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `mix test test/ganesha/studio_test.exs test/ganesha_web/live/dashboard_live_test.exs`
+Expected: PASS (including the pre-existing `next_session/0` tie-break/cancelled tests and the pre-existing dashboard day-variant test — confirms the `left_join` + `coalesce` ordering and `Fmt.session_label`/`session_time_range` produce identical results to the old slot-only code for a recurring session).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add lib/ganesha/studio.ex lib/ganesha_web/live/dashboard_live.ex test/ganesha/studio_test.exs test/ganesha_web/live/dashboard_live_test.exs
+git commit -m "fix: include standalone sessions in next_session/0 and the dashboard day view"
+```
+
+---
+
 ## Final Verification
 
 - [ ] Run `mix precommit` and fix anything it flags.
