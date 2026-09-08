@@ -213,4 +213,60 @@ defmodule Ganesha.StudioTest do
       assert "固定班次的課不需要另外填寫名稱與時間" in errors_on(changeset).slot_id
     end
   end
+
+  describe "sessions_in_month/1" do
+    test "returns recurring and standalone sessions together, slot preloaded" do
+      slot = monday_slot()
+      {:ok, [recurring | _]} = Studio.generate_month(slot, ~D[2026-08-01])
+
+      {:ok, standalone} =
+        Studio.create_session(%{
+          date: ~D[2026-08-15],
+          start_time: ~T[19:00:00],
+          end_time: ~T[20:00:00],
+          label: "體驗課",
+          style: "流動",
+          state: "scheduled"
+        })
+
+      sessions = Studio.sessions_in_month(~D[2026-08-01])
+
+      assert Enum.find(sessions, &(&1.id == recurring.id)).slot.id == slot.id
+      assert Enum.find(sessions, &(&1.id == standalone.id)).slot == nil
+    end
+
+    test "excludes sessions outside the month" do
+      slot = monday_slot()
+      Studio.generate_month(slot, ~D[2026-08-01])
+      Studio.generate_month(slot, ~D[2026-09-01])
+
+      assert Enum.all?(Studio.sessions_in_month(~D[2026-08-01]), &(&1.date.month == 8))
+    end
+  end
+
+  describe "copy_month/1" do
+    test "generates every active slot's sessions and skips inactive ones" do
+      active = monday_slot()
+
+      {:ok, inactive} =
+        Studio.create_slot(%{
+          weekday: 5,
+          start_time: ~T[18:00:00],
+          end_time: ~T[19:00:00],
+          default_style: "流動",
+          label: "週五",
+          active: false
+        })
+
+      assert {:ok, 5} = Studio.copy_month(~D[2026-08-01])
+      assert length(Studio.sessions_for_slot_in_month(active, ~D[2026-08-01])) == 5
+      assert Studio.sessions_for_slot_in_month(inactive, ~D[2026-08-01]) == []
+    end
+
+    test "is idempotent" do
+      monday_slot()
+      assert {:ok, 5} = Studio.copy_month(~D[2026-08-01])
+      assert {:ok, 0} = Studio.copy_month(~D[2026-08-01])
+    end
+  end
 end
