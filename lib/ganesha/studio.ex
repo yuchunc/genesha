@@ -125,4 +125,16 @@ defmodule Ganesha.Studio do
         preload: [slot: slot]
     )
   end
+
+  @doc "Scheduled sessions with a date in the inclusive range `[from, to]`."
+  def sessions_between(%Date{} = from, %Date{} = to) do
+    Repo.all(
+      from s in Session,
+        left_join: slot in assoc(s, :slot),
+        where: s.date >= ^from and s.date <= ^to and s.state == "scheduled",
+        order_by: [asc: s.date, asc: fragment("coalesce(?, ?)", slot.start_time, s.start_time)],
+        preload: [slot: slot]
+    )
+  end
+
 end
