@@ -6,6 +6,7 @@ defmodule Ganesha.Assistant do
   """
 
   import Ecto.Query, warn: false
+  alias Ganesha.Assistant.Draft
   alias Ganesha.Assistant.Message
   alias Ganesha.Assistant.Thread
   alias Ganesha.Repo
@@ -35,4 +36,24 @@ defmodule Ganesha.Assistant do
     })
     |> Repo.insert()
   end
+
+  def create_draft(%Thread{} = thread, attrs) do
+    origin = latest_user_message(thread)
+
+    attrs
+    |> Map.put(:thread_id, thread.id)
+    |> Map.put(:origin_message_id, origin && origin.id)
+    |> then(&(%Draft{} |> Draft.changeset(&1) |> Repo.insert()))
+  end
+
+  defp latest_user_message(%Thread{} = thread) do
+    Repo.one(
+      from m in Message,
+        where: m.thread_id == ^thread.id and m.role == "user",
+        order_by: [desc: m.id],
+        limit: 1
+    )
+  end
+
+  def get_draft!(id), do: Repo.get!(Draft, id)
 end

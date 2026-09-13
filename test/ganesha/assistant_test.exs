@@ -37,4 +37,35 @@ defmodule Ganesha.AssistantTest do
     assert {:error, changeset} = Assistant.append_message(thread, "system", "x", nil)
     assert "is invalid" in errors_on(changeset).role
   end
+
+  test "create_draft/2 stamps the thread's latest user message as its origin" do
+    {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+    {:ok, _} = Assistant.append_message(thread, "user", "2.Lulu （Line pay 1200元）", nil)
+
+    assert {:ok, draft} =
+             Assistant.create_draft(thread, %{
+               kind: "payment",
+               parsed: %{"amount" => 1200, "method" => "line_pay"},
+               confidence: 0.8
+             })
+
+    [origin] = Assistant.list_messages(thread)
+    assert draft.origin_message_id == origin.id
+    assert draft.state == "pending"
+  end
+
+  test "create_draft/2 rejects an unknown kind" do
+    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+    assert {:error, changeset} =
+             Assistant.create_draft(thread, %{kind: "bogus", parsed: %{}})
+
+    assert "is invalid" in errors_on(changeset).kind
+  end
+
+  test "get_draft!/1 fetches by id" do
+    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+    {:ok, draft} = Assistant.create_draft(thread, %{kind: "unknown", parsed: %{}})
+    assert Assistant.get_draft!(draft.id).id == draft.id
+  end
 end
