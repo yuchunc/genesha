@@ -5,6 +5,8 @@ defmodule Ganesha.Line do
   docs/superpowers/specs/2026-09-11-line-ai-chat-design.md §2, §3.
   """
 
+  require Logger
+
   alias Ganesha.Line.LineEvent
   alias Ganesha.Repo
 
@@ -56,9 +58,15 @@ defmodule Ganesha.Line do
   end
 
   defp enqueue(%LineEvent{id: id}) do
-    %{"line_event_id" => id}
-    |> Ganesha.Assistant.ProcessEventWorker.new()
-    |> Oban.insert()
+    case %{"line_event_id" => id}
+         |> Ganesha.Assistant.ProcessEventWorker.new()
+         |> Oban.insert() do
+      {:ok, _job} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("failed to enqueue line_event #{id}: #{inspect(reason)}")
+    end
   end
 
   def get_event!(id), do: Repo.get!(LineEvent, id)

@@ -41,4 +41,39 @@ defmodule Ganesha.LineTest do
     Line.mark_processed(loaded)
     assert %{processed_at: %DateTime{}} = Line.get_event!(stored.id)
   end
+
+  test "record_event/1 routes source_id to the group, not the per-message sender" do
+    e =
+      event(%{
+        "webhookEventId" => "group-event",
+        "source" => %{"type" => "group", "groupId" => "Cgroup", "userId" => "Usender"}
+      })
+
+    assert :ok = Line.record_event(e)
+    stored = Repo.get_by!(Line.LineEvent, webhook_event_id: "group-event")
+    assert stored.source_type == "group"
+    assert stored.source_id == "Cgroup"
+  end
+
+  test "record_event/1 routes source_id to the room" do
+    e =
+      event(%{
+        "webhookEventId" => "room-event",
+        "source" => %{"type" => "room", "roomId" => "Rroom"}
+      })
+
+    assert :ok = Line.record_event(e)
+    stored = Repo.get_by!(Line.LineEvent, webhook_event_id: "room-event")
+    assert stored.source_type == "room"
+    assert stored.source_id == "Rroom"
+  end
+
+  test "record_event/1 routes source_id to the user for a 1:1 message" do
+    e = event(%{"webhookEventId" => "user-event"})
+
+    assert :ok = Line.record_event(e)
+    stored = Repo.get_by!(Line.LineEvent, webhook_event_id: "user-event")
+    assert stored.source_type == "user"
+    assert stored.source_id == "Uteacher"
+  end
 end
