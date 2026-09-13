@@ -2623,8 +2623,8 @@ end
 
 - [ ] **Step 3: Run the full suite to confirm nothing in :test or :dev config compilation broke**
 
-Run: `mix compile --warnings-as-errors && mix test`
-Expected: PASS — `config/test.exs` is untouched and still wins for `MIX_ENV=test` (Task 5/7/12's explicit test values are not overridden by these `:prod`/`:dev`-gated blocks).
+Run: `mix test`
+Expected: PASS — `config/test.exs` is untouched and still wins for `MIX_ENV=test` (Task 5/7/12's explicit test values are not overridden by these `:prod`/`:dev`-gated blocks). Do not add `--warnings-as-errors` here: `lib/ganesha/line.ex`'s reference to `Ganesha.Assistant.ProcessEventWorker` (Task 1) is a known, plan-anticipated forward reference to a module Task 15 hasn't defined yet, and compiling with `--warnings-as-errors` before then would fail on that warning alone. `mix precommit` (which does use it) is deferred to Task 19, once the worker exists.
 
 - [ ] **Step 4: Commit**
 
