@@ -6,6 +6,7 @@ defmodule Ganesha.Assistant do
   """
 
   import Ecto.Query, warn: false
+  alias Ganesha.Assistant.Message
   alias Ganesha.Assistant.Thread
   alias Ganesha.Repo
 
@@ -17,5 +18,21 @@ defmodule Ganesha.Assistant do
       nil ->
         %Thread{} |> Thread.changeset(%{source_type: source_type, source_id: source_id}) |> Repo.insert()
     end
+  end
+
+  def list_messages(%Thread{} = thread) do
+    Repo.all(from m in Message, where: m.thread_id == ^thread.id, order_by: m.id)
+  end
+
+  def append_message(%Thread{} = thread, role, content, tool_calls, opts \\ []) do
+    %Message{}
+    |> Message.changeset(%{
+      thread_id: thread.id,
+      role: role,
+      content: content,
+      tool_calls: tool_calls,
+      line_message_id: opts[:line_message_id]
+    })
+    |> Repo.insert()
   end
 end
