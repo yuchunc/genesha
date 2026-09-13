@@ -22,13 +22,34 @@ defmodule Ganesha.Assistant.Tools.FindStudent do
 
   @impl true
   def call(%{"query" => query}, _thread) do
-    student =
-      People.find_by_alias(query) ||
-        Enum.find(People.list_students(), &(&1.display_name == query))
+    case People.find_by_alias(query) do
+      student when not is_nil(student) ->
+        encode_student(student)
 
-    case student do
-      nil -> {"no student found matching #{inspect(query)}", nil}
-      student -> {Jason.encode!(%{id: student.id, display_name: student.display_name, active: student.active}), nil}
+      nil ->
+        matches = Enum.filter(People.list_students(), &(&1.display_name == query))
+
+        case matches do
+          [] -> {"no student found matching #{inspect(query)}", nil}
+          [student] -> encode_student(student)
+          multiple -> ambiguous_message(query, multiple)
+        end
     end
+  end
+
+  defp encode_student(student) do
+    payload = %{
+      id: student.id,
+      display_name: student.display_name,
+      active: student.active
+    }
+
+    {Jason.encode!(payload), nil}
+  end
+
+  defp ambiguous_message(query, students) do
+    candidates = Enum.map(students, &%{id: &1.id, display_name: &1.display_name})
+
+    {"multiple students found matching #{inspect(query)}: #{Jason.encode!(candidates)}", nil}
   end
 end
