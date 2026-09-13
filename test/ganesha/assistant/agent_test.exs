@@ -73,11 +73,45 @@ defmodule Ganesha.Assistant.AgentTest do
   end
 
   test "stops after the iteration cap rather than looping forever", %{thread: thread} do
+    Process.put(:calls, 0)
+
     Mock.stub(fn _messages, _tools, _opts ->
+      Process.put(:calls, Process.get(:calls) + 1)
       {:ok, %{text: nil, tool_calls: [%{id: "t", name: "echo", input: %{"text" => "x"}}]}}
     end)
 
     assert {:error, :max_iterations_exceeded} = Agent.run(thread, [EchoTool], "system prompt")
+    assert Process.get(:calls) == 6
+  end
+
+  test "a second run against the same thread reloads prior tool_calls from the DB without crashing",
+       %{
+         thread: thread
+       } do
+    Process.put(:calls, 0)
+
+    Mock.stub(fn _messages, _tools, _opts ->
+      case Process.get(:calls) do
+        0 ->
+          Process.put(:calls, 1)
+          {:ok, %{text: nil, tool_calls: [%{id: "t1", name: "draft_thing", input: %{}}]}}
+
+        1 ->
+          {:ok, %{text: "done", tool_calls: []}}
+      end
+    end)
+
+    assert {:ok, %{text: "done", draft_ids: [_draft_id]}} =
+             Agent.run(thread, [DraftingTool], "system prompt")
+
+    Mock.stub(fn messages, _tools, _opts ->
+      assert Enum.any?(messages, &(&1.role == "assistant" and &1.tool_calls != []))
+      assert Enum.any?(messages, &(&1.role == "tool" and &1.tool_calls != []))
+      {:ok, %{text: "second run done", tool_calls: []}}
+    end)
+
+    assert {:ok, %{text: "second run done", draft_ids: []}} =
+             Agent.run(thread, [DraftingTool], "system prompt")
   end
 
   test "reports an unknown tool name without crashing", %{thread: thread} do

@@ -45,9 +45,13 @@ defmodule Ganesha.Assistant.Agent do
           messages ++
             [
               %{role: "assistant", content: text, tool_calls: calls},
-              %{role: "tool", tool_calls: results}
+              %{role: "tool", content: nil, tool_calls: results}
             ]
 
+        # `new_draft_ids` is in call order; reversing it before prepending
+        # keeps the whole accumulator in call order once the success clause
+        # above does its one final `Enum.reverse/1` — prepending it
+        # unreversed would come back backwards within this round.
         loop(
           thread,
           provider,
@@ -56,7 +60,7 @@ defmodule Ganesha.Assistant.Agent do
           tools,
           system,
           remaining - 1,
-          new_draft_ids ++ draft_ids
+          Enum.reverse(new_draft_ids) ++ draft_ids
         )
 
       {:error, reason} ->
@@ -74,8 +78,14 @@ defmodule Ganesha.Assistant.Agent do
     {%{tool_use_id: id, content: content}, draft_id}
   end
 
+  # Every wire message carries the same three keys regardless of whether it
+  # came from memory (built inline above) or a DB reload — a message
+  # missing `:tool_calls` would fail to match a Provider adapter's
+  # `%{role: "assistant", content:, tool_calls:}` clause (e.g. the Anthropic
+  # adapter, Task 13), which happens on every second `Agent.run/3` against
+  # the same thread once the first run's final message is reloaded here.
   defp to_wire(%Assistant.Message{role: role, content: content, tool_calls: nil}) do
-    %{role: role, content: content}
+    %{role: role, content: content, tool_calls: []}
   end
 
   defp to_wire(%Assistant.Message{role: role, content: content, tool_calls: tool_calls}) do
