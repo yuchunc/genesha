@@ -1290,9 +1290,25 @@ defmodule Ganesha.Assistant.Agent do
 
         new_messages =
           messages ++
-            [%{role: "assistant", content: text, tool_calls: calls}, %{role: "tool", tool_calls: results}]
+            [
+              %{role: "assistant", content: text, tool_calls: calls},
+              %{role: "tool", content: nil, tool_calls: results}
+            ]
 
-        loop(thread, provider, new_messages, schemas, tools, system, remaining - 1, new_draft_ids ++ draft_ids)
+        # `new_draft_ids` is in call order; reversing it before prepending
+        # keeps the whole accumulator in call order once the success clause
+        # above does its one final `Enum.reverse/1` — prepending it
+        # unreversed would come back backwards within this round.
+        loop(
+          thread,
+          provider,
+          new_messages,
+          schemas,
+          tools,
+          system,
+          remaining - 1,
+          Enum.reverse(new_draft_ids) ++ draft_ids
+        )
 
       {:error, reason} ->
         {:error, reason}
@@ -1309,8 +1325,14 @@ defmodule Ganesha.Assistant.Agent do
     {%{tool_use_id: id, content: content}, draft_id}
   end
 
+  # Every wire message carries the same three keys regardless of whether it
+  # came from memory (built inline above) or a DB reload — a message
+  # missing `:tool_calls` would fail to match a Provider adapter's
+  # `%{role: "assistant", content:, tool_calls:}` clause (e.g. the Anthropic
+  # adapter, Task 13), which happens on every second `Agent.run/3` against
+  # the same thread once the first run's final message is reloaded here.
   defp to_wire(%Assistant.Message{role: role, content: content, tool_calls: nil}) do
-    %{role: role, content: content}
+    %{role: role, content: content, tool_calls: []}
   end
 
   defp to_wire(%Assistant.Message{role: role, content: content, tool_calls: tool_calls}) do
@@ -2623,8 +2645,8 @@ end
 
 - [ ] **Step 3: Run the full suite to confirm nothing in :test or :dev config compilation broke**
 
-Run: `mix test`
-Expected: PASS — `config/test.exs` is untouched and still wins for `MIX_ENV=test` (Task 5/7/12's explicit test values are not overridden by these `:prod`/`:dev`-gated blocks). Do not add `--warnings-as-errors` here: `lib/ganesha/line.ex`'s reference to `Ganesha.Assistant.ProcessEventWorker` (Task 1) is a known, plan-anticipated forward reference to a module Task 15 hasn't defined yet, and compiling with `--warnings-as-errors` before then would fail on that warning alone. `mix precommit` (which does use it) is deferred to Task 19, once the worker exists.
+Run: `mix compile --warnings-as-errors && mix test`
+Expected: PASS — `config/test.exs` is untouched and still wins for `MIX_ENV=test` (Task 5/7/12's explicit test values are not overridden by these `:prod`/`:dev`-gated blocks).
 
 - [ ] **Step 4: Commit**
 
