@@ -13,11 +13,14 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
+  import Ecto.Query
+
   require Logger
 
   alias Ganesha.Assistant
   alias Ganesha.Assistant.Agent
   alias Ganesha.Line
+  alias Ganesha.Repo
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"line_event_id" => line_event_id}}) do
@@ -29,17 +32,26 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     :ok
   end
 
-  defp route(%{source_type: "user", source_id: sender_id, raw_type: "message"} = event, teacher_id)
+  defp route(
+         %{source_type: "user", source_id: sender_id, raw_type: "message"} = event,
+         teacher_id
+       )
        when sender_id == teacher_id do
     handle_teacher_message(event)
   end
 
-  defp route(%{source_type: "user", source_id: sender_id, raw_type: "postback"} = event, teacher_id)
+  defp route(
+         %{source_type: "user", source_id: sender_id, raw_type: "postback"} = event,
+         teacher_id
+       )
        when sender_id == teacher_id do
     handle_postback(event)
   end
 
-  defp route(%{source_type: "group", source_id: group_id, raw_type: "message"} = event, teacher_id) do
+  defp route(
+         %{source_type: "group", source_id: group_id, raw_type: "message"} = event,
+         teacher_id
+       ) do
     sender_id = get_in(event.payload, ["source", "userId"])
 
     if sender_id == teacher_id do
@@ -49,14 +61,21 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
+  defp route(%{raw_type: "unsend"} = event, _teacher_id), do: handle_unsend(event)
+  defp route(%{raw_type: "messageEdited"} = event, _teacher_id), do: handle_message_edited(event)
   defp route(_event, _teacher_id), do: :ok
 
   defp handle_teacher_message(%{
-         payload: %{"replyToken" => reply_token, "message" => %{"text" => text}},
+         payload: %{
+           "replyToken" => reply_token,
+           "message" => %{"id" => line_message_id, "text" => text}
+         },
          source_id: source_id
        }) do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", source_id)
-    {:ok, _} = Assistant.append_message(thread, "user", text, nil)
+
+    {:ok, _} =
+      Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
     case Agent.run(thread, Assistant.tools(), Assistant.teacher_system_prompt()) do
       {:ok, %{text: reply_text, draft_ids: draft_ids}} ->
@@ -64,7 +83,10 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         :ok
 
       {:error, reason} ->
-        Logger.error("Ganesha.Assistant.Agent.run/3 failed for thread #{thread.id}: #{inspect(reason)}")
+        Logger.error(
+          "Ganesha.Assistant.Agent.run/3 failed for thread #{thread.id}: #{inspect(reason)}"
+        )
+
         send_reply(reply_token, source_id, "抱歉，我現在無法處理這則訊息，請稍後再試一次。", [])
         :ok
     end
@@ -75,23 +97,83 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   # No `line_client()` call anywhere in this function or anything it calls —
   # that absence, not a runtime check, is what guarantees the group never
   # receives a message from the bot (spec §4.3, §8 guardrail #2).
-  defp handle_group_message(%{payload: %{"message" => %{"text" => text}}}, group_id) do
+  defp handle_group_message(
+         %{payload: %{"message" => %{"id" => line_message_id, "text" => text}}},
+         group_id
+       ) do
     {:ok, thread} = Assistant.get_or_create_thread("group", group_id)
-    {:ok, _} = Assistant.append_message(thread, "user", text, nil)
+
+    {:ok, _} =
+      Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
     case Agent.run(thread, Assistant.tools(), Assistant.group_system_prompt()) do
       {:ok, _} ->
         :ok
 
       {:error, reason} ->
-        Logger.error("Ganesha.Assistant.Agent.run/3 failed for group thread #{thread.id}: #{inspect(reason)}")
+        Logger.error(
+          "Ganesha.Assistant.Agent.run/3 failed for group thread #{thread.id}: #{inspect(reason)}"
+        )
+
         :ok
     end
   end
 
   defp handle_group_message(_event, _group_id), do: :ok
 
-  defp handle_postback(%{payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}}) do
+  defp handle_unsend(%{payload: %{"unsend" => %{"messageId" => line_message_id}}}) do
+    case Repo.get_by(Assistant.Message, line_message_id: line_message_id) do
+      nil ->
+        :ok
+
+      message ->
+        message |> Ecto.Changeset.change(content: nil) |> Repo.update!()
+        discard_pending_drafts_for(message)
+        :ok
+    end
+  end
+
+  defp handle_message_edited(%{
+         payload: %{"message" => %{"id" => line_message_id, "text" => new_text}}
+       }) do
+    case Repo.get_by(Assistant.Message, line_message_id: line_message_id) do
+      nil ->
+        :ok
+
+      message ->
+        message |> Ecto.Changeset.change(content: new_text) |> Repo.update!()
+        discard_pending_drafts_for(message)
+
+        thread = Repo.get!(Assistant.Thread, message.thread_id)
+
+        system_prompt =
+          if thread.source_type == "teacher",
+            do: Assistant.teacher_system_prompt(),
+            else: Assistant.group_system_prompt()
+
+        case Agent.run(thread, Assistant.tools(), system_prompt) do
+          {:ok, _} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.error(
+              "Ganesha.Assistant.Agent.run/3 failed after messageEdited for thread #{thread.id}: #{inspect(reason)}"
+            )
+
+            :ok
+        end
+    end
+  end
+
+  defp discard_pending_drafts_for(%Assistant.Message{id: id}) do
+    from(d in Assistant.Draft, where: d.origin_message_id == ^id and d.state == "pending")
+    |> Repo.all()
+    |> Enum.each(&Assistant.discard_draft/1)
+  end
+
+  defp handle_postback(%{
+         payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}
+       }) do
     params = URI.decode_query(data)
     draft = Assistant.get_draft!(String.to_integer(params["draft_id"]))
     reply_text = resolve_postback(params["action"], draft)

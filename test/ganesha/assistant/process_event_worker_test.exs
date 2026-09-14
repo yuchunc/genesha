@@ -15,7 +15,11 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
         "mode" => "active",
         "source" => %{"type" => "user", "userId" => "Uteacher0000000000000000000000"},
         "replyToken" => "rt-1",
-        "message" => %{"id" => "linemsg-#{System.unique_integer([:positive])}", "type" => "text", "text" => text}
+        "message" => %{
+          "id" => "linemsg-#{System.unique_integer([:positive])}",
+          "type" => "text",
+          "text" => text
+        }
       })
 
     [job] = all_enqueued(worker: ProcessEventWorker)
@@ -29,7 +33,11 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
         "type" => "message",
         "mode" => "active",
         "source" => %{"type" => "group", "groupId" => "Cabc", "userId" => sender_id},
-        "message" => %{"id" => "linemsg-#{System.unique_integer([:positive])}", "type" => "text", "text" => text}
+        "message" => %{
+          "id" => "linemsg-#{System.unique_integer([:positive])}",
+          "type" => "text",
+          "text" => text
+        }
       })
 
     [job] = all_enqueued(worker: ProcessEventWorker)
@@ -83,7 +91,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     job = enqueue_teacher_message("你好")
     assert :ok = perform_job(ProcessEventWorker, job.args)
 
-    assert [{:push, {"Uteacher0000000000000000000000", [%{type: "text", text: "好的"}]}}] = LineMock.calls()
+    assert [{:push, {"Uteacher0000000000000000000000", [%{type: "text", text: "好的"}]}}] =
+             LineMock.calls()
   end
 
   test "ignores a message from a non-teacher 1:1 sender" do
@@ -147,7 +156,9 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
   describe "group thread" do
     test "processes a student message into thread history without ever calling Line.Client" do
-      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "(internal reasoning, never sent)", tool_calls: []}} end)
+      Mock.stub(fn _messages, _tools, _opts ->
+        {:ok, %{text: "(internal reasoning, never sent)", tool_calls: []}}
+      end)
 
       job = enqueue_group_message("Ustudent1", "2.Lulu （Line pay 1200元）")
       assert :ok = perform_job(ProcessEventWorker, job.args)
@@ -155,6 +166,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert LineMock.calls() == []
 
       {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+
       assert [%{role: "user", content: "2.Lulu （Line pay 1200元）"}, %{role: "assistant"}] =
                Assistant.list_messages(thread)
     end
@@ -212,10 +224,167 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert LineMock.calls() == []
 
       {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
-      assert [%{role: "user", content: "2.Lulu （Line pay 1200元）"}] = Assistant.list_messages(thread)
+
+      assert [%{role: "user", content: "2.Lulu （Line pay 1200元）"}] =
+               Assistant.list_messages(thread)
 
       line_event = Line.get_event!(job.args["line_event_id"])
       assert line_event.processed_at
+    end
+  end
+
+  describe "unsend and messageEdited" do
+    test "unsend clears the message content and discards its pending draft" do
+      Process.put(:calls, 0)
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        case Process.get(:calls) do
+          0 ->
+            Process.put(:calls, 1)
+
+            {:ok,
+             %{
+               text: nil,
+               tool_calls: [
+                 %{
+                   id: "t1",
+                   name: "propose_payment_draft",
+                   input: %{"amount" => 1200, "method" => "line_pay"}
+                 }
+               ]
+             }}
+
+          _ ->
+            {:ok, %{text: "logged", tool_calls: []}}
+        end
+      end)
+
+      :ok =
+        Line.record_event(%{
+          "webhookEventId" => "evt-msg",
+          "type" => "message",
+          "mode" => "active",
+          "source" => %{"type" => "group", "groupId" => "Cabc", "userId" => "Ustudent1"},
+          "message" => %{
+            "id" => "linemsg-1",
+            "type" => "text",
+            "text" => "2.Lulu （Line pay 1200元）"
+          }
+        })
+
+      [msg_job] = all_enqueued(worker: ProcessEventWorker)
+      assert :ok = perform_job(ProcessEventWorker, msg_job.args)
+
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      [draft] = Ganesha.Repo.all(Assistant.Draft) |> Enum.filter(&(&1.thread_id == thread.id))
+      assert draft.state == "pending"
+
+      :ok =
+        Line.record_event(%{
+          "webhookEventId" => "evt-unsend",
+          "type" => "unsend",
+          "mode" => "active",
+          "source" => %{"type" => "group", "groupId" => "Cabc", "userId" => "Ustudent1"},
+          "unsend" => %{"messageId" => "linemsg-1"}
+        })
+
+      [unsend_job] =
+        all_enqueued(worker: ProcessEventWorker) |> Enum.reject(&(&1.id == msg_job.id))
+
+      assert :ok = perform_job(ProcessEventWorker, unsend_job.args)
+
+      user_message = Assistant.list_messages(thread) |> Enum.find(&(&1.role == "user"))
+      assert is_nil(user_message.content)
+      assert Assistant.get_draft!(draft.id).state == "discarded"
+    end
+
+    test "messageEdited replaces the pending draft with a fresh one from the corrected text" do
+      Process.put(:calls, 0)
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        case Process.get(:calls) do
+          0 ->
+            Process.put(:calls, 1)
+
+            {:ok,
+             %{
+               text: nil,
+               tool_calls: [
+                 %{
+                   id: "t1",
+                   name: "propose_payment_draft",
+                   input: %{"amount" => 900, "method" => "line_pay"}
+                 }
+               ]
+             }}
+
+          1 ->
+            Process.put(:calls, 2)
+            {:ok, %{text: "logged", tool_calls: []}}
+
+          2 ->
+            Process.put(:calls, 3)
+
+            {:ok,
+             %{
+               text: nil,
+               tool_calls: [
+                 %{
+                   id: "t2",
+                   name: "propose_payment_draft",
+                   input: %{"amount" => 1200, "method" => "line_pay"}
+                 }
+               ]
+             }}
+
+          _ ->
+            {:ok, %{text: "logged again", tool_calls: []}}
+        end
+      end)
+
+      :ok =
+        Line.record_event(%{
+          "webhookEventId" => "evt-msg2",
+          "type" => "message",
+          "mode" => "active",
+          "source" => %{"type" => "group", "groupId" => "Cdef", "userId" => "Ustudent2"},
+          "message" => %{
+            "id" => "linemsg-2",
+            "type" => "text",
+            "text" => "2.Lulu （Line pay 900元）"
+          }
+        })
+
+      [msg_job] = all_enqueued(worker: ProcessEventWorker)
+      assert :ok = perform_job(ProcessEventWorker, msg_job.args)
+
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cdef")
+
+      [original_draft] =
+        Ganesha.Repo.all(Assistant.Draft) |> Enum.filter(&(&1.thread_id == thread.id))
+
+      :ok =
+        Line.record_event(%{
+          "webhookEventId" => "evt-edit",
+          "type" => "messageEdited",
+          "mode" => "active",
+          "source" => %{"type" => "group", "groupId" => "Cdef", "userId" => "Ustudent2"},
+          "message" => %{"id" => "linemsg-2", "text" => "2.Lulu （Line pay 1200元）"}
+        })
+
+      [edit_job] = all_enqueued(worker: ProcessEventWorker) |> Enum.reject(&(&1.id == msg_job.id))
+      assert :ok = perform_job(ProcessEventWorker, edit_job.args)
+
+      assert Assistant.get_draft!(original_draft.id).state == "discarded"
+
+      new_drafts =
+        Ganesha.Repo.all(Assistant.Draft)
+        |> Enum.filter(&(&1.thread_id == thread.id and &1.state == "pending"))
+
+      assert [%{parsed: %{"amount" => 1200}}] = new_drafts
+
+      user_message = Assistant.list_messages(thread) |> Enum.find(&(&1.role == "user"))
+      assert user_message.content == "2.Lulu （Line pay 1200元）"
     end
   end
 
@@ -223,7 +392,10 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     test "confirm applies a pending payment draft and replies with success" do
       {:ok, student} = People.create_student(%{display_name: "Lulu"})
       {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
-      {:ok, purchase} = Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
       {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
 
       {:ok, draft} =
@@ -246,7 +418,9 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
     test "confirm on a draft missing purchase_id explains why, without applying" do
       {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
-      {:ok, draft} = Assistant.create_draft(thread, %{kind: "payment", parsed: %{"amount" => 400}})
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{kind: "payment", parsed: %{"amount" => 400}})
 
       job = enqueue_teacher_postback("action=confirm&draft_id=#{draft.id}")
       assert :ok = perform_job(ProcessEventWorker, job.args)
