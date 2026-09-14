@@ -2634,6 +2634,52 @@ defmodule Ganesha.Assistant.Provider.AnthropicTest do
     stub = fn conn -> Plug.Conn.send_resp(conn, 401, "unauthorized") end
     assert {:error, {:http_error, 401, "unauthorized"}} = Anthropic.complete([], [], system: "sys", plug: stub)
   end
+
+  test "translates every Agent.to_wire/1 shape into non-empty Anthropic content, even past the retention sweep" do
+    parent = self()
+
+    stub = fn conn ->
+      {:ok, raw, conn} = Plug.Conn.read_body(conn)
+      send(parent, {:body, Jason.decode!(raw)})
+      body = %{"content" => [%{"type" => "text", "text" => "ok"}]}
+      conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, Jason.encode!(body))
+    end
+
+    messages = [
+      # A group message the Task 18 retention sweep has nulled - must not crash and must not
+      # send Anthropic an empty content string.
+      %{role: "user", content: nil, tool_calls: []},
+      # An assistant turn with no text and no tool calls (e.g. also swept, or a truncated
+      # response) - must not send an empty content array, which Anthropic rejects with 400.
+      %{role: "assistant", content: nil, tool_calls: []},
+      %{role: "tool", content: nil, tool_calls: [%{tool_use_id: "t1", content: "Lulu (#3)"}]}
+    ]
+
+    assert {:ok, _} = Anthropic.complete(messages, [], system: "sys", plug: stub)
+    assert_receive {:body, %{"messages" => [user, assistant, tool_turn]}}
+    assert %{"role" => "user", "content" => content} = user
+    assert is_binary(content) and content != ""
+    assert %{"role" => "assistant", "content" => [%{"type" => "text", "text" => text}]} = assistant
+    assert is_binary(text) and text != ""
+    assert %{"role" => "user", "content" => [%{"type" => "tool_result", "tool_use_id" => "t1"}]} = tool_turn
+  end
+
+  test "collects every text block in a response instead of only the first" do
+    stub = fn conn ->
+      body = %{
+        "content" => [
+          %{"type" => "text", "text" => "先查詢中"},
+          %{"type" => "tool_use", "id" => "toolu_1", "name" => "find_student", "input" => %{"query" => "Lulu"}},
+          %{"type" => "text", "text" => "查到了"}
+        ]
+      }
+
+      conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, Jason.encode!(body))
+    end
+
+    assert {:ok, %{text: text}} = Anthropic.complete([], [], system: "sys", plug: stub)
+    assert text == "先查詢中\n查到了"
+  end
 end
 ```
 
@@ -2683,16 +2729,29 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
     end
   end
 
-  defp to_wire_message(%{role: "user", content: content}) when is_binary(content) do
-    %{role: "user", content: content}
+  # `content` is nullable (Message.changeset/2 only requires :thread_id and
+  # :role), and the Task 18 retention sweep nulls it out on every group
+  # message older than 24h while the row stays in replayed history — the
+  # Anthropic API also rejects an empty content array/string outright, so
+  # every branch below must fall back to a non-empty placeholder rather
+  # than ever emit `content: nil` or `content: []`.
+  defp to_wire_message(%{role: "user", content: content}) do
+    %{role: "user", content: content || "[內容已依保留政策清除]"}
   end
 
   defp to_wire_message(%{role: "assistant", content: content, tool_calls: tool_calls}) do
+    text_blocks = if content in [nil, ""], do: [], else: [%{type: "text", text: content}]
+
+    tool_blocks =
+      Enum.map(tool_calls || [], fn call ->
+        %{type: "tool_use", id: call.id, name: call.name, input: call.input}
+      end)
+
     blocks =
-      (if content, do: [%{type: "text", text: content}], else: []) ++
-        Enum.map(tool_calls || [], fn call ->
-          %{type: "tool_use", id: call.id, name: call.name, input: call.input}
-        end)
+      case text_blocks ++ tool_blocks do
+        [] -> [%{type: "text", text: "[內容已依保留政策清除]"}]
+        blocks -> blocks
+      end
 
     %{role: "assistant", content: blocks}
   end
@@ -2707,7 +2766,14 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
   end
 
   defp from_wire_response(%{"content" => blocks}) do
-    text = Enum.find_value(blocks, fn %{"type" => t} = b -> t == "text" && b["text"] end)
+    text =
+      blocks
+      |> Enum.filter(&(&1["type"] == "text"))
+      |> Enum.map_join("\n", & &1["text"])
+      |> case do
+        "" -> nil
+        joined -> joined
+      end
 
     tool_calls =
       blocks
