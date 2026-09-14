@@ -94,6 +94,25 @@ defmodule Ganesha.AssistantTest do
 
       [payment] = Sales.list_payments_for_purchase(purchase.id)
       assert payment.state == "confirmed"
+      assert payment.source == "line_draft"
+    end
+
+    test "applying a payment draft with no paid_on defaults to today" do
+      {:ok, student} = People.create_student(%{display_name: "Lulu"})
+      {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+      {:ok, purchase} = Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{
+          kind: "payment",
+          parsed: %{"purchase_id" => purchase.id, "amount" => 400, "method" => "cash"}
+        })
+
+      assert {:ok, _updated} = Assistant.apply_draft(draft, "line:teacher")
+
+      [payment] = Sales.list_payments_for_purchase(purchase.id)
+      assert payment.paid_on == Ganesha.Clock.today()
     end
 
     test "applying a payment draft without a purchase_id fails instead of guessing" do
@@ -128,6 +147,21 @@ defmodule Ganesha.AssistantTest do
       assert updated.applied_record_type == "Ganesha.Roster.Attendance"
       assert [attendance] = Roster.list_for_session(session)
       assert attendance.student_id == student.id
+    end
+
+    test "applying an attendance draft proposing a makeup is refused, never books one for free" do
+      {:ok, student} = People.create_student(%{display_name: "Lulu"})
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{
+          kind: "attendance",
+          parsed: %{"session_id" => 1, "student_id" => student.id, "kind" => "makeup"}
+        })
+
+      assert {:error, :makeup_requires_credit} = Assistant.apply_draft(draft, "line:teacher")
+      assert Assistant.get_draft!(draft.id).state == "pending"
+      assert Roster.list_for_student(student.id) == []
     end
 
     test "applying a makeup_request draft marks it applied without creating a ledger row" do

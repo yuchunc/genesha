@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tools.ProposePaymentDraft do
   """
   @behaviour Ganesha.Assistant.Tool
 
-  alias Ganesha.Assistant
+  alias Ganesha.{Assistant, People}
 
   @impl true
   def name, do: "propose_payment_draft"
@@ -39,14 +39,30 @@ defmodule Ganesha.Assistant.Tools.ProposePaymentDraft do
     {confidence, parsed} = Map.pop(input, "confidence", 1.0)
     student_id = Map.get(parsed, "student_id")
 
-    {:ok, draft} =
-      Assistant.create_draft(thread, %{
-        kind: "payment",
-        student_id: student_id,
-        parsed: Map.delete(parsed, "student_id"),
-        confidence: confidence
-      })
+    case resolve_student(student_id) do
+      {:error, message} ->
+        {message, nil}
 
-    {"draft ##{draft.id} created (payment, pending confirmation)", draft.id}
+      :ok ->
+        {:ok, draft} =
+          Assistant.create_draft(thread, %{
+            kind: "payment",
+            student_id: student_id,
+            parsed: Map.delete(parsed, "student_id"),
+            confidence: confidence
+          })
+
+        {"draft ##{draft.id} created (payment, pending confirmation)", draft.id}
+    end
+  end
+
+  defp resolve_student(nil), do: :ok
+
+  defp resolve_student(student_id) do
+    if Enum.any?(People.list_students(), &(&1.id == student_id)) do
+      :ok
+    else
+      {:error, "no student found with id #{student_id}"}
+    end
   end
 end

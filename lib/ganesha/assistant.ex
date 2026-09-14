@@ -10,7 +10,7 @@ defmodule Ganesha.Assistant do
   alias Ganesha.Assistant.Message
   alias Ganesha.Assistant.Thread
   alias Ganesha.Repo
-  alias Ganesha.{Roster, Sales}
+  alias Ganesha.{Clock, Roster, Sales}
 
   alias Ganesha.Assistant.Tools.{
     FindStudent,
@@ -99,19 +99,55 @@ defmodule Ganesha.Assistant do
   end
 
   def apply_draft(%Draft{state: "pending", kind: "payment"} = draft, confirmed_by) do
-    with {:ok, purchase_id} <- fetch_purchase_id(draft),
-         payment_attrs = Map.put(draft.parsed, "purchase_id", purchase_id),
-         {:ok, payment} <- Sales.record_payment(payment_attrs),
-         {:ok, payment} <- Sales.confirm_payment(payment, confirmed_by) do
-      mark_applied(draft, "Ganesha.Sales.Payment", payment.id)
+    with {:ok, purchase_id} <- fetch_purchase_id(draft) do
+      Repo.transaction(fn ->
+        payment_attrs =
+          draft.parsed
+          |> Map.put("purchase_id", purchase_id)
+          |> Map.put("source", "line_draft")
+          |> Map.put_new("paid_on", Date.to_iso8601(Clock.today()))
+
+        with {1, _} <- claim_pending(draft.id),
+             {:ok, payment} <- Sales.record_payment(payment_attrs),
+             {:ok, payment} <- Sales.confirm_payment(payment, confirmed_by),
+             {:ok, updated} <-
+               draft |> Draft.apply_changeset("Ganesha.Sales.Payment", payment.id) |> Repo.update() do
+          updated
+        else
+          {0, _} -> Repo.rollback(:not_pending)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
     end
   end
 
+  # A "makeup" attendance draft only ever books through
+  # `Roster.book_makeup/3`'s credit-consuming transaction, called from a
+  # human action in the app — never through here. Without this guard,
+  # confirming such a draft would insert a `kind: "makeup"` attendance row
+  # with no credit ever spent, silently granting a free class the student
+  # could then also redeem again through the normal in-app flow.
+  def apply_draft(%Draft{state: "pending", kind: "attendance", parsed: %{"kind" => "makeup"}}, _confirmed_by) do
+    {:error, :makeup_requires_credit}
+  end
+
   def apply_draft(%Draft{state: "pending", kind: "attendance"} = draft, _confirmed_by) do
-    case Roster.create_attendance(draft.parsed) do
-      {:ok, attendance} -> mark_applied(draft, "Ganesha.Roster.Attendance", attendance.id)
-      {:error, _} = error -> error
-    end
+    # Narrowed to exactly what the tool's schema declares — `parsed` is
+    # LLM-authored JSON, and `Attendance.changeset/2` would otherwise cast
+    # `state`, `purchase_id`, and `credit_id` straight out of it.
+    attendance_attrs = Map.take(draft.parsed, ["session_id", "student_id", "kind", "note"])
+
+    Repo.transaction(fn ->
+      with {1, _} <- claim_pending(draft.id),
+           {:ok, attendance} <- Roster.create_attendance(attendance_attrs),
+           {:ok, updated} <-
+             draft |> Draft.apply_changeset("Ganesha.Roster.Attendance", attendance.id) |> Repo.update() do
+        updated
+      else
+        {0, _} -> Repo.rollback(:not_pending)
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
   end
 
   def apply_draft(%Draft{state: "pending", kind: kind} = draft, _confirmed_by)
@@ -126,6 +162,16 @@ defmodule Ganesha.Assistant do
 
   defp fetch_purchase_id(%Draft{parsed: %{"purchase_id" => id}}) when not is_nil(id), do: {:ok, id}
   defp fetch_purchase_id(%Draft{}), do: {:error, :missing_purchase_id}
+
+  # Atomically claims exclusive rights to apply this draft: a compare-and-set
+  # on `state == "pending"` so two concurrent confirms (or a retried Oban job
+  # racing a postback tap) can never both proceed past this point. Runs
+  # inside the caller's `Repo.transaction/1`, so a later step failing rolls
+  # this flip back too — the draft genuinely stays "pending" unless the
+  # ledger write it guards actually lands.
+  defp claim_pending(id) do
+    Repo.update_all(from(d in Draft, where: d.id == ^id and d.state == "pending"), set: [state: "applied"])
+  end
 
   defp mark_applied(draft, record_type, record_id) do
     draft |> Draft.apply_changeset(record_type, record_id) |> Repo.update()
