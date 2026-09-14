@@ -3366,6 +3366,21 @@ Add to `test/ganesha/assistant/process_event_worker_test.exs`:
       drafts = Ganesha.Repo.all(Assistant.Draft) |> Enum.filter(&(&1.thread_id == thread.id))
       assert [%Assistant.Draft{state: "pending", kind: "payment"}] = drafts
     end
+
+    test "agent failure returns :ok without retrying and duplicating the user message" do
+      Mock.stub(fn _messages, _tools, _opts -> {:error, :max_iterations_exceeded} end)
+
+      job = enqueue_group_message("Ustudent1", "2.Lulu （Line pay 1200元）")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert LineMock.calls() == []
+
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      assert [%{role: "user", content: "2.Lulu （Line pay 1200元）"}] = Assistant.list_messages(thread)
+
+      line_event = Line.get_event!(job.args["line_event_id"])
+      assert line_event.processed_at
+    end
   end
 ```
 
@@ -3399,8 +3414,12 @@ Add a `route/2` clause to `lib/ganesha/assistant/process_event_worker.ex`, above
     {:ok, _} = Assistant.append_message(thread, "user", text, nil)
 
     case Agent.run(thread, Assistant.tools(), Assistant.group_system_prompt()) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Ganesha.Assistant.Agent.run/3 failed for group thread #{thread.id}: #{inspect(reason)}")
+        :ok
     end
   end
 
