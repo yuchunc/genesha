@@ -2,7 +2,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   use Ganesha.DataCase
   use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
 
-  alias Ganesha.{Assistant, Line}
+  alias Ganesha.{Assistant, Catalog, Line, People, Sales}
   alias Ganesha.Assistant.ProcessEventWorker
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Line.Client.Mock, as: LineMock
@@ -16,6 +16,21 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
         "source" => %{"type" => "user", "userId" => "Uteacher0000000000000000000000"},
         "replyToken" => "rt-1",
         "message" => %{"id" => "linemsg-#{System.unique_integer([:positive])}", "type" => "text", "text" => text}
+      })
+
+    [job] = all_enqueued(worker: ProcessEventWorker)
+    job
+  end
+
+  defp enqueue_teacher_postback(data) do
+    :ok =
+      Line.record_event(%{
+        "webhookEventId" => "evt-#{System.unique_integer([:positive])}",
+        "type" => "postback",
+        "mode" => "active",
+        "source" => %{"type" => "user", "userId" => "Uteacher0000000000000000000000"},
+        "replyToken" => "rt-postback",
+        "postback" => %{"data" => data}
       })
 
     [job] = all_enqueued(worker: ProcessEventWorker)
@@ -114,5 +129,54 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     assert followup.text == "另一筆草稿待確認"
     assert [confirm2, _discard2] = followup.quickReply.items
     refute confirm1.action.data == confirm2.action.data
+  end
+
+  describe "postback confirm/discard" do
+    test "confirm applies a pending payment draft and replies with success" do
+      {:ok, student} = People.create_student(%{display_name: "Lulu"})
+      {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+      {:ok, purchase} = Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{
+          kind: "payment",
+          parsed: %{
+            "purchase_id" => purchase.id,
+            "amount" => 400,
+            "method" => "cash",
+            "paid_on" => Date.to_iso8601(Ganesha.Clock.today())
+          }
+        })
+
+      job = enqueue_teacher_postback("action=confirm&draft_id=#{draft.id}")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert Assistant.get_draft!(draft.id).state == "applied"
+      assert [{:reply, {"rt-postback", [%{type: "text", text: "已確認並記錄。"}]}}] = LineMock.calls()
+    end
+
+    test "confirm on a draft missing purchase_id explains why, without applying" do
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
+      {:ok, draft} = Assistant.create_draft(thread, %{kind: "payment", parsed: %{"amount" => 400}})
+
+      job = enqueue_teacher_postback("action=confirm&draft_id=#{draft.id}")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert Assistant.get_draft!(draft.id).state == "pending"
+      assert [{:reply, {"rt-postback", [%{type: "text", text: text}]}}] = LineMock.calls()
+      assert text =~ "App 內編輯"
+    end
+
+    test "discard marks a pending draft discarded" do
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
+      {:ok, draft} = Assistant.create_draft(thread, %{kind: "unknown", parsed: %{}})
+
+      job = enqueue_teacher_postback("action=discard&draft_id=#{draft.id}")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert Assistant.get_draft!(draft.id).state == "discarded"
+      assert [{:reply, {"rt-postback", [%{type: "text", text: "已捨棄。"}]}}] = LineMock.calls()
+    end
   end
 end

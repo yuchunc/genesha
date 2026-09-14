@@ -34,6 +34,11 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     handle_teacher_message(event)
   end
 
+  defp route(%{source_type: "user", source_id: sender_id, raw_type: "postback"} = event, teacher_id)
+       when sender_id == teacher_id do
+    handle_postback(event)
+  end
+
   defp route(_event, _teacher_id), do: :ok
 
   defp handle_teacher_message(%{
@@ -56,6 +61,33 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   end
 
   defp handle_teacher_message(_event), do: :ok
+
+  defp handle_postback(%{payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}}) do
+    params = URI.decode_query(data)
+    draft = Assistant.get_draft!(String.to_integer(params["draft_id"]))
+    reply_text = resolve_postback(params["action"], draft)
+
+    line_client().reply(reply_token, [line_client().text_message(reply_text)])
+    :ok
+  end
+
+  defp resolve_postback("confirm", draft) do
+    case Assistant.apply_draft(draft, "line:teacher") do
+      {:ok, _} -> "已確認並記錄。"
+      {:error, :missing_purchase_id} -> "這筆草稿缺少對應的購買記錄，請於 App 內編輯後確認。"
+      {:error, :not_pending} -> "這筆草稿已經處理過了。"
+      {:error, _changeset} -> "記錄失敗，請於 App 內手動處理。"
+    end
+  end
+
+  defp resolve_postback("discard", draft) do
+    case Assistant.discard_draft(draft) do
+      {:ok, _} -> "已捨棄。"
+      {:error, :not_pending} -> "這筆草稿已經處理過了。"
+    end
+  end
+
+  defp resolve_postback(_unknown, _draft), do: "無法辨識的操作。"
 
   defp send_reply(reply_token, source_id, text, draft_ids) do
     messages = build_messages(text, draft_ids)
