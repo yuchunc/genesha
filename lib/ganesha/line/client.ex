@@ -58,5 +58,6 @@ defmodule Ganesha.Line.Client do
     }
   end
 
-  defp quick_reply_item(label, data), do: %{type: "action", action: %{type: "postback", label: label, data: data}}
+  defp quick_reply_item(label, data),
+    do: %{type: "action", action: %{type: "postback", label: label, data: data}}
 end
