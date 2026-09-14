@@ -45,6 +45,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       def reply(_reply_token, _messages), do: {:error, :expired}
       def push(to, messages), do: LineMock.push(to, messages)
       def get_group_member(g, u), do: LineMock.get_group_member(g, u)
+      defdelegate text_message(text, draft_id \\ nil), to: Ganesha.Line.Client
     end
 
     Application.put_env(:ganesha, :line_client, ExpiredReplyLineMock)
@@ -70,5 +71,48 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     [job] = all_enqueued(worker: ProcessEventWorker)
     assert :ok = perform_job(ProcessEventWorker, job.args)
     assert LineMock.calls() == []
+  end
+
+  test "replies with an apology and returns :ok when the agent run fails, instead of retrying and duplicating the message" do
+    Mock.stub(fn _messages, _tools, _opts -> {:error, :max_iterations_exceeded} end)
+    job = enqueue_teacher_message("誰欠錢？")
+
+    assert :ok = perform_job(ProcessEventWorker, job.args)
+
+    assert [{:reply, {"rt-1", [%{type: "text", text: apology}]}}] = LineMock.calls()
+    assert apology =~ "抱歉"
+
+    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
+    assert [%{content: "誰欠錢？"}] = Assistant.list_messages(thread)
+
+    line_event = Line.get_event!(job.args["line_event_id"])
+    assert line_event.processed_at
+  end
+
+  test "attaches a confirm/discard action for every draft the turn created, not just the first" do
+    Mock.stub(fn messages, _tools, _opts ->
+      if Enum.any?(messages, &(&1.role == "tool")) do
+        {:ok, %{text: "已記錄兩筆", tool_calls: []}}
+      else
+        {:ok,
+         %{
+           text: nil,
+           tool_calls: [
+             %{id: "t1", name: "propose_makeup_draft", input: %{"note" => "8/17 補課"}},
+             %{id: "t2", name: "propose_makeup_draft", input: %{"note" => "8/24 補課"}}
+           ]
+         }}
+      end
+    end)
+
+    job = enqueue_teacher_message("兩個學生都要補課")
+    assert :ok = perform_job(ProcessEventWorker, job.args)
+
+    assert [{:reply, {"rt-1", [main, followup]}}] = LineMock.calls()
+    assert main.text == "已記錄兩筆"
+    assert [confirm1, _discard1] = main.quickReply.items
+    assert followup.text == "另一筆草稿待確認"
+    assert [confirm2, _discard2] = followup.quickReply.items
+    refute confirm1.action.data == confirm2.action.data
   end
 end
