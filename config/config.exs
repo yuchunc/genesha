@@ -30,7 +30,11 @@ config :ganesha, Oban,
   queues: [default: 5],
   plugins: [
     Oban.Plugins.Pruner,
-    {Oban.Plugins.Cron, crontab: [{"10 16 * * *", Ganesha.Reporting.CloseMonthWorker}]}
+    {Oban.Plugins.Cron,
+     crontab: [
+       {"10 16 * * *", Ganesha.Reporting.CloseMonthWorker},
+       {"0 * * * *", Ganesha.Assistant.PurgeGroupRawTextWorker}
+     ]}
   ]
 
 # Configure the endpoint
