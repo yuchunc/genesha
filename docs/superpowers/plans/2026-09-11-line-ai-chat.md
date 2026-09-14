@@ -2418,6 +2418,10 @@ defmodule Ganesha.Line.Client.MockTest do
   test "get_group_member/2 returns a canned profile" do
     assert {:ok, %{"displayName" => _}} = Mock.get_group_member("Cabc", "U1")
   end
+
+  test "text_message/2 delegates to Client so consumers dispatching through line_client() work under either implementation" do
+    assert Mock.text_message("已建立草稿", 42) == Ganesha.Line.Client.text_message("已建立草稿", 42)
+  end
 end
 ```
 
@@ -2521,7 +2525,8 @@ defmodule Ganesha.Line.Client do
     }
   end
 
-  defp quick_reply_item(label, data), do: %{type: "action", action: %{type: "postback", label: label, data: data}}
+  defp quick_reply_item(label, data),
+    do: %{type: "action", action: %{type: "postback", label: label, data: data}}
 end
 ```
 
@@ -2548,6 +2553,11 @@ defmodule Ganesha.Line.Client.Mock do
 
   @impl true
   def get_group_member(_group_id, _user_id), do: {:ok, %{"displayName" => "測試學生"}}
+
+  # `text_message/1,2` is a pure payload builder with nothing worth faking - delegate
+  # so consumers dispatching through `line_client()` (Task 15's `Application.get_env`
+  # lookup) get the same function whichever implementation is configured.
+  defdelegate text_message(text, draft_id \\ nil), to: Ganesha.Line.Client
 
   def calls, do: Process.get(:line_client_mock_calls, []) |> Enum.reverse()
 
