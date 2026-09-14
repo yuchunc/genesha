@@ -136,5 +136,4 @@ defmodule Ganesha.Studio do
         preload: [slot: slot]
     )
   end
-
 end

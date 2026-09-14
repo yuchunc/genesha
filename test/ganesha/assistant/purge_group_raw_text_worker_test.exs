@@ -43,7 +43,9 @@ defmodule Ganesha.Assistant.PurgeGroupRawTextWorkerTest do
 
   test "purges group thread message content older than 24h, leaves the teacher thread alone" do
     {:ok, group_thread} = Assistant.get_or_create_thread("group", "Cabc")
-    {:ok, teacher_thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
+
+    {:ok, teacher_thread} =
+      Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
 
     group_message = insert_old_message(group_thread, "2.Lulu （Line pay 1200元）")
     teacher_message = insert_old_message(teacher_thread, "誰欠錢？")

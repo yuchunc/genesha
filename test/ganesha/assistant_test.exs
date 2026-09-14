@@ -24,7 +24,11 @@ defmodule Ganesha.AssistantTest do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
 
     {:ok, _} = Assistant.append_message(thread, "user", "誰欠錢？", nil)
-    {:ok, _} = Assistant.append_message(thread, "assistant", nil, [%{id: "t1", name: "student_balance", input: %{}}])
+
+    {:ok, _} =
+      Assistant.append_message(thread, "assistant", nil, [
+        %{id: "t1", name: "student_balance", input: %{}}
+      ])
 
     assert [first, second] = Assistant.list_messages(thread)
     assert first.role == "user"
@@ -74,7 +78,10 @@ defmodule Ganesha.AssistantTest do
     test "applying a payment draft records and confirms a payment" do
       {:ok, student} = People.create_student(%{display_name: "Lulu"})
       {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
-      {:ok, purchase} = Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
       {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
 
       {:ok, draft} =
@@ -100,7 +107,10 @@ defmodule Ganesha.AssistantTest do
     test "applying a payment draft with no paid_on defaults to today" do
       {:ok, student} = People.create_student(%{display_name: "Lulu"})
       {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
-      {:ok, purchase} = Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+      {:ok, purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
       {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
 
       {:ok, draft} =
@@ -117,7 +127,9 @@ defmodule Ganesha.AssistantTest do
 
     test "applying a payment draft without a purchase_id fails instead of guessing" do
       {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
-      {:ok, draft} = Assistant.create_draft(thread, %{kind: "payment", parsed: %{"amount" => 400}})
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{kind: "payment", parsed: %{"amount" => 400}})
 
       assert {:error, :missing_purchase_id} = Assistant.apply_draft(draft, "line:teacher")
       assert Assistant.get_draft!(draft.id).state == "pending"
@@ -133,7 +145,9 @@ defmodule Ganesha.AssistantTest do
           label: "一"
         })
 
-      {:ok, session} = Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-14], style: "Hatha"})
+      {:ok, session} =
+        Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-14], style: "Hatha"})
+
       {:ok, student} = People.create_student(%{display_name: "Lulu"})
       {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
 
@@ -166,7 +180,9 @@ defmodule Ganesha.AssistantTest do
 
     test "applying a makeup_request draft marks it applied without creating a ledger row" do
       {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
-      {:ok, draft} = Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
 
       assert {:ok, updated} = Assistant.apply_draft(draft, "line:teacher")
       assert updated.state == "applied"

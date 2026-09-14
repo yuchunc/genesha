@@ -29,6 +29,8 @@ defmodule Ganesha.Line.Client.Mock do
   def calls, do: Process.get(:line_client_mock_calls, []) |> Enum.reverse()
 
   defp record(kind, payload) do
-    Process.put(:line_client_mock_calls, [{kind, payload} | Process.get(:line_client_mock_calls, [])])
+    Process.put(:line_client_mock_calls, [
+      {kind, payload} | Process.get(:line_client_mock_calls, [])
+    ])
   end
 end

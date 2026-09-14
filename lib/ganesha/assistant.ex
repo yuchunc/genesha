@@ -29,7 +29,9 @@ defmodule Ganesha.Assistant do
         {:ok, thread}
 
       nil ->
-        %Thread{} |> Thread.changeset(%{source_type: source_type, source_id: source_id}) |> Repo.insert()
+        %Thread{}
+        |> Thread.changeset(%{source_type: source_type, source_id: source_id})
+        |> Repo.insert()
     end
   end
 
@@ -111,7 +113,9 @@ defmodule Ganesha.Assistant do
              {:ok, payment} <- Sales.record_payment(payment_attrs),
              {:ok, payment} <- Sales.confirm_payment(payment, confirmed_by),
              {:ok, updated} <-
-               draft |> Draft.apply_changeset("Ganesha.Sales.Payment", payment.id) |> Repo.update() do
+               draft
+               |> Draft.apply_changeset("Ganesha.Sales.Payment", payment.id)
+               |> Repo.update() do
           updated
         else
           {0, _} -> Repo.rollback(:not_pending)
@@ -127,7 +131,10 @@ defmodule Ganesha.Assistant do
   # confirming such a draft would insert a `kind: "makeup"` attendance row
   # with no credit ever spent, silently granting a free class the student
   # could then also redeem again through the normal in-app flow.
-  def apply_draft(%Draft{state: "pending", kind: "attendance", parsed: %{"kind" => "makeup"}}, _confirmed_by) do
+  def apply_draft(
+        %Draft{state: "pending", kind: "attendance", parsed: %{"kind" => "makeup"}},
+        _confirmed_by
+      ) do
     {:error, :makeup_requires_credit}
   end
 
@@ -141,7 +148,9 @@ defmodule Ganesha.Assistant do
       with {1, _} <- claim_pending(draft.id),
            {:ok, attendance} <- Roster.create_attendance(attendance_attrs),
            {:ok, updated} <-
-             draft |> Draft.apply_changeset("Ganesha.Roster.Attendance", attendance.id) |> Repo.update() do
+             draft
+             |> Draft.apply_changeset("Ganesha.Roster.Attendance", attendance.id)
+             |> Repo.update() do
         updated
       else
         {0, _} -> Repo.rollback(:not_pending)
@@ -155,12 +164,17 @@ defmodule Ganesha.Assistant do
     mark_applied(draft, nil, nil)
   end
 
-  def apply_draft(%Draft{state: state}, _confirmed_by) when state != "pending", do: {:error, :not_pending}
+  def apply_draft(%Draft{state: state}, _confirmed_by) when state != "pending",
+    do: {:error, :not_pending}
 
-  def discard_draft(%Draft{state: "pending"} = draft), do: draft |> Draft.state_changeset("discarded") |> Repo.update()
+  def discard_draft(%Draft{state: "pending"} = draft),
+    do: draft |> Draft.state_changeset("discarded") |> Repo.update()
+
   def discard_draft(%Draft{}), do: {:error, :not_pending}
 
-  defp fetch_purchase_id(%Draft{parsed: %{"purchase_id" => id}}) when not is_nil(id), do: {:ok, id}
+  defp fetch_purchase_id(%Draft{parsed: %{"purchase_id" => id}}) when not is_nil(id),
+    do: {:ok, id}
+
   defp fetch_purchase_id(%Draft{}), do: {:error, :missing_purchase_id}
 
   # Atomically claims exclusive rights to apply this draft: a compare-and-set
@@ -170,7 +184,9 @@ defmodule Ganesha.Assistant do
   # this flip back too — the draft genuinely stays "pending" unless the
   # ledger write it guards actually lands.
   defp claim_pending(id) do
-    Repo.update_all(from(d in Draft, where: d.id == ^id and d.state == "pending"), set: [state: "applied"])
+    Repo.update_all(from(d in Draft, where: d.id == ^id and d.state == "pending"),
+      set: [state: "applied"]
+    )
   end
 
   defp mark_applied(draft, record_type, record_id) do

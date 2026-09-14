@@ -10,7 +10,10 @@ defmodule Ganesha.Assistant.Tools.ProposeAttendanceDraftTest do
     {:ok, student} = People.create_student(%{display_name: "Lulu"})
 
     {_content, draft_id} =
-      ProposeAttendanceDraft.call(%{"session_id" => 1, "student_id" => student.id, "kind" => "enrolled"}, thread)
+      ProposeAttendanceDraft.call(
+        %{"session_id" => 1, "student_id" => student.id, "kind" => "enrolled"},
+        thread
+      )
 
     draft = Assistant.get_draft!(draft_id)
     assert draft.kind == "attendance"
@@ -21,7 +24,10 @@ defmodule Ganesha.Assistant.Tools.ProposeAttendanceDraftTest do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
 
     {content, draft_id} =
-      ProposeAttendanceDraft.call(%{"session_id" => 1, "student_id" => 999, "kind" => "enrolled"}, thread)
+      ProposeAttendanceDraft.call(
+        %{"session_id" => 1, "student_id" => 999, "kind" => "enrolled"},
+        thread
+      )
 
     assert draft_id == nil
     assert content =~ "no student found"

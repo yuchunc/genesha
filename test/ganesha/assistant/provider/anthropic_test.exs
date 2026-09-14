@@ -10,31 +10,49 @@ defmodule Ganesha.Assistant.Provider.AnthropicTest do
   test "translates a text-only response into {text, []}" do
     stub = fn conn ->
       body = %{"content" => [%{"type" => "text", "text" => "哈囉"}]}
-      conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, Jason.encode!(body))
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(body))
     end
 
     messages = [%{role: "user", content: "hi"}]
-    assert {:ok, %{text: "哈囉", tool_calls: []}} = Anthropic.complete(messages, [], system: "sys", plug: stub)
+
+    assert {:ok, %{text: "哈囉", tool_calls: []}} =
+             Anthropic.complete(messages, [], system: "sys", plug: stub)
   end
 
   test "translates a tool_use response into text + tool_calls" do
     stub = fn conn ->
       body = %{
         "content" => [
-          %{"type" => "tool_use", "id" => "toolu_1", "name" => "find_student", "input" => %{"query" => "Lulu"}}
+          %{
+            "type" => "tool_use",
+            "id" => "toolu_1",
+            "name" => "find_student",
+            "input" => %{"query" => "Lulu"}
+          }
         ]
       }
 
-      conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, Jason.encode!(body))
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(body))
     end
 
-    assert {:ok, %{text: nil, tool_calls: [%{id: "toolu_1", name: "find_student", input: %{"query" => "Lulu"}}]}} =
+    assert {:ok,
+            %{
+              text: nil,
+              tool_calls: [%{id: "toolu_1", name: "find_student", input: %{"query" => "Lulu"}}]
+            }} =
              Anthropic.complete([], [], system: "sys", plug: stub)
   end
 
   test "surfaces a non-200 response as an error" do
     stub = fn conn -> Plug.Conn.send_resp(conn, 401, "unauthorized") end
-    assert {:error, {:http_error, 401, "unauthorized"}} = Anthropic.complete([], [], system: "sys", plug: stub)
+
+    assert {:error, {:http_error, 401, "unauthorized"}} =
+             Anthropic.complete([], [], system: "sys", plug: stub)
   end
 
   test "translates every Agent.to_wire/1 shape into non-empty Anthropic content, even past the retention sweep" do
@@ -44,7 +62,10 @@ defmodule Ganesha.Assistant.Provider.AnthropicTest do
       {:ok, raw, conn} = Plug.Conn.read_body(conn)
       send(parent, {:body, Jason.decode!(raw)})
       body = %{"content" => [%{"type" => "text", "text" => "ok"}]}
-      conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, Jason.encode!(body))
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(body))
     end
 
     messages = [
@@ -61,9 +82,14 @@ defmodule Ganesha.Assistant.Provider.AnthropicTest do
     assert_receive {:body, %{"messages" => [user, assistant, tool_turn]}}
     assert %{"role" => "user", "content" => content} = user
     assert is_binary(content) and content != ""
-    assert %{"role" => "assistant", "content" => [%{"type" => "text", "text" => text}]} = assistant
+
+    assert %{"role" => "assistant", "content" => [%{"type" => "text", "text" => text}]} =
+             assistant
+
     assert is_binary(text) and text != ""
-    assert %{"role" => "user", "content" => [%{"type" => "tool_result", "tool_use_id" => "t1"}]} = tool_turn
+
+    assert %{"role" => "user", "content" => [%{"type" => "tool_result", "tool_use_id" => "t1"}]} =
+             tool_turn
   end
 
   test "collects every text block in a response instead of only the first" do
@@ -71,12 +97,19 @@ defmodule Ganesha.Assistant.Provider.AnthropicTest do
       body = %{
         "content" => [
           %{"type" => "text", "text" => "先查詢中"},
-          %{"type" => "tool_use", "id" => "toolu_1", "name" => "find_student", "input" => %{"query" => "Lulu"}},
+          %{
+            "type" => "tool_use",
+            "id" => "toolu_1",
+            "name" => "find_student",
+            "input" => %{"query" => "Lulu"}
+          },
           %{"type" => "text", "text" => "查到了"}
         ]
       }
 
-      conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, Jason.encode!(body))
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(body))
     end
 
     assert {:ok, %{text: text}} = Anthropic.complete([], [], system: "sys", plug: stub)

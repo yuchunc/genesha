@@ -42,7 +42,11 @@ defmodule GaneshaWeb.LineWebhookControllerTest do
   end
 
   test "rejects an unsigned request with 403", %{conn: conn} do
-    conn = conn |> Plug.Conn.put_req_header("content-type", "application/json") |> post("/line/webhook", "{}")
+    conn =
+      conn
+      |> Plug.Conn.put_req_header("content-type", "application/json")
+      |> post("/line/webhook", "{}")
+
     assert conn.status == 403
   end
 end

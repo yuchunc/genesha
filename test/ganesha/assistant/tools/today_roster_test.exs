@@ -13,10 +13,15 @@ defmodule Ganesha.Assistant.Tools.TodayRosterTest do
         label: "今日班"
       })
 
-    {:ok, session} = Studio.create_session(%{slot_id: slot.id, date: Clock.today(), style: "Hatha"})
+    {:ok, session} =
+      Studio.create_session(%{slot_id: slot.id, date: Clock.today(), style: "Hatha"})
+
     {:ok, student} = People.create_student(%{display_name: "Lulu"})
     {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
-    {:ok, purchase} = Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+
     {:ok, _} = Roster.add_drop_in(session, student, purchase)
 
     {content, draft_id} = TodayRoster.call(%{}, nil)

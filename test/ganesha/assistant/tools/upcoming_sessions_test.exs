@@ -13,7 +13,8 @@ defmodule Ganesha.Assistant.Tools.UpcomingSessionsTest do
         label: "近日班"
       })
 
-    {:ok, _} = Studio.create_session(%{slot_id: slot.id, date: Date.add(Clock.today(), 2), style: "Hatha"})
+    {:ok, _} =
+      Studio.create_session(%{slot_id: slot.id, date: Date.add(Clock.today(), 2), style: "Hatha"})
 
     {content, draft_id} = UpcomingSessions.call(%{"days" => 7}, nil)
     assert draft_id == nil

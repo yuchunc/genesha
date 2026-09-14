@@ -26,13 +26,21 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
     }
 
     req_opts =
-      [base_url: @base_url, headers: [{"x-api-key", api_key}, {"anthropic-version", @api_version}]]
+      [
+        base_url: @base_url,
+        headers: [{"x-api-key", api_key}, {"anthropic-version", @api_version}]
+      ]
       |> then(fn base -> if plug = opts[:plug], do: base ++ [plug: plug], else: base end)
 
     case Req.post(Req.new(req_opts), url: "/v1/messages", json: body) do
-      {:ok, %Req.Response{status: 200, body: response_body}} -> {:ok, from_wire_response(response_body)}
-      {:ok, %Req.Response{status: status, body: body}} -> {:error, {:http_error, status, body}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %Req.Response{status: 200, body: response_body}} ->
+        {:ok, from_wire_response(response_body)}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, {:http_error, status, body}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -64,7 +72,9 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
   end
 
   defp to_wire_message(%{role: "tool", tool_calls: results}) do
-    blocks = Enum.map(results, &%{type: "tool_result", tool_use_id: &1.tool_use_id, content: &1.content})
+    blocks =
+      Enum.map(results, &%{type: "tool_result", tool_use_id: &1.tool_use_id, content: &1.content})
+
     %{role: "user", content: blocks}
   end
 

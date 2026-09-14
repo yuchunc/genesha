@@ -280,12 +280,14 @@ defmodule Ganesha.StudioTest do
         label: "一 早晨"
       })
 
-    {:ok, in_range} = Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-14], style: "Hatha"})
-    {:ok, _out_of_range} = Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-21], style: "Hatha"})
+    {:ok, in_range} =
+      Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-14], style: "Hatha"})
+
+    {:ok, _out_of_range} =
+      Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-21], style: "Hatha"})
 
     result = Studio.sessions_between(~D[2026-09-12], ~D[2026-09-18])
     assert [%{id: id}] = result
     assert id == in_range.id
   end
-
 end
