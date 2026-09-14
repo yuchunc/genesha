@@ -80,8 +80,12 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     {:ok, _} = Assistant.append_message(thread, "user", text, nil)
 
     case Agent.run(thread, Assistant.tools(), Assistant.group_system_prompt()) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Ganesha.Assistant.Agent.run/3 failed for group thread #{thread.id}: #{inspect(reason)}")
+        :ok
     end
   end
 

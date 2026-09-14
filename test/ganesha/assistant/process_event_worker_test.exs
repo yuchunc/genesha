@@ -202,6 +202,21 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       drafts = Ganesha.Repo.all(Assistant.Draft) |> Enum.filter(&(&1.thread_id == thread.id))
       assert [%Assistant.Draft{state: "pending", kind: "payment"}] = drafts
     end
+
+    test "agent failure returns :ok without retrying and duplicating the user message" do
+      Mock.stub(fn _messages, _tools, _opts -> {:error, :max_iterations_exceeded} end)
+
+      job = enqueue_group_message("Ustudent1", "2.Lulu （Line pay 1200元）")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert LineMock.calls() == []
+
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      assert [%{role: "user", content: "2.Lulu （Line pay 1200元）"}] = Assistant.list_messages(thread)
+
+      line_event = Line.get_event!(job.args["line_event_id"])
+      assert line_event.processed_at
+    end
   end
 
   describe "postback confirm/discard" do
