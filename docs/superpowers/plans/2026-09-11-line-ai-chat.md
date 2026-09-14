@@ -1851,17 +1851,29 @@ defmodule Ganesha.Assistant.Tools.ProposeAttendanceDraftTest do
   use Ganesha.DataCase
   alias Ganesha.Assistant
   alias Ganesha.Assistant.Tools.ProposeAttendanceDraft
+  alias Ganesha.People
 
   test "creates a pending attendance draft" do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
     {:ok, _} = Assistant.append_message(thread, "user", "幫我標記今天 Lulu 缺席", nil)
+    {:ok, student} = People.create_student(%{display_name: "Lulu"})
 
     {_content, draft_id} =
-      ProposeAttendanceDraft.call(%{"session_id" => 1, "student_id" => 2, "kind" => "enrolled"}, thread)
+      ProposeAttendanceDraft.call(%{"session_id" => 1, "student_id" => student.id, "kind" => "enrolled"}, thread)
 
     draft = Assistant.get_draft!(draft_id)
     assert draft.kind == "attendance"
     assert draft.parsed["session_id"] == 1
+  end
+
+  test "reports an unknown student_id instead of creating a draft against no one" do
+    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+    {content, draft_id} =
+      ProposeAttendanceDraft.call(%{"session_id" => 1, "student_id" => 999, "kind" => "enrolled"}, thread)
+
+    assert draft_id == nil
+    assert content =~ "no student found"
   end
 end
 ```
@@ -1917,6 +1929,25 @@ Add to `test/ganesha/assistant_test.exs`:
 
       [payment] = Sales.list_payments_for_purchase(purchase.id)
       assert payment.state == "confirmed"
+      assert payment.source == "line_draft"
+    end
+
+    test "applying a payment draft with no paid_on defaults to today" do
+      {:ok, student} = People.create_student(%{display_name: "Lulu"})
+      {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+      {:ok, purchase} = Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{
+          kind: "payment",
+          parsed: %{"purchase_id" => purchase.id, "amount" => 400, "method" => "cash"}
+        })
+
+      assert {:ok, _updated} = Assistant.apply_draft(draft, "line:teacher")
+
+      [payment] = Sales.list_payments_for_purchase(purchase.id)
+      assert payment.paid_on == Ganesha.Clock.today()
     end
 
     test "applying a payment draft without a purchase_id fails instead of guessing" do
@@ -1951,6 +1982,21 @@ Add to `test/ganesha/assistant_test.exs`:
       assert updated.applied_record_type == "Ganesha.Roster.Attendance"
       assert [attendance] = Roster.list_for_session(session)
       assert attendance.student_id == student.id
+    end
+
+    test "applying an attendance draft proposing a makeup is refused, never books one for free" do
+      {:ok, student} = People.create_student(%{display_name: "Lulu"})
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{
+          kind: "attendance",
+          parsed: %{"session_id" => 1, "student_id" => student.id, "kind" => "makeup"}
+        })
+
+      assert {:error, :makeup_requires_credit} = Assistant.apply_draft(draft, "line:teacher")
+      assert Assistant.get_draft!(draft.id).state == "pending"
+      assert Roster.list_for_student(student.id) == []
     end
 
     test "applying a makeup_request draft marks it applied without creating a ledger row" do
@@ -1990,7 +2036,7 @@ defmodule Ganesha.Assistant.Tools.ProposePaymentDraft do
   """
   @behaviour Ganesha.Assistant.Tool
 
-  alias Ganesha.Assistant
+  alias Ganesha.{Assistant, People}
 
   @impl true
   def name, do: "propose_payment_draft"
@@ -2022,15 +2068,31 @@ defmodule Ganesha.Assistant.Tools.ProposePaymentDraft do
     {confidence, parsed} = Map.pop(input, "confidence", 1.0)
     student_id = Map.get(parsed, "student_id")
 
-    {:ok, draft} =
-      Assistant.create_draft(thread, %{
-        kind: "payment",
-        student_id: student_id,
-        parsed: Map.delete(parsed, "student_id"),
-        confidence: confidence
-      })
+    case resolve_student(student_id) do
+      {:error, message} ->
+        {message, nil}
 
-    {"draft ##{draft.id} created (payment, pending confirmation)", draft.id}
+      :ok ->
+        {:ok, draft} =
+          Assistant.create_draft(thread, %{
+            kind: "payment",
+            student_id: student_id,
+            parsed: Map.delete(parsed, "student_id"),
+            confidence: confidence
+          })
+
+        {"draft ##{draft.id} created (payment, pending confirmation)", draft.id}
+    end
+  end
+
+  defp resolve_student(nil), do: :ok
+
+  defp resolve_student(student_id) do
+    if Enum.any?(People.list_students(), &(&1.id == student_id)) do
+      :ok
+    else
+      {:error, "no student found with id #{student_id}"}
+    end
   end
 end
 ```
@@ -2040,7 +2102,7 @@ defmodule Ganesha.Assistant.Tools.ProposeAttendanceDraft do
   @moduledoc "Creates a pending attendance draft (spec §4, §5)."
   @behaviour Ganesha.Assistant.Tool
 
-  alias Ganesha.Assistant
+  alias Ganesha.{Assistant, People}
 
   @impl true
   def name, do: "propose_attendance_draft"
@@ -2049,13 +2111,17 @@ defmodule Ganesha.Assistant.Tools.ProposeAttendanceDraft do
   def schema do
     %{
       name: name(),
-      description: "Proposes a draft attendance change for the teacher to confirm.",
+      description:
+        "Proposes a draft attendance change for the teacher to confirm. A real makeup " <>
+          "(kind \"makeup\") is never proposed here — use propose_makeup_draft instead, " <>
+          "since booking a makeup must consume a credit and only a human confirming an " <>
+          "in-app makeup flow can do that.",
       input_schema: %{
         type: "object",
         properties: %{
           session_id: %{type: "integer"},
           student_id: %{type: "integer"},
-          kind: %{type: "string", enum: ["enrolled", "makeup", "drop_in", "trial"]},
+          kind: %{type: "string", enum: ["enrolled", "drop_in", "trial"]},
           note: %{type: "string"},
           confidence: %{type: "number"}
         },
@@ -2069,15 +2135,31 @@ defmodule Ganesha.Assistant.Tools.ProposeAttendanceDraft do
     {confidence, parsed} = Map.pop(input, "confidence", 1.0)
     student_id = Map.get(parsed, "student_id")
 
-    {:ok, draft} =
-      Assistant.create_draft(thread, %{
-        kind: "attendance",
-        student_id: student_id,
-        parsed: parsed,
-        confidence: confidence
-      })
+    case resolve_student(student_id) do
+      {:error, message} ->
+        {message, nil}
 
-    {"draft ##{draft.id} created (attendance, pending confirmation)", draft.id}
+      :ok ->
+        {:ok, draft} =
+          Assistant.create_draft(thread, %{
+            kind: "attendance",
+            student_id: student_id,
+            parsed: parsed,
+            confidence: confidence
+          })
+
+        {"draft ##{draft.id} created (attendance, pending confirmation)", draft.id}
+    end
+  end
+
+  defp resolve_student(nil), do: :ok
+
+  defp resolve_student(student_id) do
+    if Enum.any?(People.list_students(), &(&1.id == student_id)) do
+      :ok
+    else
+      {:error, "no student found with id #{student_id}"}
+    end
   end
 end
 ```
@@ -2093,7 +2175,7 @@ defmodule Ganesha.Assistant.Tools.ProposeMakeupDraft do
   """
   @behaviour Ganesha.Assistant.Tool
 
-  alias Ganesha.Assistant
+  alias Ganesha.{Assistant, People}
 
   @impl true
   def name, do: "propose_makeup_draft"
@@ -2120,15 +2202,31 @@ defmodule Ganesha.Assistant.Tools.ProposeMakeupDraft do
     {confidence, parsed} = Map.pop(input, "confidence", 1.0)
     student_id = Map.get(parsed, "student_id")
 
-    {:ok, draft} =
-      Assistant.create_draft(thread, %{
-        kind: "makeup_request",
-        student_id: student_id,
-        parsed: parsed,
-        confidence: confidence
-      })
+    case resolve_student(student_id) do
+      {:error, message} ->
+        {message, nil}
 
-    {"draft ##{draft.id} created (makeup request, pending confirmation)", draft.id}
+      :ok ->
+        {:ok, draft} =
+          Assistant.create_draft(thread, %{
+            kind: "makeup_request",
+            student_id: student_id,
+            parsed: parsed,
+            confidence: confidence
+          })
+
+        {"draft ##{draft.id} created (makeup request, pending confirmation)", draft.id}
+    end
+  end
+
+  defp resolve_student(nil), do: :ok
+
+  defp resolve_student(student_id) do
+    if Enum.any?(People.list_students(), &(&1.id == student_id)) do
+      :ok
+    else
+      {:error, "no student found with id #{student_id}"}
+    end
   end
 end
 ```
@@ -2179,19 +2277,55 @@ Add to `lib/ganesha/assistant.ex`:
   end
 
   def apply_draft(%Draft{state: "pending", kind: "payment"} = draft, confirmed_by) do
-    with {:ok, purchase_id} <- fetch_purchase_id(draft),
-         payment_attrs = Map.put(draft.parsed, "purchase_id", purchase_id),
-         {:ok, payment} <- Sales.record_payment(payment_attrs),
-         {:ok, payment} <- Sales.confirm_payment(payment, confirmed_by) do
-      mark_applied(draft, "Ganesha.Sales.Payment", payment.id)
+    with {:ok, purchase_id} <- fetch_purchase_id(draft) do
+      Repo.transaction(fn ->
+        payment_attrs =
+          draft.parsed
+          |> Map.put("purchase_id", purchase_id)
+          |> Map.put("source", "line_draft")
+          |> Map.put_new("paid_on", Date.to_iso8601(Clock.today()))
+
+        with {1, _} <- claim_pending(draft.id),
+             {:ok, payment} <- Sales.record_payment(payment_attrs),
+             {:ok, payment} <- Sales.confirm_payment(payment, confirmed_by),
+             {:ok, updated} <-
+               draft |> Draft.apply_changeset("Ganesha.Sales.Payment", payment.id) |> Repo.update() do
+          updated
+        else
+          {0, _} -> Repo.rollback(:not_pending)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
     end
   end
 
+  # A "makeup" attendance draft only ever books through
+  # `Roster.book_makeup/3`'s credit-consuming transaction, called from a
+  # human action in the app — never through here. Without this guard,
+  # confirming such a draft would insert a `kind: "makeup"` attendance row
+  # with no credit ever spent, silently granting a free class the student
+  # could then also redeem again through the normal in-app flow.
+  def apply_draft(%Draft{state: "pending", kind: "attendance", parsed: %{"kind" => "makeup"}}, _confirmed_by) do
+    {:error, :makeup_requires_credit}
+  end
+
   def apply_draft(%Draft{state: "pending", kind: "attendance"} = draft, _confirmed_by) do
-    case Roster.create_attendance(draft.parsed) do
-      {:ok, attendance} -> mark_applied(draft, "Ganesha.Roster.Attendance", attendance.id)
-      {:error, _} = error -> error
-    end
+    # Narrowed to exactly what the tool's schema declares — `parsed` is
+    # LLM-authored JSON, and `Attendance.changeset/2` would otherwise cast
+    # `state`, `purchase_id`, and `credit_id` straight out of it.
+    attendance_attrs = Map.take(draft.parsed, ["session_id", "student_id", "kind", "note"])
+
+    Repo.transaction(fn ->
+      with {1, _} <- claim_pending(draft.id),
+           {:ok, attendance} <- Roster.create_attendance(attendance_attrs),
+           {:ok, updated} <-
+             draft |> Draft.apply_changeset("Ganesha.Roster.Attendance", attendance.id) |> Repo.update() do
+        updated
+      else
+        {0, _} -> Repo.rollback(:not_pending)
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
   end
 
   def apply_draft(%Draft{state: "pending", kind: kind} = draft, _confirmed_by)
@@ -2207,15 +2341,25 @@ Add to `lib/ganesha/assistant.ex`:
   defp fetch_purchase_id(%Draft{parsed: %{"purchase_id" => id}}) when not is_nil(id), do: {:ok, id}
   defp fetch_purchase_id(%Draft{}), do: {:error, :missing_purchase_id}
 
+  # Atomically claims exclusive rights to apply this draft: a compare-and-set
+  # on `state == "pending"` so two concurrent confirms (or a retried Oban job
+  # racing a postback tap) can never both proceed past this point. Runs
+  # inside the caller's `Repo.transaction/1`, so a later step failing rolls
+  # this flip back too — the draft genuinely stays "pending" unless the
+  # ledger write it guards actually lands.
+  defp claim_pending(id) do
+    Repo.update_all(from(d in Draft, where: d.id == ^id and d.state == "pending"), set: [state: "applied"])
+  end
+
   defp mark_applied(draft, record_type, record_id) do
     draft |> Draft.apply_changeset(record_type, record_id) |> Repo.update()
   end
 ```
 
-Add the two new aliases this needs near the top of `lib/ganesha/assistant.ex`, alongside the existing `alias Ganesha.Assistant.Thread`:
+Add the three new aliases this needs near the top of `lib/ganesha/assistant.ex`, alongside the existing `alias Ganesha.Assistant.Thread` (`Ganesha.Clock` for `apply_draft/2`'s payment-date default; `Ganesha.{Roster, Sales}` as before):
 
 ```elixir
-  alias Ganesha.{Roster, Sales}
+  alias Ganesha.{Clock, Roster, Sales}
 ```
 
 - [ ] **Step 6: Run tests to verify they pass**
