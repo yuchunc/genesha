@@ -36,16 +36,29 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
     end
   end
 
-  defp to_wire_message(%{role: "user", content: content}) when is_binary(content) do
-    %{role: "user", content: content}
+  # `content` is nullable (Message.changeset/2 only requires :thread_id and
+  # :role), and the Task 18 retention sweep nulls it out on every group
+  # message older than 24h while the row stays in replayed history — the
+  # Anthropic API also rejects an empty content array/string outright, so
+  # every branch below must fall back to a non-empty placeholder rather
+  # than ever emit `content: nil` or `content: []`.
+  defp to_wire_message(%{role: "user", content: content}) do
+    %{role: "user", content: content || "[內容已依保留政策清除]"}
   end
 
   defp to_wire_message(%{role: "assistant", content: content, tool_calls: tool_calls}) do
+    text_blocks = if content in [nil, ""], do: [], else: [%{type: "text", text: content}]
+
+    tool_blocks =
+      Enum.map(tool_calls || [], fn call ->
+        %{type: "tool_use", id: call.id, name: call.name, input: call.input}
+      end)
+
     blocks =
-      (if content, do: [%{type: "text", text: content}], else: []) ++
-        Enum.map(tool_calls || [], fn call ->
-          %{type: "tool_use", id: call.id, name: call.name, input: call.input}
-        end)
+      case text_blocks ++ tool_blocks do
+        [] -> [%{type: "text", text: "[內容已依保留政策清除]"}]
+        blocks -> blocks
+      end
 
     %{role: "assistant", content: blocks}
   end
@@ -60,7 +73,14 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
   end
 
   defp from_wire_response(%{"content" => blocks}) do
-    text = Enum.find_value(blocks, fn %{"type" => t} = b -> t == "text" && b["text"] end)
+    text =
+      blocks
+      |> Enum.filter(&(&1["type"] == "text"))
+      |> Enum.map_join("\n", & &1["text"])
+      |> case do
+        "" -> nil
+        joined -> joined
+      end
 
     tool_calls =
       blocks
