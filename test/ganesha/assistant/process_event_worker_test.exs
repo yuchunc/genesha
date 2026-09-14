@@ -22,6 +22,20 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     job
   end
 
+  defp enqueue_group_message(sender_id, text) do
+    :ok =
+      Line.record_event(%{
+        "webhookEventId" => "evt-#{System.unique_integer([:positive])}",
+        "type" => "message",
+        "mode" => "active",
+        "source" => %{"type" => "group", "groupId" => "Cabc", "userId" => sender_id},
+        "message" => %{"id" => "linemsg-#{System.unique_integer([:positive])}", "type" => "text", "text" => text}
+      })
+
+    [job] = all_enqueued(worker: ProcessEventWorker)
+    job
+  end
+
   defp enqueue_teacher_postback(data) do
     :ok =
       Line.record_event(%{
@@ -129,6 +143,65 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     assert followup.text == "另一筆草稿待確認"
     assert [confirm2, _discard2] = followup.quickReply.items
     refute confirm1.action.data == confirm2.action.data
+  end
+
+  describe "group thread" do
+    test "processes a student message into thread history without ever calling Line.Client" do
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "(internal reasoning, never sent)", tool_calls: []}} end)
+
+      job = enqueue_group_message("Ustudent1", "2.Lulu （Line pay 1200元）")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert LineMock.calls() == []
+
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      assert [%{role: "user", content: "2.Lulu （Line pay 1200元）"}, %{role: "assistant"}] =
+               Assistant.list_messages(thread)
+    end
+
+    test "the teacher's own posts in the group are not treated as student input" do
+      job = enqueue_group_message("Uteacher0000000000000000000000", "大家好")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert LineMock.calls() == []
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      assert Assistant.list_messages(thread) == []
+    end
+
+    test "a group message can still produce a pending draft, never an applied one" do
+      Process.put(:calls, 0)
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        case Process.get(:calls) do
+          0 ->
+            Process.put(:calls, 1)
+
+            {:ok,
+             %{
+               text: nil,
+               tool_calls: [
+                 %{
+                   id: "t1",
+                   name: "propose_payment_draft",
+                   input: %{"amount" => 1200, "method" => "line_pay", "confidence" => 0.8}
+                 }
+               ]
+             }}
+
+          1 ->
+            {:ok, %{text: "logged internally", tool_calls: []}}
+        end
+      end)
+
+      job = enqueue_group_message("Ustudent1", "2.Lulu （Line pay 1200元）")
+      assert :ok = perform_job(ProcessEventWorker, job.args)
+
+      assert LineMock.calls() == []
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+
+      drafts = Ganesha.Repo.all(Assistant.Draft) |> Enum.filter(&(&1.thread_id == thread.id))
+      assert [%Assistant.Draft{state: "pending", kind: "payment"}] = drafts
+    end
   end
 
   describe "postback confirm/discard" do

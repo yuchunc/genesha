@@ -39,6 +39,16 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     handle_postback(event)
   end
 
+  defp route(%{source_type: "group", source_id: group_id, raw_type: "message"} = event, teacher_id) do
+    sender_id = get_in(event.payload, ["source", "userId"])
+
+    if sender_id == teacher_id do
+      :ok
+    else
+      handle_group_message(event, group_id)
+    end
+  end
+
   defp route(_event, _teacher_id), do: :ok
 
   defp handle_teacher_message(%{
@@ -61,6 +71,21 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   end
 
   defp handle_teacher_message(_event), do: :ok
+
+  # No `line_client()` call anywhere in this function or anything it calls —
+  # that absence, not a runtime check, is what guarantees the group never
+  # receives a message from the bot (spec §4.3, §8 guardrail #2).
+  defp handle_group_message(%{payload: %{"message" => %{"text" => text}}}, group_id) do
+    {:ok, thread} = Assistant.get_or_create_thread("group", group_id)
+    {:ok, _} = Assistant.append_message(thread, "user", text, nil)
+
+    case Agent.run(thread, Assistant.tools(), Assistant.group_system_prompt()) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp handle_group_message(_event, _group_id), do: :ok
 
   defp handle_postback(%{payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}}) do
     params = URI.decode_query(data)
