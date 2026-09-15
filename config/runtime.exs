@@ -40,6 +40,19 @@ if config_env() == :dev do
     ]
 end
 
+if config_env() == :dev do
+  config :ganesha, :line,
+    channel_secret: System.get_env("LINE_CHANNEL_SECRET", ""),
+    channel_access_token: System.get_env("LINE_CHANNEL_ACCESS_TOKEN", ""),
+    teacher_line_user_id: System.get_env("TEACHER_LINE_USER_ID", "")
+
+  config :ganesha, Ganesha.Assistant.Provider.Anthropic,
+    api_key: System.get_env("ANTHROPIC_API_KEY", ""),
+    model: System.get_env("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929"
+
+  config :ganesha, :assistant, provider: Ganesha.Assistant.Provider.Anthropic
+end
+
 if config_env() == :prod do
   database_path =
     System.get_env("DATABASE_PATH") ||
@@ -128,4 +141,31 @@ if config_env() == :prod do
   #     config :swoosh, :api_client, Swoosh.ApiClient.Req
   #
   # See https://swoosh.hexdocs.pm/Swoosh.html#module-installation for details.
+
+  line_channel_secret =
+    System.get_env("LINE_CHANNEL_SECRET") ||
+      raise "environment variable LINE_CHANNEL_SECRET is missing"
+
+  line_channel_access_token =
+    System.get_env("LINE_CHANNEL_ACCESS_TOKEN") ||
+      raise "environment variable LINE_CHANNEL_ACCESS_TOKEN is missing"
+
+  teacher_line_user_id =
+    System.get_env("TEACHER_LINE_USER_ID") ||
+      raise "environment variable TEACHER_LINE_USER_ID is missing"
+
+  config :ganesha, :line,
+    channel_secret: line_channel_secret,
+    channel_access_token: line_channel_access_token,
+    teacher_line_user_id: teacher_line_user_id
+
+  anthropic_api_key =
+    System.get_env("ANTHROPIC_API_KEY") ||
+      raise "environment variable ANTHROPIC_API_KEY is missing"
+
+  config :ganesha, Ganesha.Assistant.Provider.Anthropic,
+    api_key: anthropic_api_key,
+    model: System.get_env("ANTHROPIC_MODEL") || "claude-sonnet-4-5-20250929"
+
+  config :ganesha, :assistant, provider: Ganesha.Assistant.Provider.Anthropic
 end

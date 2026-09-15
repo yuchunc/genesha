@@ -269,4 +269,25 @@ defmodule Ganesha.StudioTest do
       assert {:ok, 0} = Studio.copy_month(~D[2026-08-01])
     end
   end
+
+  test "sessions_between/2 returns scheduled sessions within an inclusive date range" do
+    {:ok, slot} =
+      Studio.create_slot(%{
+        weekday: 1,
+        start_time: ~T[09:00:00],
+        end_time: ~T[10:00:00],
+        default_style: "Hatha",
+        label: "一 早晨"
+      })
+
+    {:ok, in_range} =
+      Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-14], style: "Hatha"})
+
+    {:ok, _out_of_range} =
+      Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-21], style: "Hatha"})
+
+    result = Studio.sessions_between(~D[2026-09-12], ~D[2026-09-18])
+    assert [%{id: id}] = result
+    assert id == in_range.id
+  end
 end

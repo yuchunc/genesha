@@ -17,6 +17,17 @@ defmodule GaneshaWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # Scoped to /line/webhook only — never application-wide (spec §2).
+  pipeline :line_webhook do
+    plug Ganesha.Line.VerifySignaturePlug
+  end
+
+  scope "/line", GaneshaWeb do
+    pipe_through :line_webhook
+
+    post "/webhook", LineWebhookController, :create
+  end
+
   # Other scopes may use custom stacks.
   # scope "/api", GaneshaWeb do
   #   pipe_through :api
