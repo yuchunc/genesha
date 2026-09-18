@@ -44,7 +44,8 @@ if config_env() == :dev do
   config :ganesha, :line,
     channel_secret: System.get_env("LINE_CHANNEL_SECRET", ""),
     channel_access_token: System.get_env("LINE_CHANNEL_ACCESS_TOKEN", ""),
-    teacher_line_user_id: System.get_env("TEACHER_LINE_USER_ID", "")
+    teacher_line_user_id: System.get_env("TEACHER_LINE_USER_ID", ""),
+    simple_reply: System.get_env("LINE_SIMPLE_REPLY", "true") == "true"
 
   config :ganesha, Ganesha.Assistant.Provider.Anthropic,
     api_key: System.get_env("ANTHROPIC_API_KEY", ""),

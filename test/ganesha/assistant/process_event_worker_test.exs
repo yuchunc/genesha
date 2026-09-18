@@ -95,7 +95,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
              LineMock.calls()
   end
 
-  test "ignores a message from a non-teacher 1:1 sender" do
+  test "replies with a simple acknowledgment to a non-teacher 1:1 sender" do
     :ok =
       Line.record_event(%{
         "webhookEventId" => "evt-stranger",
@@ -108,7 +108,10 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
     [job] = all_enqueued(worker: ProcessEventWorker)
     assert :ok = perform_job(ProcessEventWorker, job.args)
-    assert LineMock.calls() == []
+
+    assert LineMock.calls() == [
+             {:reply, {"rt-2", [%{type: "text", text: "收到你的訊息：hi"}]}}
+           ]
   end
 
   test "replies with an apology and returns :ok when the agent run fails, instead of retrying and duplicating the message" do

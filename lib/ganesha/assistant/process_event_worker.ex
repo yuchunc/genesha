@@ -37,7 +37,11 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
          teacher_id
        )
        when sender_id == teacher_id do
-    handle_teacher_message(event)
+    if simple_reply?(), do: handle_simple_reply(event), else: handle_teacher_message(event)
+  end
+
+  defp route(%{source_type: "user", raw_type: "message"} = event, _teacher_id) do
+    handle_simple_reply(event)
   end
 
   defp route(
@@ -93,6 +97,21 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   end
 
   defp handle_teacher_message(_event), do: :ok
+
+  defp handle_simple_reply(%{
+         payload: %{"replyToken" => reply_token, "message" => %{"text" => text}},
+         source_id: source_id
+       }) do
+    send_reply(reply_token, source_id, "收到你的訊息：#{text}", [])
+    :ok
+  end
+
+  defp handle_simple_reply(_event), do: :ok
+
+  defp simple_reply?() do
+    Application.get_env(:ganesha, :line, [])
+    |> Keyword.get(:simple_reply, false)
+  end
 
   # No `line_client()` call anywhere in this function or anything it calls —
   # that absence, not a runtime check, is what guarantees the group never
