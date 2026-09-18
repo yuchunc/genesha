@@ -21,7 +21,7 @@ if System.get_env("PHX_SERVER") do
 end
 
 config :ganesha, GaneshaWeb.Endpoint,
-  http: [port: String.to_integer(System.get_env("PORT", "4000"))]
+  http: [port: String.to_integer(System.get_env("PORT", "4006"))]
 
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
