@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LINE Messaging API Setup — Ganesha</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#171a21;
+    --panel-2:#1d212b;
+    --border:#2a2f3a;
+    --text:#e6e8ec;
+    --muted:#9aa1ad;
+    --accent:#5fd0a3;
+    --accent-2:#7aa2f7;
+    --warn:#e0a840;
+    --danger:#e0685f;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(122,162,247,0.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(95,208,163,0.08), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.55;
+    padding:0 0 6rem;
+  }
+  header.hero{
+    max-width:920px;
+    margin:0 auto;
+    padding:4.5rem 1.5rem 2rem;
+  }
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:.5rem;
+    font-size:.78rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    background:rgba(95,208,163,0.08);
+    border:1px solid rgba(95,208,163,0.25);
+    padding:.3rem .7rem;
+    border-radius:999px;
+    margin-bottom:1.1rem;
+  }
+  h1{
+    font-size:2.4rem;
+    line-height:1.15;
+    margin:0 0 .6rem;
+    font-weight:650;
+    letter-spacing:-0.02em;
+  }
+  .lede{
+    color:var(--muted);
+    font-size:1.05rem;
+    max-width:65ch;
+  }
+  main{
+    max-width:920px;
+    margin:0 auto;
+    padding:0 1.5rem;
+  }
+  .progress-rail{
+    display:flex;
+    gap:.4rem;
+    margin:2rem 0 3rem;
+    flex-wrap:wrap;
+  }
+  .progress-rail a{
+    text-decoration:none;
+    color:var(--muted);
+    font-size:.82rem;
+    background:var(--panel);
+    border:1px solid var(--border);
+    padding:.4rem .7rem;
+    border-radius:8px;
+    transition:border-color .15s, color .15s;
+  }
+  .progress-rail a:hover{border-color:var(--accent-2); color:var(--text);}
+  .step{
+    position:relative;
+    display:grid;
+    grid-template-columns:52px 1fr;
+    gap:1.25rem;
+    padding:1.75rem 0;
+    border-top:1px solid var(--border);
+  }
+  .step:first-of-type{border-top:none;}
+  .step-num{
+    width:52px;
+    height:52px;
+    border-radius:14px;
+    background:linear-gradient(160deg, var(--panel-2), var(--panel));
+    border:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--mono);
+    font-weight:700;
+    font-size:1.15rem;
+    color:var(--accent-2);
+  }
+  .step-body h2{
+    margin:.15rem 0 .35rem;
+    font-size:1.25rem;
+    font-weight:600;
+    scroll-margin-top:2rem;
+  }
+  .step-body p{
+    margin:.5rem 0;
+    color:#c7ccd6;
+  }
+  .step-body p.muted, .field-note{
+    color:var(--muted);
+    font-size:.92rem;
+  }
+  .path{
+    font-family:var(--mono);
+    font-size:.88rem;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    padding:.1rem .45rem;
+    border-radius:6px;
+    color:#dfe3ea;
+  }
+  code.inline{
+    font-family:var(--mono);
+    font-size:.88rem;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    padding:.05rem .4rem;
+    border-radius:5px;
+    color:var(--accent);
+  }
+  pre{
+    background:#0b0d11;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:1rem 1.1rem;
+    overflow-x:auto;
+    font-family:var(--mono);
+    font-size:.85rem;
+    color:#d7dbe3;
+    margin:.75rem 0;
+  }
+  ul.checks{
+    list-style:none;
+    margin:.6rem 0;
+    padding:0;
+    display:grid;
+    gap:.4rem;
+  }
+  ul.checks li{
+    display:flex;
+    gap:.55rem;
+    align-items:flex-start;
+    font-size:.95rem;
+    color:#c7ccd6;
+  }
+  ul.checks li::before{
+    content:"";
+    flex:0 0 auto;
+    width:16px;height:16px;
+    margin-top:.2rem;
+    border-radius:5px;
+    border:1.5px solid var(--accent);
+    background:rgba(95,208,163,0.08);
+  }
+  .callout{
+    border-radius:10px;
+    padding:.9rem 1.1rem;
+    margin:1rem 0;
+    font-size:.92rem;
+    border:1px solid;
+  }
+  .callout.warn{
+    background:rgba(224,168,64,0.08);
+    border-color:rgba(224,168,64,0.35);
+    color:#f0d9a6;
+  }
+  .callout.danger{
+    background:rgba(224,104,95,0.08);
+    border-color:rgba(224,104,95,0.35);
+    color:#f0c1bc;
+  }
+  .callout.info{
+    background:rgba(122,162,247,0.08);
+    border-color:rgba(122,162,247,0.35);
+    color:#c9d7fb;
+  }
+  .callout strong{color:inherit;}
+  table.env{
+    width:100%;
+    border-collapse:collapse;
+    margin:.75rem 0 .25rem;
+    font-size:.88rem;
+  }
+  table.env th, table.env td{
+    text-align:left;
+    padding:.55rem .7rem;
+    border-bottom:1px solid var(--border);
+  }
+  table.env th{
+    color:var(--muted);
+    font-weight:600;
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  table.env td code{white-space:nowrap;}
+  footer{
+    max-width:920px;
+    margin:3rem auto 0;
+    padding:1.5rem 1.5rem 0;
+    border-top:1px solid var(--border);
+    color:var(--muted);
+    font-size:.85rem;
+  }
+  .toggle-group{display:flex; gap:.4rem; margin-top:.5rem;}
+  .badge{
+    display:inline-block;
+    font-family:var(--mono);
+    font-size:.72rem;
+    padding:.15rem .5rem;
+    border-radius:6px;
+    background:rgba(122,162,247,0.12);
+    color:var(--accent-2);
+    border:1px solid rgba(122,162,247,0.3);
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="eyebrow">● Ganesha · LINE Messaging API</span>
+  <h1>Getting the LINE channel secret &amp; access token</h1>
+  <p class="lede">
+    There's no self-serve API key endpoint for LINE — credentials are issued
+    through the LINE Developers Console by hand. This is the exact path from
+    zero to a verified, working webhook for the AI chat assistant.
+  </p>
+</header>
+
+<main>
+
+  <nav class="progress-rail">
+    <a href="#step-1">1 · Console</a>
+    <a href="#step-2">2 · Provider</a>
+    <a href="#step-3">3 · Channel</a>
+    <a href="#step-4">4 · Secret</a>
+    <a href="#step-5">5 · Token</a>
+    <a href="#step-6">6 · Webhook</a>
+    <a href="#step-7">7 · Auto-replies</a>
+    <a href="#step-8">8 · Bot ID / QR</a>
+    <a href="#step-9">9 · Teacher ID</a>
+    <a href="#step-10">10 · Boot &amp; verify</a>
+  </nav>
+
+  <section class="step" id="step-1">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h2>Open the LINE Developers Console</h2>
+      <p>Go to <code class="inline">developers.line.biz/console/</code> and log in with a LINE account
+        (the teacher's own account is fine, or a shared studio account).</p>
+      <p class="muted">This is separate from a normal LINE user login — it's the same account, just a
+        developer-facing console layered on top.</p>
+    </div>
+  </section>
+
+  <section class="step" id="step-2">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h2>Create a Provider</h2>
+      <p>A Provider is the top-level org that owns channels — e.g. <em>"Ganesha Studio"</em>.
+        Create one if this is the first channel; reuse an existing provider otherwise.</p>
+    </div>
+  </section>
+
+  <section class="step" id="step-3">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h2>Create a Messaging API channel</h2>
+      <p>Inside the provider: <strong>Create a new channel → Messaging API</strong>.
+        Fill in channel name, description, category/subcategory, and upload an icon
+        (required to finish creation).</p>
+      <p class="muted">This channel <em>is</em> the bot identity — the account the teacher and
+        students add as a LINE friend.</p>
+    </div>
+  </section>
+
+  <section class="step" id="step-4">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h2>Copy the channel secret</h2>
+      <p>On the channel's <strong>Basic settings</strong> tab, scroll to <em>Channel secret</em>.</p>
+      <p>This is <code class="inline">LINE_CHANNEL_SECRET</code> — <span class="badge">VerifySignaturePlug</span>
+        HMAC-SHA256's the raw webhook body against it to authenticate every inbound request.</p>
+    </div>
+  </section>
+
+  <section class="step" id="step-5">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <h2>Issue a channel access token</h2>
+      <p>On the <strong>Messaging API</strong> tab, scroll to <em>Channel access token</em> and click
+        <strong>Issue</strong> for a long-lived token (newer channels may only offer the
+        stateless/JWT-based v2.1 token — the console tells you which is available).</p>
+      <p>This is <code class="inline">LINE_CHANNEL_ACCESS_TOKEN</code> — the bearer token
+        <span class="badge">Ganesha.Line.Client</span> sends on <code class="inline">reply</code>,
+        <code class="inline">push</code>, and <code class="inline">get_group_member</code> calls.</p>
+      <div class="callout danger">
+        <strong>Treat it like a secret.</strong> Regenerating invalidates the old token immediately —
+        rotate on leak, not on a schedule.
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="step-6">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <h2>Point the webhook at your server</h2>
+      <p>Expose the app publicly first, e.g.:</p>
+      <pre>cloudflared tunnel --url http://localhost:4000</pre>
+      <p>Then on the Messaging API tab, set <strong>Webhook URL</strong> to:</p>
+      <pre>https://&lt;your-tunnel-or-domain&gt;/line/webhook</pre>
+      <p>Click <strong>Verify</strong> — LINE POSTs a test event and expects <code class="inline">200</code>.
+        A <code class="inline">403</code> means the secret configured on the server doesn't match the
+        console. Toggle <strong>Use webhook</strong> to on.</p>
+    </div>
+  </section>
+
+  <section class="step" id="step-7">
+    <div class="step-num">7</div>
+    <div class="step-body">
+      <h2>Turn off LINE's own auto-responses</h2>
+      <p>Same Messaging API tab:</p>
+      <ul class="checks">
+        <li>Auto-reply messages — <strong>Disabled</strong></li>
+        <li>Greeting messages — <strong>Disabled</strong></li>
+      </ul>
+      <p class="muted">Leaving these on makes LINE's canned replies race with the assistant's real reply.</p>
+    </div>
+  </section>
+
+  <section class="step" id="step-8">
+    <div class="step-num">8</div>
+    <div class="step-body">
+      <h2>Grab the bot's basic ID / QR code</h2>
+      <p>Also on <strong>Basic settings</strong>. This is how the teacher and students add the bot as
+        a friend, and how it gets invited into the student group chat.</p>
+    </div>
+  </section>
+
+  <section class="step" id="step-9">
+    <div class="step-num">9</div>
+    <div class="step-body">
+      <h2>Find the teacher's LINE user ID</h2>
+      <p><code class="inline">TEACHER_LINE_USER_ID</code> is <strong>not</strong> in the console — it's a
+        personal LINE <code class="inline">userId</code>, discovered at runtime.</p>
+      <ol>
+        <li>Boot the server with the secret/token above and any placeholder teacher ID.</li>
+        <li>Have the teacher add the bot as a friend and send it any message.</li>
+        <li>Read <code class="inline">source_id</code> off the newest row:
+          <pre>select source_id from line_events order by id desc limit 1;</pre>
+        </li>
+        <li>Restart the server with that value.</li>
+      </ol>
+      <div class="callout warn">
+        <strong>Fail-closed by design:</strong> until this is set correctly, teacher messages fall
+        through <code class="inline">route/2</code>'s default clause and nothing happens — that's
+        intentional, not a bug.
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="step-10">
+    <div class="step-num">10</div>
+    <div class="step-body">
+      <h2>Boot with real credentials</h2>
+      <pre>LINE_CHANNEL_SECRET=&lt;from step 4&gt; \
+LINE_CHANNEL_ACCESS_TOKEN=&lt;from step 5&gt; \
+TEACHER_LINE_USER_ID=&lt;from step 9&gt; \
+ANTHROPIC_API_KEY=sk-ant-&lt;your key&gt; \
+mix phx.server</pre>
+
+      <table class="env">
+        <thead>
+          <tr><th>Env var</th><th>Source</th><th>Used by</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>LINE_CHANNEL_SECRET</code></td><td>Step 4 · Basic settings</td><td><code>VerifySignaturePlug</code></td></tr>
+          <tr><td><code>LINE_CHANNEL_ACCESS_TOKEN</code></td><td>Step 5 · Messaging API tab</td><td><code>Ganesha.Line.Client</code></td></tr>
+          <tr><td><code>TEACHER_LINE_USER_ID</code></td><td>Step 9 · runtime discovery</td><td><code>ProcessEventWorker</code> routing</td></tr>
+          <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Anthropic console (separate)</td><td><code>Provider.Anthropic</code></td></tr>
+        </tbody>
+      </table>
+
+      <p>Then exercise it:</p>
+      <ul class="checks">
+        <li>1:1 to the bot: <em>"小美轉了 3200 給我"</em> → reply with 確認/捨棄 quick replies → tap 確認 → confirmed in-app</li>
+        <li>Same message posted in the student group → zero bot replies in the group, row recorded in <code class="inline">assistant_messages</code></li>
+      </ul>
+
+      <div class="callout info">
+        <strong>Known gap, not a bug:</strong> editing a message in the teacher's 1:1 thread
+        re-runs the agent silently — no new LINE message with quick replies. Tracked as a
+        deferred P2 in the plan ledger.
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Ganesha · docs/superpowers/line-setup-guide.html · manual credential provisioning is a
+  one-time setup cost outside the automated offline smoke test
+  (<code class="inline">priv/scripts/line_smoke.exs</code>).
+</footer>
+
+</body>
+</html>
