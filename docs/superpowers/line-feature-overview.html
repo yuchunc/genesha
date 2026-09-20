@@ -1,0 +1,647 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LINE Chat Interface — Feature Overview — Ganesha</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#171a21;
+    --panel-2:#1d212b;
+    --border:#2a2f3a;
+    --text:#e6e8ec;
+    --muted:#9aa1ad;
+    --accent:#5fd0a3;
+    --accent-2:#7aa2f7;
+    --warn:#e0a840;
+    --danger:#e0685f;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(122,162,247,0.10), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(95,208,163,0.08), transparent 55%),
+      var(--bg);
+    color:var(--text);
+    font-family:var(--sans);
+    line-height:1.55;
+    padding:0 0 6rem;
+  }
+  header.hero{
+    max-width:920px;
+    margin:0 auto;
+    padding:4.5rem 1.5rem 2rem;
+  }
+  .eyebrow{
+    display:inline-flex;
+    align-items:center;
+    gap:.5rem;
+    font-size:.78rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:var(--accent);
+    background:rgba(95,208,163,0.08);
+    border:1px solid rgba(95,208,163,0.25);
+    padding:.3rem .7rem;
+    border-radius:999px;
+    margin-bottom:1.1rem;
+  }
+  h1{
+    font-size:2.4rem;
+    line-height:1.15;
+    margin:0 0 .6rem;
+    font-weight:650;
+    letter-spacing:-0.02em;
+  }
+  .lede{
+    color:var(--muted);
+    font-size:1.05rem;
+    max-width:65ch;
+  }
+  .hero-status{
+    display:inline-flex;
+    align-items:center;
+    gap:.5rem;
+    font-family:var(--mono);
+    font-size:.82rem;
+    color:#f0d9a6;
+    background:rgba(224,168,64,0.08);
+    border:1px solid rgba(224,168,64,0.35);
+    padding:.4rem .8rem;
+    border-radius:8px;
+    margin-top:1.3rem;
+  }
+  main{
+    max-width:920px;
+    margin:0 auto;
+    padding:0 1.5rem;
+  }
+  .progress-rail{
+    display:flex;
+    gap:.4rem;
+    margin:2rem 0 3rem;
+    flex-wrap:wrap;
+  }
+  .progress-rail a{
+    text-decoration:none;
+    color:var(--muted);
+    font-size:.82rem;
+    background:var(--panel);
+    border:1px solid var(--border);
+    padding:.4rem .7rem;
+    border-radius:8px;
+    transition:border-color .15s, color .15s;
+  }
+  .progress-rail a:hover{border-color:var(--accent-2); color:var(--text);}
+  .step{
+    position:relative;
+    display:grid;
+    grid-template-columns:52px 1fr;
+    gap:1.25rem;
+    padding:1.75rem 0;
+    border-top:1px solid var(--border);
+  }
+  .step:first-of-type{border-top:none;}
+  .step-num{
+    width:52px;
+    height:52px;
+    border-radius:14px;
+    background:linear-gradient(160deg, var(--panel-2), var(--panel));
+    border:1px solid var(--border);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:var(--mono);
+    font-weight:700;
+    font-size:1.15rem;
+    color:var(--accent-2);
+  }
+  .step-body h2{
+    margin:.15rem 0 .35rem;
+    font-size:1.25rem;
+    font-weight:600;
+    scroll-margin-top:2rem;
+  }
+  .step-body p{
+    margin:.5rem 0;
+    color:#c7ccd6;
+  }
+  .step-body p.muted, .field-note{
+    color:var(--muted);
+    font-size:.92rem;
+  }
+  .path{
+    font-family:var(--mono);
+    font-size:.88rem;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    padding:.1rem .45rem;
+    border-radius:6px;
+    color:#dfe3ea;
+  }
+  code.inline{
+    font-family:var(--mono);
+    font-size:.88rem;
+    background:var(--panel-2);
+    border:1px solid var(--border);
+    padding:.05rem .4rem;
+    border-radius:5px;
+    color:var(--accent);
+  }
+  pre{
+    background:#0b0d11;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:1rem 1.1rem;
+    overflow-x:auto;
+    font-family:var(--mono);
+    font-size:.85rem;
+    color:#d7dbe3;
+    margin:.75rem 0;
+  }
+  ul.checks{
+    list-style:none;
+    margin:.6rem 0;
+    padding:0;
+    display:grid;
+    gap:.4rem;
+  }
+  ul.checks li{
+    display:flex;
+    gap:.55rem;
+    align-items:flex-start;
+    font-size:.95rem;
+    color:#c7ccd6;
+  }
+  ul.checks li > span{ flex:1 1 auto; min-width:0; }
+  ul.checks li::before{
+    content:"";
+    flex:0 0 auto;
+    width:16px;height:16px;
+    margin-top:.2rem;
+    border-radius:5px;
+    border:1.5px solid var(--accent);
+    background:rgba(95,208,163,0.08);
+  }
+  ul.out-of-scope{
+    list-style:none;
+    margin:.6rem 0;
+    padding:0;
+    display:grid;
+    gap:.4rem;
+  }
+  ul.out-of-scope li{
+    display:flex;
+    gap:.55rem;
+    align-items:flex-start;
+    font-size:.95rem;
+    color:#c7ccd6;
+  }
+  ul.out-of-scope li > span{ flex:1 1 auto; min-width:0; }
+  ul.out-of-scope li::before{
+    content:"✕";
+    flex:0 0 auto;
+    width:16px;
+    text-align:center;
+    color:var(--danger);
+    font-size:.78rem;
+    margin-top:.2rem;
+  }
+  .callout{
+    border-radius:10px;
+    padding:.9rem 1.1rem;
+    margin:1rem 0;
+    font-size:.92rem;
+    border:1px solid;
+  }
+  .callout.warn{
+    background:rgba(224,168,64,0.08);
+    border-color:rgba(224,168,64,0.35);
+    color:#f0d9a6;
+  }
+  .callout.danger{
+    background:rgba(224,104,95,0.08);
+    border-color:rgba(224,104,95,0.35);
+    color:#f0c1bc;
+  }
+  .callout.info{
+    background:rgba(122,162,247,0.08);
+    border-color:rgba(122,162,247,0.35);
+    color:#c9d7fb;
+  }
+  .callout.accent{
+    background:rgba(95,208,163,0.08);
+    border-color:rgba(95,208,163,0.35);
+    color:#bfeed9;
+  }
+  .callout strong{color:inherit;}
+  table.env{
+    width:100%;
+    border-collapse:collapse;
+    margin:.75rem 0 .25rem;
+    font-size:.88rem;
+  }
+  table.env th, table.env td{
+    text-align:left;
+    padding:.55rem .7rem;
+    border-bottom:1px solid var(--border);
+  }
+  table.env th{
+    color:var(--muted);
+    font-weight:600;
+    font-size:.78rem;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  table.env td code{white-space:nowrap;}
+  footer{
+    max-width:920px;
+    margin:3rem auto 0;
+    padding:1.5rem 1.5rem 0;
+    border-top:1px solid var(--border);
+    color:var(--muted);
+    font-size:.85rem;
+  }
+  .badge{
+    display:inline-block;
+    font-family:var(--mono);
+    font-size:.72rem;
+    padding:.15rem .5rem;
+    border-radius:6px;
+    background:rgba(122,162,247,0.12);
+    color:var(--accent-2);
+    border:1px solid rgba(122,162,247,0.3);
+  }
+  .scope-grid{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:1.5rem;
+    margin:1rem 0;
+  }
+  @media (max-width:680px){ .scope-grid{ grid-template-columns:1fr; } }
+  .scope-col h3{
+    font-size:.8rem;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:var(--muted);
+    margin:0 0 .7rem;
+  }
+  .card-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+    gap:1rem;
+    margin:1rem 0;
+  }
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:1rem 1.1rem;
+  }
+  .card h3{
+    margin:.1rem 0 .5rem;
+    font-size:.95rem;
+    color:var(--accent-2);
+    font-family:var(--mono);
+  }
+  .card p{
+    margin:.35rem 0;
+    color:#c7ccd6;
+    font-size:.9rem;
+  }
+  .card .cols{
+    margin-top:.7rem;
+    padding-top:.6rem;
+    border-top:1px solid var(--border);
+    font-size:.78rem;
+    color:var(--muted);
+    font-family:var(--mono);
+    line-height:1.6;
+  }
+  .flow{
+    display:flex;
+    flex-direction:column;
+    gap:0;
+    margin:1rem 0 1.5rem;
+  }
+  .flow-node{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:.85rem 1.05rem;
+  }
+  .flow-node strong{ color:var(--text); }
+  .flow-node .meta{
+    font-size:.82rem;
+    color:var(--muted);
+    margin-top:.35rem;
+    line-height:1.5;
+  }
+  .flow-arrow{
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    color:var(--muted);
+    font-family:var(--mono);
+    font-size:.82rem;
+    padding:.35rem 0;
+  }
+  .flow-branch{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:1rem;
+    margin:.2rem 0;
+  }
+  @media (max-width:680px){ .flow-branch{ grid-template-columns:1fr; } }
+  .flow-branch .flow-node.group{ border-color:rgba(224,168,64,0.35); }
+  .flow-branch .flow-node.teacher{ border-color:rgba(122,162,247,0.35); }
+  .flow-branch .flow-label{
+    font-family:var(--mono);
+    font-size:.72rem;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--muted);
+    margin-bottom:.4rem;
+  }
+  .status-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:.4rem;
+    font-family:var(--mono);
+    font-size:.72rem;
+    padding:.2rem .55rem;
+    border-radius:6px;
+    background:rgba(154,161,173,0.1);
+    color:var(--muted);
+    border:1px solid rgba(154,161,173,0.28);
+    white-space:nowrap;
+  }
+  .status-pill::before{ content:"○"; font-size:.7rem; }
+  table.tasks td.task-num{
+    font-family:var(--mono);
+    color:var(--muted);
+    width:2.2rem;
+  }
+  table.tasks td.task-name code{ white-space:normal; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="eyebrow">● Ganesha · LINE Chat Assistant</span>
+  <h1>Ganesha — LINE Chat Interface Feature Overview</h1>
+  <p class="lede">
+    A LINE Official Account that quietly listens in the teacher's student group and
+    doubles as her private AI assistant — answering questions from ledger data and
+    proposing draft records that only become real once she taps confirm.
+  </p>
+  <div class="hero-status">⚠ Designed, not yet built — implementation plan has 19 tasks, all unchecked</div>
+</header>
+
+<main>
+
+  <nav class="progress-rail">
+    <a href="#scope">1 · Scope</a>
+    <a href="#architecture">2 · Architecture</a>
+    <a href="#data-model">3 · Data model</a>
+    <a href="#draft-lifecycle">4 · Draft lifecycle</a>
+    <a href="#retention-safety">5 · Retention &amp; safety</a>
+    <a href="#build-status">6 · Build status</a>
+  </nav>
+
+  <section class="step" id="scope">
+    <div class="step-num">1</div>
+    <div class="step-body">
+      <h2>Scope</h2>
+      <p>One LINE Official Account, two surfaces, one shared agent engine underneath.</p>
+
+      <div class="scope-grid">
+        <div class="scope-col">
+          <h3>In scope</h3>
+          <ul class="checks">
+            <li><span>The bot sits in the teacher's existing student group, <strong>listening only</strong> — it never sends a message into the group.</span></li>
+            <li><span>The same account, reachable by the teacher 1:1, acts as a conversational AI assistant that can answer questions from ledger data and propose draft records for her to confirm.</span></li>
+            <li><span>One unified AI agent (tool-calling loop) powers both surfaces — no separate regex parser, no separate "extraction-only" code path.</span></li>
+            <li><span>Drafts (payment, attendance, makeup) proposed by the agent from either surface, confirmed or discarded inline via quick-reply/postback in the teacher's LINE 1:1 chat. Nothing the agent produces becomes a real ledger fact without that explicit human tap.</span></li>
+          </ul>
+        </div>
+        <div class="scope-col">
+          <h3>Explicitly out of scope (deferred)</h3>
+          <ul class="out-of-scope">
+            <li><span>A student-facing chat experience — noted for a later phase; the group thread never sends outbound messages to students under this design.</span></li>
+            <li><span>LIFF, ID-token login, or any new end-user (student) authentication surface.</span></li>
+            <li><span>Automated payment reconciliation (ECPay or otherwise) — unaffected finding carried over unchanged from the original ledger spec.</span></li>
+            <li><span>Multi-tenant support.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="architecture">
+    <div class="step-num">2</div>
+    <div class="step-body">
+      <h2>Architecture at a glance</h2>
+      <p class="muted">Every inbound LINE event takes the same path in; where it goes after that depends on who sent it.</p>
+
+      <div class="flow">
+        <div class="flow-node">
+          <strong>LINE Platform → <code class="inline">POST /line/webhook</code></strong>
+          <div class="meta">
+            Public route on its own pipeline (not <code class="inline">:browser</code> or <code class="inline">:api</code>).
+            Raw bytes are cached, the <code class="inline">x-line-signature</code> header is checked against
+            <code class="inline">Base64(HMAC-SHA256(channel_secret, raw_body))</code>, then the event is deduped by
+            <code class="inline">webhook_event_id</code>, persisted as a <code class="inline">LineEvent</code>, and the
+            request gets a <code class="inline">200</code> — nothing else happens inline.
+          </div>
+        </div>
+        <div class="flow-arrow">▼ Oban job (decouples the 2s webhook ack from LLM latency)</div>
+        <div class="flow-node">
+          <strong>Ganesha.Assistant.ProcessEventWorker</strong>
+          <div class="meta">
+            Routes by <code class="inline">source.type</code> and sender: a group event goes to the group thread; a
+            1:1 event from the configured teacher LINE user id goes to the teacher thread; anything else (unknown
+            1:1 sender, room, …) is ignored and the event is just marked processed.
+          </div>
+        </div>
+        <div class="flow-arrow">▼ one shared engine, reused for both threads</div>
+        <div class="flow-node">
+          <strong>Ganesha.Assistant.Agent</strong>
+          <div class="meta">
+            Loads thread history + system prompt, then runs a tool-calling loop (capped iterations) against
+            <code class="inline">Ganesha.Assistant.Provider</code> (an adapter behaviour); tool calls dispatch to
+            Read / Draft / Reply tools.
+          </div>
+        </div>
+
+        <div class="flow-branch">
+          <div class="flow-node group">
+            <div class="flow-label">Group thread</div>
+            <strong>Silent — no send tool</strong>
+            <div class="meta">
+              The Reply tool is not registered at all for this thread. The only output is any drafts created plus
+              updated thread memory — the bot never posts into the group.
+            </div>
+          </div>
+          <div class="flow-node teacher">
+            <div class="flow-label">Teacher's 1:1 thread</div>
+            <strong>Replies + draft confirm</strong>
+            <div class="meta">
+              Reply tool registered. Text reply sent via LINE's Reply API (Push fallback if the reply token
+              expired). A created draft arrives as a quick-reply template with 確認 / 修改 / 捨棄 actions.
+            </div>
+          </div>
+        </div>
+
+        <div class="flow-arrow">▼ postback tap → same <code class="inline" style="background:none;border:none;padding:0;">POST /line/webhook</code></div>
+        <div class="flow-node">
+          <strong>Apply or discard — existing context functions, not new writes</strong>
+          <div class="meta">
+            <code class="inline">Sales.record_payment/1</code> + <code class="inline">Sales.confirm_payment/2</code>,
+            <code class="inline">Roster.create_attendance/1</code>, or <code class="inline">Roster.book_makeup/3</code> —
+            the same functions a human action in the app already calls.
+          </div>
+        </div>
+      </div>
+
+      <div class="callout info">
+        <strong>Async via Oban, not a hand-rolled supervisor.</strong> <code class="inline">Oban.Engines.Lite</code>
+        is already configured and running <code class="inline">Ganesha.Reporting.CloseMonthWorker</code> in
+        production, so reusing it here gets retry/backoff for free now that "processing an event" can mean an LLM
+        call that fails or times out, not a pure function.
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="data-model">
+    <div class="step-num">3</div>
+    <div class="step-body">
+      <h2>Data model summary</h2>
+      <p>Four new tables — none of them exist yet in <span class="path">priv/repo/migrations/</span>.</p>
+
+      <div class="card-grid">
+        <div class="card">
+          <h3>line_events</h3>
+          <p>Every raw inbound LINE webhook event, deduped by <code class="inline">webhook_event_id</code> — the source of truth before any processing happens.</p>
+          <div class="cols">webhook_event_id · source_type · source_id · raw_type · payload · processed_at</div>
+        </div>
+        <div class="card">
+          <h3>assistant_threads</h3>
+          <p>One row per conversation — the group thread or the teacher's 1:1 thread — keyed by source type and id.</p>
+          <div class="cols">source_type ("group" | "teacher") · source_id</div>
+        </div>
+        <div class="card">
+          <h3>assistant_messages</h3>
+          <p>The conversation history replayed to the LLM provider on every turn; group-thread content is purged at 24h.</p>
+          <div class="cols">thread_id · role ("user" | "assistant" | "tool") · content · tool_calls</div>
+        </div>
+        <div class="card">
+          <h3>drafts</h3>
+          <p>Structured proposals (payment / attendance / makeup) the agent creates — never a real ledger fact until a human taps confirm.</p>
+          <div class="cols">thread_id · kind · student_id · parsed · confidence · state · applied_record_type/id</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="draft-lifecycle">
+    <div class="step-num">4</div>
+    <div class="step-body">
+      <h2>Draft lifecycle</h2>
+      <p>The same shape for every draft kind, whichever thread proposed it:</p>
+
+      <ul class="checks">
+        <li><span><strong>Propose</strong> — a draft tool (<code class="inline">propose_payment_draft</code>, <code class="inline">propose_attendance_draft</code>, <code class="inline">propose_makeup_draft</code>) inserts a <code class="inline">drafts</code> row in <code class="inline">state: "pending"</code>. Draft tools only ever insert into the drafts table — they never call a state-mutating context function directly.</span></li>
+        <li><span><strong>Confirm surface</strong> — in the teacher's 1:1 thread, the reply carries a LINE quick-reply template with three actions: 確認 (confirm) / 修改 (edit) / 捨棄 (discard).</span></li>
+        <li><span><strong>確認 → apply</strong> — the postback tap flips the draft to <code class="inline">state: "applied"</code> and dispatches to the matching context function: <code class="inline">Sales.record_payment/1</code> + <code class="inline">Sales.confirm_payment/2</code> for a payment draft, <code class="inline">Roster.create_attendance/1</code> for attendance, or <code class="inline">Roster.book_makeup/3</code> for a makeup request.</span></li>
+        <li><span><strong>修改 → edit</strong> — opens the existing app's draft/edit surface, not a new LINE-side editing flow; she edits the record the same way she would today, then confirms there.</span></li>
+        <li><span><strong>捨棄 → discard</strong> — the postback tap flips the draft to <code class="inline">state: "discarded"</code>. No ledger row is ever created.</span></li>
+      </ul>
+
+      <div class="callout accent">
+        <strong>The core trust guarantee:</strong> nothing the agent produces becomes a real ledger fact without an
+        explicit human tap. This postback confirm <em>is</em> the same human confirmation action already required
+        by the ledger's payment-trust invariant — architecturally identical to tapping confirm in the app UI, just
+        over a different transport. No code path may set <code class="inline">payment.state = "confirmed"</code>
+        outside <code class="inline">Sales.confirm_payment/2</code>.
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="retention-safety">
+    <div class="step-num">5</div>
+    <div class="step-body">
+      <h2>Retention &amp; safety guardrails</h2>
+
+      <ul class="checks">
+        <li><span><strong>Group-thread raw text purges at 24h</strong> — <code class="inline">line_events.payload</code> and <code class="inline">assistant_messages.content</code> sourced from group input.</span></li>
+        <li><span><strong>Two things are exempt from that purge:</strong> <code class="inline">drafts.parsed</code> (structured, not raw text — a draft older than 24h keeps its parsed fields but loses the sentence that produced it) and the teacher's own 1:1 thread, which is retained indefinitely as a deliberate design decision (functionally equivalent to her typing a note into the app).</span></li>
+        <li><span><strong>No group member roster is ever stored</strong>, matching the disclosure-notice requirement carried over from the original onboarding runbook.</span></li>
+        <li><span><strong>The group thread structurally can never call the LINE send API</strong> — enforced in code, not by a prompt: no Reply/send tool is registered for the group thread's tool set, and the group branch of the worker never even references the LINE client. A successful prompt-injection attempt via a student's message is bounded to "creates a spurious draft she rejects" — never a real ledger or messaging side effect.</span></li>
+        <li><span><strong>Tool-call iteration cap</strong> of 6 calls per agent run, on both threads, bounding cost and latency against adversarial or rambling input.</span></li>
+        <li><span><strong>Only the configured teacher LINE user id</strong> gets the teacher thread's privileged tool set (the Reply tool, and is treated as a trusted principal); any other 1:1 sender is ignored, not silently given assistant access.</span></li>
+      </ul>
+
+      <div class="callout warn">
+        <strong>Flagged, not settled:</strong> whether the teacher-thread's indefinite retention counts as "Friend/Group information" under LINE's User Data Policy is unverified — LINE does not define that boundary. If a legal review disagrees, adding a purge job for the teacher thread is a one-line change.
+      </div>
+    </div>
+  </section>
+
+  <section class="step" id="build-status">
+    <div class="step-num">6</div>
+    <div class="step-body">
+      <h2>Build status</h2>
+      <p>
+        Every task below comes straight from the implementation plan's task headings — all 19 are currently
+        <code class="inline">- [ ]</code> unchecked; nothing in this feature set has been built yet.
+      </p>
+
+      <table class="env tasks">
+        <thead>
+          <tr><th>#</th><th>Task</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="task-num">1</td><td class="task-name"><code>line_events</code> schema</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">2</td><td class="task-name"><code>assistant_threads</code> schema</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">3</td><td class="task-name"><code>assistant_messages</code> schema</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">4</td><td class="task-name"><code>drafts</code> schema</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">5</td><td class="task-name">Raw body capture + signature verification plug</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">6</td><td class="task-name">Webhook controller + router</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">7</td><td class="task-name"><code>Ganesha.Assistant.Provider</code> behaviour + mock</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">8</td><td class="task-name"><code>Ganesha.Assistant.Tool</code> behaviour + <code>Agent</code> tool-calling loop</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">9</td><td class="task-name">Read tools — <code>FindStudent</code>, <code>StudentBalance</code></td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">10</td><td class="task-name">Read tools — <code>TodayRoster</code>, <code>UpcomingSessions</code>, <code>StudentHistory</code></td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">11</td><td class="task-name">Draft tools + <code>apply_draft/2</code> + <code>discard_draft/1</code></td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">12</td><td class="task-name"><code>Ganesha.Line.Client</code> (Req-based LINE API) + <code>Client.Mock</code></td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">13</td><td class="task-name"><code>Ganesha.Assistant.Provider.Anthropic</code></td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">14</td><td class="task-name">Config for LINE, the Anthropic provider, and the teacher's LINE user id</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">15</td><td class="task-name"><code>ProcessEventWorker</code> — teacher 1:1 thread end to end</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">16</td><td class="task-name">Postback confirm/discard</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">17</td><td class="task-name">Group thread + structural safety guardrail</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">18</td><td class="task-name">Retention sweep for group-thread raw text</td><td><span class="status-pill">not started</span></td></tr>
+          <tr><td class="task-num">19</td><td class="task-name">Unsend and <code>messageEdited</code> correctness events</td><td><span class="status-pill">not started</span></td></tr>
+        </tbody>
+      </table>
+
+      <p class="muted">
+        Full design spec: <span class="path">docs/superpowers/specs/2026-09-11-line-ai-chat-design.md</span><br />
+        Implementation plan: <span class="path">docs/superpowers/plans/2026-09-11-line-ai-chat.md</span>
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  Ganesha · docs/superpowers/line-feature-overview.html · a product/engineering overview of a designed-but-not-yet-built
+  feature; see the setup guide (<span class="path">docs/superpowers/line-setup-guide.html</span>) for the credential
+  provisioning steps once this ships.
+</footer>
+
+</body>
+</html>
