@@ -35,6 +35,16 @@ defmodule Ganesha.Assistant do
     end
   end
 
+  @supported_locales ~w(zh-TW en)
+
+  def set_locale(%Thread{} = thread, locale) when locale in @supported_locales do
+    thread
+    |> Thread.changeset(%{locale: locale})
+    |> Repo.update()
+  end
+
+  def set_locale(_thread, _locale), do: {:error, :invalid_locale}
+
   def list_messages(%Thread{} = thread) do
     Repo.all(from m in Message, where: m.thread_id == ^thread.id, order_by: m.id)
   end
@@ -85,19 +95,48 @@ defmodule Ganesha.Assistant do
     ]
   end
 
-  @studio_vocabulary """
-  只用繁體中文回覆，語氣專業、簡潔，使用瑜珈教室慣用詞彙（堂數、補課、單堂、體驗、
-  月課程）。你可以查詢學生、堂數與帳務資料，也可以建立「草稿」（付款、出席、補課
-  需求）供她確認 — 你永遠不能把草稿直接變成正式紀錄，只有她本人確認後才算數。
-  """
+  defp studio_vocabulary("en") do
+    """
+    Reply in English. Be professional and concise. Use yoga-studio terms (class credits,
+    makeup class, drop-in, trial, monthly package). You can look up students, schedules,
+    and payments, and create drafts (payment, attendance, makeup) for the teacher to
+    confirm — never apply a draft yourself; only she can confirm.
+    """
+  end
 
-  def teacher_system_prompt do
-    "你是師父的課程記帳助理，正在跟她本人對話。" <> @studio_vocabulary
+  defp studio_vocabulary(_locale) do
+    """
+    只用繁體中文回覆，語氣專業、簡潔，使用瑜珈教室慣用詞彙（堂數、補課、單堂、體驗、
+    月課程）。你可以查詢學生、堂數與帳務資料，也可以建立「草稿」（付款、出席、補課
+    需求）供她確認 — 你永遠不能把草稿直接變成正式紀錄，只有她本人確認後才算數。
+    """
+  end
+
+  def teacher_system_prompt(locale \\ "zh-TW") do
+    role =
+      if locale == "en",
+        do: "You are the studio ledger assistant speaking with the teacher directly.",
+        else: "你是師父的課程記帳助理，正在跟她本人對話。"
+
+    role <> studio_vocabulary(locale)
+  end
+
+  def user_system_prompt(locale \\ "zh-TW") do
+    role =
+      if locale == "en",
+        do: "You are a helpful assistant for this yoga studio's LINE account.",
+        else: "你是這間瑜珈教室 LINE 官方帳號的助理。"
+
+    role <>
+      if locale == "en",
+        do: " Reply in English. Be brief and friendly.",
+        else: " 只用繁體中文回覆，語氣簡短友善。"
   end
 
   def group_system_prompt do
     "你正在被動觀察師父的學生群組對話，任何人都看不到你的回覆 — 你唯一能做的事是視
-    情況建立草稿供師父之後確認，絕不能、也沒有管道對群組發送任何訊息。" <> @studio_vocabulary
+    情況建立草稿供師父之後確認，絕不能、也沒有管道對群組發送任何訊息。" <>
+      studio_vocabulary("zh-TW")
   end
 
   def apply_draft(%Draft{state: "pending", kind: "payment"} = draft, confirmed_by) do

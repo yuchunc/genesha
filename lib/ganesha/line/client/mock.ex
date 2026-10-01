@@ -25,6 +25,7 @@ defmodule Ganesha.Line.Client.Mock do
   # so consumers dispatching through `line_client()` (Task 15's `Application.get_env`
   # lookup) get the same function whichever implementation is configured.
   defdelegate text_message(text, draft_id \\ nil), to: Ganesha.Line.Client
+  defdelegate language_picker_message(), to: Ganesha.Line.Client
 
   def calls, do: Process.get(:line_client_mock_calls, []) |> Enum.reverse()
 

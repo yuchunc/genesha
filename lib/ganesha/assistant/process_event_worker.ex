@@ -32,24 +32,14 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     :ok
   end
 
-  defp route(
-         %{source_type: "user", source_id: sender_id, raw_type: "message"} = event,
-         teacher_id
-       )
-       when sender_id == teacher_id do
-    if simple_reply?(), do: handle_simple_reply(event), else: handle_teacher_message(event)
+  defp route(%{source_type: "user", raw_type: "message"} = event, teacher_id) do
+    if simple_reply?(),
+      do: handle_simple_reply(event),
+      else: handle_user_message(event, teacher_id)
   end
 
-  defp route(%{source_type: "user", raw_type: "message"} = event, _teacher_id) do
-    handle_simple_reply(event)
-  end
-
-  defp route(
-         %{source_type: "user", source_id: sender_id, raw_type: "postback"} = event,
-         teacher_id
-       )
-       when sender_id == teacher_id do
-    handle_postback(event)
+  defp route(%{source_type: "user", raw_type: "postback"} = event, teacher_id) do
+    handle_user_postback(event, teacher_id)
   end
 
   defp route(
@@ -69,34 +59,30 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   defp route(%{raw_type: "messageEdited"} = event, _teacher_id), do: handle_message_edited(event)
   defp route(_event, _teacher_id), do: :ok
 
-  defp handle_teacher_message(%{
-         payload: %{
-           "replyToken" => reply_token,
-           "message" => %{"id" => line_message_id, "text" => text}
+  defp handle_user_message(
+         %{
+           payload: %{
+             "replyToken" => reply_token,
+             "message" => %{"id" => line_message_id, "text" => text}
+           },
+           source_id: source_id
          },
-         source_id: source_id
-       }) do
-    {:ok, thread} = Assistant.get_or_create_thread("teacher", source_id)
+         teacher_id
+       ) do
+    {source_type, thread} = user_thread(source_id, teacher_id)
 
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
-    case Agent.run(thread, Assistant.tools(), Assistant.teacher_system_prompt()) do
-      {:ok, %{text: reply_text, draft_ids: draft_ids}} ->
-        send_reply(reply_token, source_id, reply_text, draft_ids)
-        :ok
-
-      {:error, reason} ->
-        Logger.error(
-          "Ganesha.Assistant.Agent.run/3 failed for thread #{thread.id}: #{inspect(reason)}"
-        )
-
-        send_reply(reply_token, source_id, "抱歉，我現在無法處理這則訊息，請稍後再試一次。", [])
-        :ok
+    if is_nil(thread.locale) do
+      line_client().reply(reply_token, [line_client().language_picker_message()])
+      :ok
+    else
+      run_agent_and_reply(thread, source_type, reply_token, source_id, thread.locale)
     end
   end
 
-  defp handle_teacher_message(_event), do: :ok
+  defp handle_user_message(_event, _teacher_id), do: :ok
 
   defp handle_simple_reply(%{
          payload: %{"replyToken" => reply_token, "message" => %{"text" => text}},
@@ -166,11 +152,16 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         thread = Repo.get!(Assistant.Thread, message.thread_id)
 
         system_prompt =
-          if thread.source_type == "teacher",
-            do: Assistant.teacher_system_prompt(),
-            else: Assistant.group_system_prompt()
+          case thread.source_type do
+            "teacher" -> Assistant.teacher_system_prompt(thread.locale || "zh-TW")
+            "group" -> Assistant.group_system_prompt()
+            _ -> Assistant.user_system_prompt(thread.locale || "zh-TW")
+          end
 
-        case Agent.run(thread, Assistant.tools(), system_prompt) do
+        tools =
+          if thread.source_type in ["teacher", "group"], do: Assistant.tools(), else: []
+
+        case Agent.run(thread, tools, system_prompt) do
           {:ok, _} ->
             :ok
 
@@ -190,16 +181,103 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     |> Enum.each(&Assistant.discard_draft/1)
   end
 
-  defp handle_postback(%{
-         payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}
-       }) do
+  defp handle_user_postback(
+         %{
+           payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}},
+           source_id: source_id
+         },
+         teacher_id
+       ) do
     params = URI.decode_query(data)
-    draft = Assistant.get_draft!(String.to_integer(params["draft_id"]))
-    reply_text = resolve_postback(params["action"], draft)
 
-    line_client().reply(reply_token, [line_client().text_message(reply_text)])
-    :ok
+    case params["action"] do
+      "set_locale" ->
+        handle_set_locale_postback(reply_token, source_id, params["locale"], teacher_id)
+
+      "confirm" ->
+        handle_draft_postback(reply_token, params, source_id, teacher_id)
+
+      "discard" ->
+        handle_draft_postback(reply_token, params, source_id, teacher_id)
+
+      _ ->
+        line_client().reply(reply_token, [line_client().text_message("無法辨識的操作。")])
+        :ok
+    end
   end
+
+  defp handle_set_locale_postback(reply_token, source_id, locale, teacher_id) do
+    {source_type, thread} = user_thread(source_id, teacher_id)
+
+    case Assistant.set_locale(thread, locale) do
+      {:ok, thread} ->
+        if pending_user_turn?(thread) do
+          run_agent_and_reply(thread, source_type, reply_token, source_id, locale)
+        else
+          send_reply(reply_token, source_id, locale_welcome(locale), [])
+          :ok
+        end
+
+      {:error, _} ->
+        line_client().reply(reply_token, [line_client().language_picker_message()])
+        :ok
+    end
+  end
+
+  defp handle_draft_postback(reply_token, params, source_id, teacher_id) do
+    if source_id != teacher_id do
+      line_client().reply(reply_token, [line_client().text_message("無法辨識的操作。")])
+      :ok
+    else
+      draft = Assistant.get_draft!(String.to_integer(params["draft_id"]))
+      reply_text = resolve_postback(params["action"], draft)
+      line_client().reply(reply_token, [line_client().text_message(reply_text)])
+      :ok
+    end
+  end
+
+  defp user_thread(source_id, teacher_id) do
+    source_type = if source_id == teacher_id, do: "teacher", else: "user"
+    {:ok, thread} = Assistant.get_or_create_thread(source_type, source_id)
+    {source_type, thread}
+  end
+
+  defp pending_user_turn?(thread) do
+    case List.last(Assistant.list_messages(thread)) do
+      %{role: "user"} -> true
+      _ -> false
+    end
+  end
+
+  defp run_agent_and_reply(thread, source_type, reply_token, source_id, locale) do
+    {prompt, tools} =
+      case source_type do
+        "teacher" -> {Assistant.teacher_system_prompt(locale), Assistant.tools()}
+        _ -> {Assistant.user_system_prompt(locale), []}
+      end
+
+    case Agent.run(thread, tools, prompt) do
+      {:ok, %{text: reply_text, draft_ids: draft_ids}} ->
+        send_reply(reply_token, source_id, reply_text, draft_ids)
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "Ganesha.Assistant.Agent.run/3 failed for thread #{thread.id}: #{inspect(reason)}"
+        )
+
+        apology =
+          if locale == "en",
+            do: "Sorry, I couldn't process that message. Please try again later.",
+            else: "抱歉，我現在無法處理這則訊息，請稍後再試一次。"
+
+        send_reply(reply_token, source_id, apology, [])
+        :ok
+    end
+  end
+
+  defp locale_welcome("en"), do: "Thanks! How can I help you today?"
+  defp locale_welcome(_), do: "好的！有什麼需要我幫忙的？"
 
   defp resolve_postback("confirm", draft) do
     case Assistant.apply_draft(draft, "line:teacher") do

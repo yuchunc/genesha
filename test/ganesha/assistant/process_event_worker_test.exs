@@ -7,7 +7,14 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Line.Client.Mock, as: LineMock
 
+  defp ensure_teacher_locale do
+    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
+    {:ok, _} = Assistant.set_locale(thread, "zh-TW")
+  end
+
   defp enqueue_teacher_message(text) do
+    ensure_teacher_locale()
+
     :ok =
       Line.record_event(%{
         "webhookEventId" => "evt-#{System.unique_integer([:positive])}",
@@ -95,7 +102,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
              LineMock.calls()
   end
 
-  test "replies with a simple acknowledgment to a non-teacher 1:1 sender" do
+  test "asks a new 1:1 sender to choose a language before running the agent" do
     :ok =
       Line.record_event(%{
         "webhookEventId" => "evt-stranger",
@@ -109,9 +116,52 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     [job] = all_enqueued(worker: ProcessEventWorker)
     assert :ok = perform_job(ProcessEventWorker, job.args)
 
-    assert LineMock.calls() == [
-             {:reply, {"rt-2", [%{type: "text", text: "收到你的訊息：hi"}]}}
-           ]
+    assert [{:reply, {"rt-2", [msg]}}] = LineMock.calls()
+    assert msg.text =~ "Please choose your language"
+    assert Enum.count(msg.quickReply.items) == 2
+  end
+
+  test "runs the agent after locale is chosen on the first message" do
+    Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "Hello!", tool_calls: []}} end)
+
+    :ok =
+      Line.record_event(%{
+        "webhookEventId" => "evt-stranger-locale",
+        "type" => "message",
+        "mode" => "active",
+        "source" => %{"type" => "user", "userId" => "Ustranger2"},
+        "replyToken" => "rt-3",
+        "message" => %{"id" => "linemsg-2", "type" => "text", "text" => "hi"}
+      })
+
+    [job1] = all_enqueued(worker: ProcessEventWorker)
+    assert :ok = perform_job(ProcessEventWorker, job1.args)
+
+    :ok =
+      Line.record_event(%{
+        "webhookEventId" => "evt-stranger-locale-pb",
+        "type" => "postback",
+        "mode" => "active",
+        "source" => %{"type" => "user", "userId" => "Ustranger2"},
+        "replyToken" => "rt-4",
+        "postback" => %{"data" => "action=set_locale&locale=en"}
+      })
+
+    postback_event =
+      Ganesha.Repo.get_by!(Ganesha.Line.LineEvent, webhook_event_id: "evt-stranger-locale-pb")
+
+    job2 =
+      Enum.find(all_enqueued(worker: ProcessEventWorker), fn job ->
+        job.args["line_event_id"] == postback_event.id
+      end)
+
+    assert job2
+    assert :ok = perform_job(ProcessEventWorker, job2.args)
+
+    assert Enum.any?(LineMock.calls(), fn
+             {:reply, {"rt-4", [%{type: "text", text: "Hello!"}]}} -> true
+             _ -> false
+           end)
   end
 
   test "replies with an apology and returns :ok when the agent run fails, instead of retrying and duplicating the message" do

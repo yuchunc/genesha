@@ -2,11 +2,12 @@ defmodule Ganesha.Assistant.Thread do
   use Ecto.Schema
   import Ecto.Changeset
 
-  @source_types ~w(group teacher)
+  @source_types ~w(group teacher user)
 
   schema "assistant_threads" do
     field :source_type, :string
     field :source_id, :string
+    field :locale, :string
 
     timestamps(type: :utc_datetime)
   end
@@ -15,7 +16,7 @@ defmodule Ganesha.Assistant.Thread do
 
   def changeset(thread, attrs) do
     thread
-    |> cast(attrs, [:source_type, :source_id])
+    |> cast(attrs, [:source_type, :source_id, :locale])
     |> validate_required([:source_type, :source_id])
     |> validate_inclusion(:source_type, @source_types)
     |> unique_constraint([:source_type, :source_id],

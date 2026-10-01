@@ -190,6 +190,11 @@ ProviderMock.stub(fn messages, _tools, _opts ->
   end
 end)
 
+# A 1:1 thread without a locale gets the language picker instead of the agent;
+# the teacher has already chosen hers.
+{:ok, teacher_thread} = Assistant.get_or_create_thread("teacher", teacher_id)
+{:ok, _} = Assistant.set_locale(teacher_thread, "zh-TW")
+
 teacher_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-teacher-1")
 Process.delete(:line_client_mock_calls)
 :ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => teacher_line_event.id}})

@@ -60,4 +60,18 @@ defmodule Ganesha.Line.Client do
 
   defp quick_reply_item(label, data),
     do: %{type: "action", action: %{type: "postback", label: label, data: data}}
+
+  @doc "First-contact language picker for 1:1 chats."
+  def language_picker_message do
+    %{
+      type: "text",
+      text: "請選擇語言 / Please choose your language:",
+      quickReply: %{
+        items: [
+          quick_reply_item("繁體中文", "action=set_locale&locale=zh-TW"),
+          quick_reply_item("English", "action=set_locale&locale=en")
+        ]
+      }
+    }
+  end
 end
