@@ -45,3 +45,6 @@ npm-debug.log
 
 # Local git worktrees (subagent-driven-development)
 .worktrees/
+
+# Local dev secrets (LINE dev channel, Anthropic key, etc.)
+.env*
