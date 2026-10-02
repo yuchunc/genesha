@@ -22,6 +22,10 @@ defmodule Ganesha.Assistant do
 
   def get_thread!(id), do: Repo.get!(Thread, id)
 
+  def list_threads(source_type) do
+    Repo.all(from t in Thread, where: t.source_type == ^source_type, order_by: t.id)
+  end
+
   @supported_locales ~w(zh-TW en)
 
   def set_locale(%Thread{} = thread, locale) when locale in @supported_locales do

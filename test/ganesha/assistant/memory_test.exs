@@ -2,7 +2,8 @@ defmodule Ganesha.Assistant.MemoryTest do
   use Ganesha.DataCase
 
   alias Ganesha.Assistant
-  alias Ganesha.Assistant.{Digest, Memory}
+  alias Ganesha.Assistant.{Digest, Memory, Prompts}
+  alias Ganesha.Assistant.Provider.Mock
 
   # 12:00 in Asia/Taipei on 2026-10-02.
   @now ~U[2026-10-02 04:00:00Z]
@@ -148,6 +149,94 @@ defmodule Ganesha.Assistant.MemoryTest do
 
       assert Memory.summaries(thread, @today) ==
                "[2026-09-18]\n14 days ago\n\n[2026-09-28]\nwindow day"
+    end
+  end
+
+  describe "write_missing_digests/2" do
+    setup do
+      Process.put(:digest_inputs, [])
+
+      Mock.stub(fn [%{role: "user", content: content}], [], opts ->
+        Process.put(:digest_inputs, Process.get(:digest_inputs) ++ [{opts[:system], content}])
+
+        if content =~ "fail-day",
+          do: {:error, :overloaded},
+          else: {:ok, %{text: "summary", tool_calls: []}}
+      end)
+
+      :ok
+    end
+
+    test "writes a daily digest for each past day with counted messages and none yet", %{
+      thread: thread
+    } do
+      put(thread, "user", "9/29 的事", ~U[2026-09-29 04:00:00Z])
+      put(thread, "user", "9/30 的事", ~U[2026-09-30 04:00:00Z])
+      put(thread, "assistant", "好的", ~U[2026-09-30 04:01:00Z])
+      put(thread, "user", "今天的事", @this_morning)
+      digest(thread, "daily", ~D[2026-09-29], ~D[2026-09-29], "already written")
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+
+      assert [{system, transcript}] = Process.get(:digest_inputs)
+      assert system == Prompts.digest("zh-TW")
+      assert transcript == "Teacher: 9/30 的事\nAssistant: 好的"
+
+      assert [~D[2026-09-29], ~D[2026-09-30]] =
+               Repo.all(
+                 from d in Digest,
+                   where: d.kind == "daily",
+                   order_by: d.period_start,
+                   select: d.period_start
+               )
+    end
+
+    test "skips today and days more than 90 days ago", %{thread: thread} do
+      put(thread, "user", "太久以前", ~U[2026-07-03 04:00:00Z])
+      put(thread, "user", "今天", @this_morning)
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+      assert Process.get(:digest_inputs) == []
+    end
+
+    test "writes a weekly digest from each complete week's daily digests", %{thread: thread} do
+      digest(thread, "daily", ~D[2026-09-21], ~D[2026-09-21], "週一的事")
+      digest(thread, "daily", ~D[2026-09-27], ~D[2026-09-27], "週日的事")
+      digest(thread, "daily", ~D[2026-09-28], ~D[2026-09-28], "這週還沒過完")
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+
+      assert [{_system, input}] = Process.get(:digest_inputs)
+      assert input == "[2026-09-21]\n週一的事\n\n[2026-09-27]\n週日的事"
+
+      assert [%Digest{period_start: ~D[2026-09-21], period_end: ~D[2026-09-27]}] =
+               Repo.all(from d in Digest, where: d.kind == "weekly")
+    end
+
+    @tag :capture_log
+    test "a day that fails is skipped and the others are written", %{thread: thread} do
+      put(thread, "user", "fail-day", ~U[2026-09-29 04:00:00Z])
+      put(thread, "user", "正常的一天", ~U[2026-09-30 04:00:00Z])
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+      assert [~D[2026-09-30]] = Repo.all(from d in Digest, select: d.period_start)
+    end
+  end
+
+  describe "invalidate_digests/2" do
+    test "drops that day's daily digest and the weekly digest containing it", %{thread: thread} do
+      digest(thread, "daily", ~D[2026-09-24], ~D[2026-09-24], "that day")
+      digest(thread, "daily", ~D[2026-09-25], ~D[2026-09-25], "next day")
+      digest(thread, "weekly", ~D[2026-09-21], ~D[2026-09-27], "that week")
+      digest(thread, "weekly", ~D[2026-09-14], ~D[2026-09-20], "the week before")
+
+      assert :ok = Memory.invalidate_digests(thread.id, ~D[2026-09-24])
+
+      assert Repo.all(
+               from d in Digest,
+                 order_by: [d.kind, d.period_start],
+                 select: {d.kind, d.period_start}
+             ) == [{"daily", ~D[2026-09-25]}, {"weekly", ~D[2026-09-14]}]
     end
   end
 end

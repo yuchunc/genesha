@@ -33,7 +33,8 @@ config :ganesha, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"10 16 * * *", Ganesha.Reporting.CloseMonthWorker},
-       {"0 * * * *", Ganesha.Assistant.PurgeGroupRawTextWorker}
+       {"0 * * * *", Ganesha.Assistant.PurgeGroupRawTextWorker},
+       {"30 16 * * *", Ganesha.Assistant.DigestWorker}
      ]}
   ]
 

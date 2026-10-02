@@ -5,8 +5,9 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   first-contact picker lives here); 1:1 postbacks go to
   `Conversation.handle_postback/4`. Group chat messages run the agent with
   the Group chat's three tasks and are never answered. Unsend and
-  messageEdited correct the stored text and discard the message's pending
-  Drafts. A failed agent run is logged, never retried: a retry would
+  messageEdited correct the stored text, discard the message's pending
+  Drafts and, in the Teacher chat, drop the digests covering its day. A
+  failed agent run is logged, never retried: a retry would
   re-append the message and risk duplicate Drafts for one fact.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
@@ -16,7 +17,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   require Logger
 
   alias Ganesha.{Assistant, Clock, Line, Repo}
-  alias Ganesha.Assistant.{Agent, Conversation, Prompts, Snapshot, Tasks}
+  alias Ganesha.Assistant.{Agent, Conversation, Memory, Prompts, Snapshot, Tasks}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"line_event_id" => line_event_id}}) do
@@ -125,7 +126,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
       message ->
         message |> Ecto.Changeset.change(content: nil) |> Repo.update!()
         discard_pending_drafts_for(message)
-        :ok
+        message.thread_id |> Assistant.get_thread!() |> forget_digests(message)
     end
   end
 
@@ -141,6 +142,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         discard_pending_drafts_for(message)
 
         thread = Assistant.get_thread!(message.thread_id)
+        forget_digests(thread, message)
 
         result =
           if thread.source_type == "group",
@@ -166,6 +168,15 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     |> Repo.all()
     |> Enum.each(&Assistant.discard_draft/1)
   end
+
+  # Spec §6.4: an unsent or edited Teacher chat message invalidates the
+  # digests covering its day; the next nightly run writes them again. Group
+  # chat and Student chats have no digests (ADR 0003).
+  defp forget_digests(%Assistant.Thread{source_type: "teacher"} = thread, message) do
+    Memory.invalidate_digests(thread.id, Clock.to_taipei_date(message.inserted_at))
+  end
+
+  defp forget_digests(_thread, _message), do: :ok
 
   defp simple_reply? do
     Application.get_env(:ganesha, :line, [])

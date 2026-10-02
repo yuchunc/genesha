@@ -3,7 +3,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
 
   alias Ganesha.{Assistant, Catalog, Line, People, Sales}
-  alias Ganesha.Assistant.ProcessEventWorker
+  alias Ganesha.Assistant.{Digest, ProcessEventWorker}
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Line.Client.Mock, as: LineMock
   alias Ganesha.Line.Labels
@@ -258,6 +258,63 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       user_message = Assistant.list_messages(c.thread) |> Enum.find(&(&1.role == "user"))
       assert user_message.content == "2.Lulu （Line pay 1200元）"
+    end
+  end
+
+  describe "Teacher chat digests" do
+    setup do
+      thread = teacher_thread()
+
+      {:ok, message} =
+        Assistant.append_message(thread, "user", "原本的話", nil, line_message_id: "linemsg-t1")
+
+      message |> Ecto.Changeset.change(inserted_at: ~U[2026-09-24 04:00:00Z]) |> Repo.update!()
+
+      daily =
+        Repo.insert!(%Digest{
+          thread_id: thread.id,
+          kind: "daily",
+          period_start: ~D[2026-09-24],
+          period_end: ~D[2026-09-24],
+          content: "d"
+        })
+
+      weekly =
+        Repo.insert!(%Digest{
+          thread_id: thread.id,
+          kind: "weekly",
+          period_start: ~D[2026-09-21],
+          period_end: ~D[2026-09-27],
+          content: "w"
+        })
+
+      %{daily: daily, weekly: weekly}
+    end
+
+    test "unsending a message drops the digests covering its day", c do
+      assert {:ok, _} =
+               deliver(%{
+                 "type" => "unsend",
+                 "source" => %{"type" => "user", "userId" => @teacher},
+                 "unsend" => %{"messageId" => "linemsg-t1"}
+               })
+
+      refute Repo.reload(c.daily)
+      refute Repo.reload(c.weekly)
+    end
+
+    test "editing a message drops them too and re-runs the turn", c do
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "改好了", tool_calls: []}} end)
+
+      assert {:ok, _} =
+               deliver(%{
+                 "type" => "messageEdited",
+                 "source" => %{"type" => "user", "userId" => @teacher},
+                 "message" => %{"id" => "linemsg-t1", "text" => "改過的話"}
+               })
+
+      refute Repo.reload(c.daily)
+      refute Repo.reload(c.weekly)
     end
   end
 end
