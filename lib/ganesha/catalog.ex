@@ -49,6 +49,8 @@ defmodule Ganesha.Catalog do
 
   def get_package!(id), do: Repo.get!(Package, id)
 
+  def get_package(id), do: Repo.get(Package, id)
+
   def create_package(attrs) do
     %Package{} |> Package.changeset(attrs) |> Repo.insert()
   end

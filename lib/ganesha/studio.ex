@@ -25,6 +25,8 @@ defmodule Ganesha.Studio do
 
   def get_session!(id), do: Session |> Repo.get!(id) |> Repo.preload(:slot)
 
+  def get_session(id), do: Session |> Repo.get(id) |> Repo.preload(:slot)
+
   @doc """
   Creates a session for every date in `month` matching the slot's weekday.
 
