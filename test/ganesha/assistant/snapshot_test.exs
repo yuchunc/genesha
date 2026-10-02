@@ -33,6 +33,25 @@ defmodule Ganesha.Assistant.SnapshotTest do
     assert snapshot =~ "- student #{lulu.id}: Lulu (aka 露露) — owes NT$400"
   end
 
+  test "shows a Slot under the same name in its slot line and its session lines" do
+    {:ok, slot} =
+      Studio.create_slot(%{
+        weekday: 1,
+        start_time: ~T[09:30:00],
+        end_time: ~T[10:45:00],
+        default_style: "Hatha",
+        label: "早晨練習｜週一 基礎瑜伽"
+      })
+
+    {:ok, session} =
+      Studio.create_session(%{slot_id: slot.id, date: ~D[2026-10-05], style: "Hatha"})
+
+    snapshot = Snapshot.build(~D[2026-10-02])
+
+    assert snapshot =~ "- slot #{slot.id}: Mon 9:30–10:45 早晨練習｜基礎瑜伽 (Hatha)"
+    assert snapshot =~ "- session #{session.id}: 2026-10-05 Mon 9:30–10:45 早晨練習｜基礎瑜伽 Hatha"
+  end
+
   test "says when a section is empty" do
     assert Snapshot.build(~D[2026-10-02]) =~ "Students:\n(none)"
   end

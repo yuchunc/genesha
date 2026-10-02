@@ -40,7 +40,8 @@ defmodule Ganesha.Assistant.Snapshot do
 
   defp slot_line(slot) do
     "- slot #{slot.id}: #{weekday(slot.weekday)} " <>
-      "#{Fmt.time_range(slot.start_time, slot.end_time)} #{slot.label} (#{slot.default_style})" <>
+      "#{Fmt.time_range(slot.start_time, slot.end_time)} #{Fmt.slot_title(slot.label)} " <>
+      "(#{slot.default_style})" <>
       if(slot.active, do: "", else: " [inactive]")
   end
 

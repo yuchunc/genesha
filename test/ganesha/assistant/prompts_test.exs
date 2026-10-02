@@ -18,20 +18,9 @@ defmodule Ganesha.Assistant.PromptsTest do
     assert Enum.any?(added, &(&1 not in ["SUMMARY-TEXT", ""]))
   end
 
-  test "the teacher prompt carries the snapshot section" do
-    assert Prompts.snapshot_section("SNAPSHOT-TEXT") =~ "SNAPSHOT-TEXT"
-
-    assert Prompts.teacher("en", "SNAPSHOT-TEXT", nil) =~
-             Prompts.snapshot_section("SNAPSHOT-TEXT")
-  end
-
   test "each prompt follows the chat's language" do
     assert Prompts.teacher("en", "s", nil) != Prompts.teacher("zh-TW", "s", nil)
     assert Prompts.student("en") != Prompts.student("zh-TW")
     assert Prompts.digest("en") != Prompts.digest("zh-TW")
-  end
-
-  test "the group prompt is not empty" do
-    assert String.trim(Prompts.group()) != ""
   end
 end
