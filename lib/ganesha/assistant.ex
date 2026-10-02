@@ -239,4 +239,16 @@ defmodule Ganesha.Assistant do
   defp mark_applied(draft, record_type, record_id) do
     draft |> Draft.apply_changeset(record_type, record_id) |> Repo.update()
   end
+
+  @doc "A changeset's errors as `field: message`, joined with `; ` (spec §7)."
+  def format_changeset_errors(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, opts} ->
+      Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+        opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+      end)
+    end)
+    |> Enum.flat_map(fn {field, messages} -> Enum.map(messages, &"#{field}: #{&1}") end)
+    |> Enum.join("; ")
+  end
 end

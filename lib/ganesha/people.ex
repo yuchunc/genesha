@@ -15,6 +15,8 @@ defmodule Ganesha.People do
 
   def get_student!(id), do: Student |> Repo.get!(id) |> Repo.preload(:aliases)
 
+  def get_student(id), do: Repo.get(Student, id)
+
   def create_student(attrs) do
     %Student{} |> Student.changeset(attrs) |> Repo.insert()
   end
