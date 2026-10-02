@@ -17,6 +17,8 @@ defmodule Ganesha.Assistant.Message do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{}
+
   def roles, do: @roles
 
   def changeset(message, attrs) do

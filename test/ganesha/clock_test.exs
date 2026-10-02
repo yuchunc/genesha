@@ -23,4 +23,12 @@ defmodule Ganesha.ClockTest do
     assert Clock.end_of_month(~D[2026-08-17]) == ~D[2026-08-31]
     assert Clock.end_of_month(~D[2026-02-03]) == ~D[2026-02-28]
   end
+
+  test "day_start_utc/1 is the UTC instant at which the Taipei day begins" do
+    start = Clock.day_start_utc(~D[2026-09-01])
+
+    assert start == ~U[2026-08-31 16:00:00Z]
+    assert Clock.to_taipei_date(start) == ~D[2026-09-01]
+    assert Clock.to_taipei_date(DateTime.add(start, -1)) == ~D[2026-08-31]
+  end
 end

@@ -37,6 +37,14 @@ defmodule Ganesha.Clock do
     utc |> DateTime.add(@offset_seconds, :second) |> DateTime.to_date()
   end
 
+  @doc "The UTC instant at which `date` begins in Taipei (00:00 Asia/Taipei)."
+  @spec day_start_utc(Date.t()) :: DateTime.t()
+  def day_start_utc(%Date{} = date) do
+    date
+    |> DateTime.new!(~T[00:00:00], "Etc/UTC")
+    |> DateTime.add(-@offset_seconds, :second)
+  end
+
   @spec end_of_month(Date.t()) :: Date.t()
   def end_of_month(%Date{} = date), do: Date.end_of_month(date)
 end
