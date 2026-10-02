@@ -8,16 +8,6 @@ defmodule Ganesha.Assistant do
   alias Ganesha.Assistant.{Draft, Message, Tasks, Thread}
   alias Ganesha.Repo
 
-  alias Ganesha.Assistant.Tools.{
-    FindStudent,
-    ProposeMakeupDraft,
-    ProposePaymentDraft,
-    StudentBalance,
-    StudentHistory,
-    TodayRoster,
-    UpcomingSessions
-  }
-
   def get_or_create_thread(source_type, source_id) do
     case Repo.get_by(Thread, source_type: source_type, source_id: source_id) do
       %Thread{} = thread ->
@@ -194,19 +184,6 @@ defmodule Ganesha.Assistant do
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
-
-  @doc "The full tool roster — identical for the group and teacher threads."
-  def tools do
-    [
-      FindStudent,
-      StudentBalance,
-      TodayRoster,
-      UpcomingSessions,
-      StudentHistory,
-      ProposePaymentDraft,
-      ProposeMakeupDraft
-    ]
-  end
 
   defp studio_vocabulary("en") do
     """

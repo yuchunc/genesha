@@ -66,6 +66,16 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     job
   end
 
+  defp lulu do
+    {:ok, student} = People.create_student(%{display_name: "Lulu"})
+    {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+
+    {:ok, _} =
+      Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1200})
+
+    student
+  end
+
   test "answers via reply and marks the event processed" do
     Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "目前沒有人欠錢。", tool_calls: []}} end)
     job = enqueue_teacher_message("誰欠錢？")
@@ -189,8 +199,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
          %{
            text: nil,
            tool_calls: [
-             %{id: "t1", name: "propose_makeup_draft", input: %{"note" => "8/17 補課"}},
-             %{id: "t2", name: "propose_makeup_draft", input: %{"note" => "8/24 補課"}}
+             %{id: "t1", name: "makeup_request", input: %{"note" => "8/17 補課"}},
+             %{id: "t2", name: "makeup_request", input: %{"note" => "8/24 補課"}}
            ]
          }}
       end
@@ -234,6 +244,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     end
 
     test "a group message can still produce a pending draft, never an applied one" do
+      student = lulu()
       Process.put(:calls, 0)
 
       Mock.stub(fn _messages, _tools, _opts ->
@@ -247,8 +258,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
                tool_calls: [
                  %{
                    id: "t1",
-                   name: "propose_payment_draft",
-                   input: %{"amount" => 1200, "method" => "line_pay", "confidence" => 0.8}
+                   name: "record_payment",
+                   input: %{"student_id" => student.id, "amount" => 1200, "method" => "line_pay"}
                  }
                ]
              }}
@@ -288,6 +299,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
   describe "unsend and messageEdited" do
     test "unsend clears the message content and discards its pending draft" do
+      student = lulu()
       Process.put(:calls, 0)
 
       Mock.stub(fn _messages, _tools, _opts ->
@@ -301,8 +313,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
                tool_calls: [
                  %{
                    id: "t1",
-                   name: "propose_payment_draft",
-                   input: %{"amount" => 1200, "method" => "line_pay"}
+                   name: "record_payment",
+                   input: %{"student_id" => student.id, "amount" => 1200, "method" => "line_pay"}
                  }
                ]
              }}
@@ -352,6 +364,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     end
 
     test "messageEdited replaces the pending draft with a fresh one from the corrected text" do
+      student = lulu()
       Process.put(:calls, 0)
 
       Mock.stub(fn _messages, _tools, _opts ->
@@ -365,8 +378,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
                tool_calls: [
                  %{
                    id: "t1",
-                   name: "propose_payment_draft",
-                   input: %{"amount" => 900, "method" => "line_pay"}
+                   name: "record_payment",
+                   input: %{"student_id" => student.id, "amount" => 900, "method" => "line_pay"}
                  }
                ]
              }}
@@ -384,8 +397,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
                tool_calls: [
                  %{
                    id: "t2",
-                   name: "propose_payment_draft",
-                   input: %{"amount" => 1200, "method" => "line_pay"}
+                   name: "record_payment",
+                   input: %{"student_id" => student.id, "amount" => 1200, "method" => "line_pay"}
                  }
                ]
              }}

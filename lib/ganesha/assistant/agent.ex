@@ -1,89 +1,137 @@
 defmodule Ganesha.Assistant.Agent do
   @moduledoc """
-  The tool-calling loop shared by both the group and teacher threads (spec
-  §2, §4, §5). The same engine and tool set run for both; only the caller —
-  `Ganesha.Assistant.ProcessEventWorker` — decides whether the loop's final
-  text is ever sent anywhere.
+  The tool loop over tasks (spec §4.2). Sends `history` plus whatever this
+  turn adds, dispatches each tool call by its task's kind, persists every
+  message, and returns a `Ganesha.Assistant.Turn`:
+
+  - `:change` → `propose/2`, then `Assistant.create_draft/3` (with
+    `replaces: input["replaces_draft_id"]`); the Draft id joins `draft_ids`.
+  - `:lookup` → `answer/2`; the card is kept only when `input["show_card"] == true`.
+  - `:control` → `answer/2`; its `choices` become `Turn.choices`.
   """
 
-  alias Ganesha.Assistant
+  alias Ganesha.{Assistant, Clock}
+  alias Ganesha.Assistant.{Tasks, Turn}
 
-  @max_iterations 6
+  @max_rounds 6
 
-  @doc """
-  Runs the agent to completion against `thread`, whose latest message is
-  assumed already persisted by the caller. Returns `{:ok, %{text:,
-  draft_ids:}}` once the model stops requesting tools, or `{:error,
-  :max_iterations_exceeded}` if it never does.
-  """
-  def run(%Assistant.Thread{} = thread, tools, system_prompt) do
-    provider = Application.fetch_env!(:ganesha, :assistant) |> Keyword.fetch!(:provider)
-    messages = thread |> Assistant.list_messages() |> Enum.map(&to_wire/1)
-    schemas = Enum.map(tools, & &1.schema())
+  @spec run(Assistant.Thread.t(), [module()], String.t(), [Assistant.Message.t()]) ::
+          {:ok, Turn.t()} | {:error, term()}
+  def run(%Assistant.Thread{} = thread, tasks, system, history) do
+    state = %{
+      provider: Application.fetch_env!(:ganesha, :assistant) |> Keyword.fetch!(:provider),
+      tasks: tasks,
+      schemas: Tasks.tool_schemas(tasks),
+      system: system,
+      ctx: %{thread: thread, locale: thread.locale || "zh-TW", today: Clock.today()}
+    }
 
-    loop(thread, provider, messages, schemas, tools, system_prompt, @max_iterations, [])
+    loop(state, Enum.map(history, &to_wire/1), @max_rounds, %Turn{})
   end
 
-  defp loop(_thread, _provider, _messages, _schemas, _tools, _system, 0, _draft_ids) do
-    {:error, :max_iterations_exceeded}
-  end
+  defp loop(_state, _messages, 0, _turn), do: {:error, :max_iterations_exceeded}
 
-  defp loop(thread, provider, messages, schemas, tools, system, remaining, draft_ids) do
-    case provider.complete(messages, schemas, system: system) do
+  defp loop(state, messages, rounds_left, %Turn{} = turn) do
+    thread = state.ctx.thread
+
+    case state.provider.complete(messages, state.schemas, system: state.system) do
       {:ok, %{text: text, tool_calls: []}} ->
         {:ok, _} = Assistant.append_message(thread, "assistant", text, nil)
-        {:ok, %{text: text, draft_ids: Enum.reverse(draft_ids)}}
+        {:ok, %Turn{turn | text: text}}
 
       {:ok, %{text: text, tool_calls: calls}} ->
         {:ok, _} = Assistant.append_message(thread, "assistant", text, calls)
-        dispatched = Enum.map(calls, &dispatch(&1, tools, thread))
-        results = Enum.map(dispatched, &elem(&1, 0))
-        new_draft_ids = dispatched |> Enum.map(&elem(&1, 1)) |> Enum.reject(&is_nil/1)
+        {results, turn} = Enum.map_reduce(calls, turn, &dispatch(&1, &2, state))
         {:ok, _} = Assistant.append_message(thread, "tool", nil, results)
 
-        new_messages =
+        messages =
           messages ++
             [
               %{role: "assistant", content: text, tool_calls: calls},
               %{role: "tool", content: nil, tool_calls: results}
             ]
 
-        # `new_draft_ids` is in call order; reversing it before prepending
-        # keeps the whole accumulator in call order once the success clause
-        # above does its one final `Enum.reverse/1` — prepending it
-        # unreversed would come back backwards within this round.
-        loop(
-          thread,
-          provider,
-          new_messages,
-          schemas,
-          tools,
-          system,
-          remaining - 1,
-          Enum.reverse(new_draft_ids) ++ draft_ids
-        )
+        loop(state, messages, rounds_left - 1, turn)
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
-  defp dispatch(%{id: id, name: name, input: input}, tools, thread) do
-    {content, draft_id} =
-      case Enum.find(tools, &(&1.name() == name)) do
-        nil -> {"unknown tool: #{name}", nil}
-        tool -> tool.call(input, thread)
+  defp dispatch(%{id: id, name: name, input: input}, turn, state) do
+    {content, turn} =
+      case Enum.find(state.tasks, &(&1.name() == name)) do
+        nil -> {"unknown tool: #{name}", turn}
+        task -> run_task(task.kind(), task, input, turn, state.ctx)
       end
 
-    {%{tool_use_id: id, content: content}, draft_id}
+    {%{tool_use_id: id, content: content}, turn}
   end
 
-  # Every wire message carries the same three keys regardless of whether it
-  # came from memory (built inline above) or a DB reload — a message
-  # missing `:tool_calls` would fail to match a Provider adapter's
-  # `%{role: "assistant", content:, tool_calls:}` clause (e.g. the Anthropic
-  # adapter, Task 13), which happens on every second `Agent.run/3` against
-  # the same thread once the first run's final message is reloaded here.
+  defp run_task(:change, task, input, %Turn{} = turn, ctx) do
+    replaces = draft_id(input["replaces_draft_id"])
+
+    with {:ok, %{student_id: student_id, parsed: parsed}} <- task.propose(input, ctx),
+         {:ok, draft} <-
+           Assistant.create_draft(
+             ctx.thread,
+             %{kind: task.name(), student_id: student_id, parsed: parsed},
+             replaces: replaces
+           ) do
+      # A Draft corrected within this same turn must not be shown as live.
+      draft_ids = List.delete(turn.draft_ids, replaces) ++ [draft.id]
+
+      {"draft ##{draft.id} created (#{task.name()}, pending confirmation)",
+       %Turn{turn | draft_ids: draft_ids}}
+    else
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {"could not create the draft: #{Assistant.format_changeset_errors(changeset)}", turn}
+
+      {:error, text} ->
+        {text, turn}
+    end
+  end
+
+  defp run_task(:lookup, task, input, %Turn{} = turn, ctx) do
+    case task.answer(input, ctx) do
+      {:ok, %{data: data} = answer} ->
+        cards =
+          if input["show_card"] == true and Map.has_key?(answer, :card),
+            do: turn.cards ++ [answer.card],
+            else: turn.cards
+
+        {data, %Turn{turn | cards: cards}}
+
+      {:error, text} ->
+        {text, turn}
+    end
+  end
+
+  defp run_task(:control, task, input, %Turn{} = turn, ctx) do
+    case task.answer(input, ctx) do
+      {:ok, %{data: data} = answer} ->
+        {data, %Turn{turn | choices: Map.get(answer, :choices, turn.choices)}}
+
+      {:error, text} ->
+        {text, turn}
+    end
+  end
+
+  # The model may send the id as a string ("41"); anything that is not a
+  # whole id counts as absent.
+  defp draft_id(id) when is_integer(id), do: id
+
+  defp draft_id(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {int, ""} -> int
+      _ -> nil
+    end
+  end
+
+  defp draft_id(_id), do: nil
+
+  # Every wire message carries the same three keys whether it was built in
+  # memory or reloaded: provider adapters match `%{role:, content:, tool_calls:}`.
   defp to_wire(%Assistant.Message{role: role, content: content, tool_calls: nil}) do
     %{role: role, content: content, tool_calls: []}
   end
@@ -93,6 +141,6 @@ defmodule Ganesha.Assistant.Agent do
   end
 
   # tool_calls round-trips through the {:array, :map} column as string keys;
-  # the provider adapter and dispatch/1 above expect atom keys.
+  # the provider adapter and dispatch/3 expect atom keys.
   defp atomize(map), do: for({k, v} <- map, into: %{}, do: {String.to_existing_atom(k), v})
 end

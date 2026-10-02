@@ -19,7 +19,7 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
 
     body = %{
       model: model,
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: system,
       messages: Enum.map(messages, &to_wire_message/1),
       tools: Enum.map(tools, &to_wire_tool/1)

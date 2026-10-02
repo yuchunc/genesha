@@ -18,7 +18,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   require Logger
 
   alias Ganesha.Assistant
-  alias Ganesha.Assistant.Agent
+  alias Ganesha.Assistant.{Agent, Tasks}
   alias Ganesha.Line
   alias Ganesha.Repo
 
@@ -111,13 +111,18 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
-    case Agent.run(thread, Assistant.tools(), Assistant.group_system_prompt()) do
+    case Agent.run(
+           thread,
+           Tasks.for_chat(:group),
+           Assistant.group_system_prompt(),
+           Assistant.list_messages(thread)
+         ) do
       {:ok, _} ->
         :ok
 
       {:error, reason} ->
         Logger.error(
-          "Ganesha.Assistant.Agent.run/3 failed for group thread #{thread.id}: #{inspect(reason)}"
+          "Ganesha.Assistant.Agent.run/4 failed for group thread #{thread.id}: #{inspect(reason)}"
         )
 
         :ok
@@ -158,16 +163,20 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
             _ -> Assistant.user_system_prompt(thread.locale || "zh-TW")
           end
 
-        tools =
-          if thread.source_type in ["teacher", "group"], do: Assistant.tools(), else: []
+        tasks =
+          case thread.source_type do
+            "teacher" -> Tasks.for_chat(:teacher)
+            "group" -> Tasks.for_chat(:group)
+            _ -> Tasks.for_chat(:student)
+          end
 
-        case Agent.run(thread, tools, system_prompt) do
+        case Agent.run(thread, tasks, system_prompt, Assistant.list_messages(thread)) do
           {:ok, _} ->
             :ok
 
           {:error, reason} ->
             Logger.error(
-              "Ganesha.Assistant.Agent.run/3 failed after messageEdited for thread #{thread.id}: #{inspect(reason)}"
+              "Ganesha.Assistant.Agent.run/4 failed after messageEdited for thread #{thread.id}: #{inspect(reason)}"
             )
 
             :ok
@@ -250,20 +259,20 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   end
 
   defp run_agent_and_reply(thread, source_type, reply_token, source_id, locale) do
-    {prompt, tools} =
+    {prompt, tasks} =
       case source_type do
-        "teacher" -> {Assistant.teacher_system_prompt(locale), Assistant.tools()}
-        _ -> {Assistant.user_system_prompt(locale), []}
+        "teacher" -> {Assistant.teacher_system_prompt(locale), Tasks.for_chat(:teacher)}
+        _ -> {Assistant.user_system_prompt(locale), Tasks.for_chat(:student)}
       end
 
-    case Agent.run(thread, tools, prompt) do
+    case Agent.run(thread, tasks, prompt, Assistant.list_messages(thread)) do
       {:ok, %{text: reply_text, draft_ids: draft_ids}} ->
         send_reply(reply_token, source_id, reply_text, draft_ids)
         :ok
 
       {:error, reason} ->
         Logger.error(
-          "Ganesha.Assistant.Agent.run/3 failed for thread #{thread.id}: #{inspect(reason)}"
+          "Ganesha.Assistant.Agent.run/4 failed for thread #{thread.id}: #{inspect(reason)}"
         )
 
         apology =

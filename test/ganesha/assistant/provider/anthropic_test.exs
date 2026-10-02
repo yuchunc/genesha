@@ -115,4 +115,25 @@ defmodule Ganesha.Assistant.Provider.AnthropicTest do
     assert {:ok, %{text: text}} = Anthropic.complete([], [], system: "sys", plug: stub)
     assert text == "先查詢中\n查到了"
   end
+
+  test "asks for up to 4096 output tokens" do
+    parent = self()
+
+    stub = fn conn ->
+      {:ok, raw, conn} = Plug.Conn.read_body(conn)
+      send(parent, {:body, Jason.decode!(raw)})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(
+        200,
+        Jason.encode!(%{"content" => [%{"type" => "text", "text" => "ok"}]})
+      )
+    end
+
+    assert {:ok, _} =
+             Anthropic.complete([%{role: "user", content: "hi"}], [], system: "s", plug: stub)
+
+    assert_receive {:body, %{"max_tokens" => 4096}}
+  end
 end
