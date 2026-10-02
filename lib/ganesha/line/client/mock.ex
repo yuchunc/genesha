@@ -19,6 +19,12 @@ defmodule Ganesha.Line.Client.Mock do
   end
 
   @impl true
+  def loading(chat_id, seconds) do
+    record(:loading, {chat_id, seconds})
+    :ok
+  end
+
+  @impl true
   def get_group_member(_group_id, _user_id), do: {:ok, %{"displayName" => "測試學生"}}
 
   # `text_message/1,2` is a pure payload builder with nothing worth faking - delegate

@@ -50,3 +50,6 @@ config :phoenix,
   sort_verified_routes_query_params: true
 
 config :ganesha, :line_client, Ganesha.Line.Client.Mock
+
+# The real LINE client only ever talks to Req.Test stubs in tests.
+config :ganesha, Ganesha.Line.Client, req_options: [plug: {Req.Test, Ganesha.Line.Client}]

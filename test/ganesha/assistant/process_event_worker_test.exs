@@ -98,6 +98,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       @behaviour Ganesha.Line.ClientBehaviour
       def reply(_reply_token, _messages), do: {:error, :expired}
       def push(to, messages), do: LineMock.push(to, messages)
+      def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
       def get_group_member(g, u), do: LineMock.get_group_member(g, u)
       defdelegate text_message(text, draft_id \\ nil), to: Ganesha.Line.Client
     end

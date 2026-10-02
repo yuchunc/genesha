@@ -19,6 +19,12 @@ defmodule Ganesha.Line.Client do
     post("/v2/bot/message/push", %{to: to, messages: messages})
   end
 
+  @doc "Shows LINE's loading animation in a 1:1 chat while the assistant thinks (spec §6.1)."
+  @impl true
+  def loading(chat_id, seconds) when is_integer(seconds) and seconds > 0 do
+    post("/v2/bot/chat/loading/start", %{chatId: chat_id, loadingSeconds: seconds})
+  end
+
   @impl true
   def get_group_member(group_id, user_id) do
     case Req.get(req(), url: "/v2/bot/group/#{group_id}/member/#{user_id}") do
@@ -30,7 +36,7 @@ defmodule Ganesha.Line.Client do
 
   defp post(path, body) do
     case Req.post(req(), url: path, json: body) do
-      {:ok, %Req.Response{status: 200}} -> :ok
+      {:ok, %Req.Response{status: status}} when status in 200..299 -> :ok
       {:ok, %Req.Response{status: status, body: body}} -> {:error, {status, body}}
       {:error, reason} -> {:error, reason}
     end
@@ -38,7 +44,9 @@ defmodule Ganesha.Line.Client do
 
   defp req do
     token = Application.fetch_env!(:ganesha, :line) |> Keyword.fetch!(:channel_access_token)
-    Req.new(base_url: @base_url, headers: [{"authorization", "Bearer #{token}"}])
+    options = :ganesha |> Application.get_env(__MODULE__, []) |> Keyword.get(:req_options, [])
+
+    Req.new([base_url: @base_url, headers: [{"authorization", "Bearer #{token}"}]] ++ options)
   end
 
   @doc "A plain text message, or one with a 確認/捨棄 quick reply for `draft_id`."
@@ -56,6 +64,11 @@ defmodule Ganesha.Line.Client do
         ]
       }
     }
+  end
+
+  @doc "A Flex message holding one bubble or carousel; LINE caps `altText` at 400 characters."
+  def flex_message(alt_text, contents) when is_binary(alt_text) and is_map(contents) do
+    %{type: "flex", altText: String.slice(alt_text, 0, 400), contents: contents}
   end
 
   defp quick_reply_item(label, data),
