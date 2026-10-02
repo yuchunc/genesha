@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the six change tasks for students and money (spec §3.1 #12, #15–20) to the Teacher chat so enrollment, payment confirmation, price overrides, attendance/no-shows, makeup bookings, new students, and package edits all flow through Drafts with the same domain checks as the web UI.
+**Goal:** Add the seven change tasks for students and money (spec §3.1 #12, #15–20) to the Teacher chat so enrollment, payment confirmation, price overrides, attendance/no-shows, makeup bookings, new students, and package edits all flow through Drafts with the same domain checks as the web UI.
 
 **Architecture:** One `Ganesha.Assistant.Tasks.*` module per task implements `propose/2` (resolve ids, mirror LiveView guards, capture before-values in `parsed`), `apply/2` (re-check then call `Enrolling`, `Sales`, `Roster`, `People`, or `Catalog`), and `describe/2` (display only from `parsed`). `Ganesha.Assistant.Tasks` registers all seven modules on `@teacher` only. A few non-raising getters (`get_slot/1`, `get_payment/1`, `get_purchase/1`, `get_attendance/1`, `get_credit/1`) let tasks turn bad ids into tool errors without raising.
 
