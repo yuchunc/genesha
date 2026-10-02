@@ -20,6 +20,8 @@ defmodule Ganesha.Assistant do
     end
   end
 
+  def get_thread!(id), do: Repo.get!(Thread, id)
+
   @supported_locales ~w(zh-TW en)
 
   def set_locale(%Thread{} = thread, locale) when locale in @supported_locales do
@@ -44,6 +46,29 @@ defmodule Ganesha.Assistant do
       line_message_id: opts[:line_message_id]
     })
     |> Repo.insert()
+  end
+
+  @doc """
+  Appends `text` to the thread's latest assistant reply (spec §6.1 step 7),
+  so the model later sees which cards it sent.
+  """
+  def append_to_last_reply(%Thread{} = thread, text) when is_binary(text) do
+    reply =
+      Repo.one(
+        from m in Message,
+          where: m.thread_id == ^thread.id and m.role == "assistant" and is_nil(m.tool_calls),
+          order_by: [desc: m.id],
+          limit: 1
+      )
+
+    case reply do
+      nil ->
+        {:error, :no_reply}
+
+      message ->
+        content = Enum.join(Enum.reject([message.content, text], &(&1 in [nil, ""])), "\n")
+        message |> Ecto.Changeset.change(content: content) |> Repo.update()
+    end
   end
 
   @doc """
@@ -90,6 +115,16 @@ defmodule Ganesha.Assistant do
   end
 
   def get_draft!(id), do: Repo.get!(Draft, id)
+
+  def get_draft(id) when is_integer(id), do: Repo.get(Draft, id)
+
+  @doc "The Drafts with these ids, in the order given."
+  def get_drafts([]), do: []
+
+  def get_drafts(ids) do
+    by_id = Repo.all(from d in Draft, where: d.id in ^ids) |> Map.new(&{&1.id, &1})
+    ids |> Enum.map(&Map.get(by_id, &1)) |> Enum.reject(&is_nil/1)
+  end
 
   @doc """
   Confirms a pending Draft (spec §4.2, §6.3). A compare-and-set claims it

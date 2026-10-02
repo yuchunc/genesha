@@ -49,22 +49,8 @@ defmodule Ganesha.Line.Client do
     Req.new([base_url: @base_url, headers: [{"authorization", "Bearer #{token}"}]] ++ options)
   end
 
-  @doc "A plain text message, or one with a 確認/捨棄 quick reply for `draft_id`."
-  def text_message(text, draft_id \\ nil)
-  def text_message(text, nil), do: %{type: "text", text: text}
-
-  def text_message(text, draft_id) when is_integer(draft_id) do
-    %{
-      type: "text",
-      text: text,
-      quickReply: %{
-        items: [
-          quick_reply_item("確認", "action=confirm&draft_id=#{draft_id}"),
-          quick_reply_item("捨棄", "action=discard&draft_id=#{draft_id}")
-        ]
-      }
-    }
-  end
+  @doc "A plain text message. Drafts are confirmed from their Flex card (`Ganesha.Line.Cards`)."
+  def text_message(text), do: %{type: "text", text: text}
 
   @doc "A Flex message holding one bubble or carousel; LINE caps `altText` at 400 characters."
   def flex_message(alt_text, contents) when is_binary(alt_text) and is_map(contents) do

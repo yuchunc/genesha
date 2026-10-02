@@ -1,15 +1,13 @@
 defmodule Ganesha.Assistant.ProcessEventWorker do
   @moduledoc """
-  Runs one `line_events` row through the shared agent loop (spec §2). The
-  teacher's 1:1 messages get a LINE reply (falling back to push) carrying
-  the agent's answer and, for every draft created this turn, its own
-  confirm/discard quick reply. A failed agent run is reported back to the
-  teacher rather than retried - a retry would re-run `handle_teacher_message/1`
-  with the same args, which has already appended her message (and any
-  partial assistant/tool/draft rows the failed turn wrote), re-ingesting it
-  and risking duplicate pending drafts for one real fact. Every other event
-  is currently a no-op — group messages are wired in by Task 17, postbacks
-  by Task 16.
+  Routes one `line_events` row (spec §6.1). 1:1 text messages go to
+  `Ganesha.Assistant.Conversation` once the sender has picked a language (the
+  first-contact picker lives here); 1:1 postbacks go to
+  `Conversation.handle_postback/4`. Group chat messages run the agent with
+  the Group chat's three tasks and are never answered. Unsend and
+  messageEdited correct the stored text and discard the message's pending
+  Drafts. A failed agent run is logged, never retried: a retry would
+  re-append the message and risk duplicate Drafts for one fact.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
@@ -17,11 +15,8 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
 
   require Logger
 
-  alias Ganesha.Assistant
-  alias Ganesha.Assistant.{Agent, Prompts, Snapshot, Tasks}
-  alias Ganesha.Clock
-  alias Ganesha.Line
-  alias Ganesha.Repo
+  alias Ganesha.{Assistant, Clock, Line, Repo}
+  alias Ganesha.Assistant.{Agent, Conversation, Prompts, Snapshot, Tasks}
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"line_event_id" => line_event_id}}) do
@@ -39,21 +34,25 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
       else: handle_user_message(event, teacher_id)
   end
 
-  defp route(%{source_type: "user", raw_type: "postback"} = event, teacher_id) do
-    handle_user_postback(event, teacher_id)
+  defp route(
+         %{
+           source_type: "user",
+           raw_type: "postback",
+           source_id: source_id,
+           payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}
+         },
+         teacher_id
+       ) do
+    Conversation.handle_postback(URI.decode_query(data), reply_token, source_id, teacher_id)
   end
 
   defp route(
          %{source_type: "group", source_id: group_id, raw_type: "message"} = event,
          teacher_id
        ) do
-    sender_id = get_in(event.payload, ["source", "userId"])
-
-    if sender_id == teacher_id do
-      :ok
-    else
-      handle_group_message(event, group_id)
-    end
+    if get_in(event.payload, ["source", "userId"]) == teacher_id,
+      do: :ok,
+      else: handle_group_message(event, group_id)
   end
 
   defp route(%{raw_type: "unsend"} = event, _teacher_id), do: handle_unsend(event)
@@ -70,16 +69,16 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
          },
          teacher_id
        ) do
-    {source_type, thread} = user_thread(source_id, teacher_id)
+    thread = Conversation.thread_for(source_id, teacher_id)
 
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
     if is_nil(thread.locale) do
-      line_client().reply(reply_token, [line_client().language_picker_message()])
-      :ok
+      picker = Line.Client.language_picker_message()
+      Conversation.deliver(reply_token, source_id, [picker], nil)
     else
-      run_agent_and_reply(thread, source_type, reply_token, source_id, thread.locale)
+      Conversation.handle_message(thread, reply_token, source_id)
     end
   end
 
@@ -89,20 +88,14 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
          payload: %{"replyToken" => reply_token, "message" => %{"text" => text}},
          source_id: source_id
        }) do
-    send_reply(reply_token, source_id, "收到你的訊息：#{text}", [])
-    :ok
+    messages = [Line.Client.text_message("收到你的訊息：#{text}")]
+    Conversation.deliver(reply_token, source_id, messages, nil)
   end
 
   defp handle_simple_reply(_event), do: :ok
 
-  defp simple_reply?() do
-    Application.get_env(:ganesha, :line, [])
-    |> Keyword.get(:simple_reply, false)
-  end
-
-  # No `line_client()` call anywhere in this function or anything it calls —
-  # that absence, not a runtime check, is what guarantees the group never
-  # receives a message from the bot (spec §4.3, §8 guardrail #2).
+  # Nothing on this path calls LINE: that absence, not a runtime check,
+  # guarantees the Group chat never hears from the bot.
   defp handle_group_message(
          %{payload: %{"message" => %{"id" => line_message_id, "text" => text}}},
          group_id
@@ -112,30 +105,16 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
-    case Agent.run(
-           thread,
-           Tasks.for_chat(:group),
-           group_system(),
-           Assistant.list_messages(thread)
-         ) do
-      {:ok, _} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.error(
-          "Ganesha.Assistant.Agent.run/4 failed for group thread #{thread.id}: #{inspect(reason)}"
-        )
-
-        :ok
-    end
+    thread |> run_group_agent() |> log_failure(thread, "group message")
   end
 
   defp handle_group_message(_event, _group_id), do: :ok
 
-  # The Group chat's tasks need ids, so it gets the snapshot too; never
-  # summaries (ADR 0003).
-  defp group_system do
-    Prompts.group() <> "\n\n" <> Prompts.snapshot_section(Snapshot.build(Clock.today()))
+  # The Group chat's three tasks, the snapshot their ids come from, and its
+  # full history; never summaries (ADR 0003).
+  defp run_group_agent(thread) do
+    system = Prompts.group() <> "\n\n" <> Prompts.snapshot_section(Snapshot.build(Clock.today()))
+    Agent.run(thread, Tasks.for_chat(:group), system, Assistant.list_messages(thread))
   end
 
   defp handle_unsend(%{payload: %{"unsend" => %{"messageId" => line_message_id}}}) do
@@ -161,39 +140,25 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         message |> Ecto.Changeset.change(content: new_text) |> Repo.update!()
         discard_pending_drafts_for(message)
 
-        thread = Repo.get!(Assistant.Thread, message.thread_id)
+        thread = Assistant.get_thread!(message.thread_id)
 
-        system_prompt =
-          case thread.source_type do
-            "teacher" ->
-              Prompts.teacher(thread.locale || "zh-TW", Snapshot.build(Clock.today()), nil)
+        result =
+          if thread.source_type == "group",
+            do: run_group_agent(thread),
+            else: Conversation.run_turn(thread)
 
-            "group" ->
-              group_system()
-
-            _ ->
-              Prompts.student(thread.locale || "zh-TW")
-          end
-
-        tasks =
-          case thread.source_type do
-            "teacher" -> Tasks.for_chat(:teacher)
-            "group" -> Tasks.for_chat(:group)
-            _ -> Tasks.for_chat(:student)
-          end
-
-        case Agent.run(thread, tasks, system_prompt, Assistant.list_messages(thread)) do
-          {:ok, _} ->
-            :ok
-
-          {:error, reason} ->
-            Logger.error(
-              "Ganesha.Assistant.Agent.run/4 failed after messageEdited for thread #{thread.id}: #{inspect(reason)}"
-            )
-
-            :ok
-        end
+        log_failure(result, thread, "messageEdited")
     end
+  end
+
+  defp log_failure({:ok, _turn}, _thread, _what), do: :ok
+
+  defp log_failure({:error, reason}, thread, what) do
+    Logger.error(
+      "Ganesha.Assistant.Agent.run/4 failed after #{what} for thread #{thread.id}: #{inspect(reason)}"
+    )
+
+    :ok
   end
 
   defp discard_pending_drafts_for(%Assistant.Message{id: id}) do
@@ -202,156 +167,8 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     |> Enum.each(&Assistant.discard_draft/1)
   end
 
-  defp handle_user_postback(
-         %{
-           payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}},
-           source_id: source_id
-         },
-         teacher_id
-       ) do
-    params = URI.decode_query(data)
-
-    case params["action"] do
-      "set_locale" ->
-        handle_set_locale_postback(reply_token, source_id, params["locale"], teacher_id)
-
-      "confirm" ->
-        handle_draft_postback(reply_token, params, source_id, teacher_id)
-
-      "discard" ->
-        handle_draft_postback(reply_token, params, source_id, teacher_id)
-
-      _ ->
-        line_client().reply(reply_token, [line_client().text_message("無法辨識的操作。")])
-        :ok
-    end
+  defp simple_reply? do
+    Application.get_env(:ganesha, :line, [])
+    |> Keyword.get(:simple_reply, false)
   end
-
-  defp handle_set_locale_postback(reply_token, source_id, locale, teacher_id) do
-    {source_type, thread} = user_thread(source_id, teacher_id)
-
-    case Assistant.set_locale(thread, locale) do
-      {:ok, thread} ->
-        if pending_user_turn?(thread) do
-          run_agent_and_reply(thread, source_type, reply_token, source_id, locale)
-        else
-          send_reply(reply_token, source_id, locale_welcome(locale), [])
-          :ok
-        end
-
-      {:error, _} ->
-        line_client().reply(reply_token, [line_client().language_picker_message()])
-        :ok
-    end
-  end
-
-  defp handle_draft_postback(reply_token, params, source_id, teacher_id) do
-    if source_id != teacher_id do
-      line_client().reply(reply_token, [line_client().text_message("無法辨識的操作。")])
-      :ok
-    else
-      draft = Assistant.get_draft!(String.to_integer(params["draft_id"]))
-      reply_text = resolve_postback(params["action"], draft)
-      line_client().reply(reply_token, [line_client().text_message(reply_text)])
-      :ok
-    end
-  end
-
-  defp user_thread(source_id, teacher_id) do
-    source_type = if source_id == teacher_id, do: "teacher", else: "user"
-    {:ok, thread} = Assistant.get_or_create_thread(source_type, source_id)
-    {source_type, thread}
-  end
-
-  defp pending_user_turn?(thread) do
-    case List.last(Assistant.list_messages(thread)) do
-      %{role: "user"} -> true
-      _ -> false
-    end
-  end
-
-  defp run_agent_and_reply(thread, source_type, reply_token, source_id, locale) do
-    {prompt, tasks} =
-      case source_type do
-        "teacher" ->
-          {Prompts.teacher(locale, Snapshot.build(Clock.today()), nil), Tasks.for_chat(:teacher)}
-
-        _ ->
-          {Prompts.student(locale), Tasks.for_chat(:student)}
-      end
-
-    case Agent.run(thread, tasks, prompt, Assistant.list_messages(thread)) do
-      {:ok, %{text: reply_text, draft_ids: draft_ids}} ->
-        send_reply(reply_token, source_id, reply_text, draft_ids)
-        :ok
-
-      {:error, reason} ->
-        Logger.error(
-          "Ganesha.Assistant.Agent.run/4 failed for thread #{thread.id}: #{inspect(reason)}"
-        )
-
-        apology =
-          if locale == "en",
-            do: "Sorry, I couldn't process that message. Please try again later.",
-            else: "抱歉，我現在無法處理這則訊息，請稍後再試一次。"
-
-        send_reply(reply_token, source_id, apology, [])
-        :ok
-    end
-  end
-
-  defp locale_welcome("en"), do: "Thanks! How can I help you today?"
-  defp locale_welcome(_), do: "好的！有什麼需要我幫忙的？"
-
-  defp resolve_postback("confirm", draft) do
-    case Assistant.confirm_draft(draft, "line:teacher") do
-      {:ok, _} -> "已確認並記錄。"
-      {:error, :not_pending} -> "這筆草稿已經處理過了。"
-      {:error, {:failed, failed}} -> "無法套用：#{failed.failure_reason}"
-    end
-  end
-
-  defp resolve_postback("discard", draft) do
-    case Assistant.discard_draft(draft) do
-      {:ok, _} -> "已捨棄。"
-      {:error, :not_pending} -> "這筆草稿已經處理過了。"
-    end
-  end
-
-  defp resolve_postback(_unknown, _draft), do: "無法辨識的操作。"
-
-  defp send_reply(reply_token, source_id, text, draft_ids) do
-    messages = build_messages(text, draft_ids)
-
-    case line_client().reply(reply_token, messages) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("line reply failed (#{inspect(reason)}), falling back to push")
-
-        case line_client().push(source_id, messages) do
-          :ok -> :ok
-          {:error, push_reason} -> Logger.error("line push also failed: #{inspect(push_reason)}")
-        end
-
-        :ok
-    end
-  end
-
-  # The first draft's confirm/discard rides on the actual answer; any further
-  # draft from the same turn (e.g. a payment plus an attendance mark in one
-  # message) gets its own short follow-up message with its own quick reply -
-  # there is no other surface a draft can be confirmed from, so leaving it
-  # off any message would make that draft permanently unconfirmable.
-  defp build_messages(text, []), do: [line_client().text_message(text)]
-
-  defp build_messages(text, [first_draft_id | rest]) do
-    [
-      line_client().text_message(text, first_draft_id)
-      | Enum.map(rest, &line_client().text_message("另一筆草稿待確認", &1))
-    ]
-  end
-
-  defp line_client, do: Application.get_env(:ganesha, :line_client, Ganesha.Line.Client)
 end
