@@ -121,16 +121,24 @@ defmodule Ganesha.Assistant do
     role <> studio_vocabulary(locale)
   end
 
-  def user_system_prompt(locale \\ "zh-TW") do
-    role =
-      if locale == "en",
-        do: "You are a helpful assistant for this yoga studio's LINE account.",
-        else: "你是這間瑜珈教室 LINE 官方帳號的助理。"
+  # Non-teacher 1:1 chats run with no tools, so the model has no studio data at
+  # all; without this rule it invents class times and prices.
+  def user_system_prompt("en") do
+    """
+    You are a helpful assistant for this yoga studio's LINE account. Reply in English. \
+    Be brief and friendly. You have no access to the studio's schedule, prices, \
+    class availability, bookings, or anyone's class credits. Never state or guess \
+    times, dates, prices, or availability. When asked about any of these, say the \
+    teacher will reply personally.
+    """
+  end
 
-    role <>
-      if locale == "en",
-        do: " Reply in English. Be brief and friendly.",
-        else: " 只用繁體中文回覆，語氣簡短友善。"
+  def user_system_prompt(_locale) do
+    """
+    你是這間瑜珈教室 LINE 官方帳號的助理。只用繁體中文回覆，語氣簡短友善。\
+    你看不到教室的課表、價格、名額、預約或任何人的堂數。絕對不要說出或猜測\
+    上課時間、日期、價格或名額；被問到這些時，告訴對方老師會親自回覆。
+    """
   end
 
   def group_system_prompt do
