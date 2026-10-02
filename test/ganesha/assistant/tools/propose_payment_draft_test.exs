@@ -15,7 +15,7 @@ defmodule Ganesha.Assistant.Tools.ProposePaymentDraftTest do
 
     assert content =~ "draft"
     draft = Assistant.get_draft!(draft_id)
-    assert draft.kind == "payment"
+    assert draft.kind == "record_payment"
     assert draft.state == "pending"
     assert draft.parsed["amount"] == 1200
     assert draft.confidence == 0.8

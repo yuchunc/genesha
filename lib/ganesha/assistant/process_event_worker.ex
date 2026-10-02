@@ -280,11 +280,10 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   defp locale_welcome(_), do: "好的！有什麼需要我幫忙的？"
 
   defp resolve_postback("confirm", draft) do
-    case Assistant.apply_draft(draft, "line:teacher") do
+    case Assistant.confirm_draft(draft, "line:teacher") do
       {:ok, _} -> "已確認並記錄。"
-      {:error, :missing_purchase_id} -> "這筆草稿缺少對應的購買記錄，請於 App 內編輯後確認。"
       {:error, :not_pending} -> "這筆草稿已經處理過了。"
-      {:error, _changeset} -> "記錄失敗，請於 App 內手動處理。"
+      {:error, {:failed, failed}} -> "無法套用：#{failed.failure_reason}"
     end
   end
 

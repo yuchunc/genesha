@@ -2,8 +2,8 @@ defmodule Ganesha.Assistant.Tools.ProposePaymentDraft do
   @moduledoc """
   Creates a pending payment draft (spec §4, §5). Supplying `purchase_id` is
   optional here — an agent that has already called `student_history` can
-  resolve it itself; when omitted, `Ganesha.Assistant.apply_draft/2` refuses
-  to guess and routes the teacher to the in-app edit flow instead.
+  resolve it itself; when omitted, `Ganesha.Assistant.confirm_draft/2` refuses
+  to guess and marks the Draft failed instead.
   """
   @behaviour Ganesha.Assistant.Tool
 
@@ -46,7 +46,7 @@ defmodule Ganesha.Assistant.Tools.ProposePaymentDraft do
       :ok ->
         {:ok, draft} =
           Assistant.create_draft(thread, %{
-            kind: "payment",
+            kind: "record_payment",
             student_id: student_id,
             parsed: Map.delete(parsed, "student_id"),
             confidence: confidence

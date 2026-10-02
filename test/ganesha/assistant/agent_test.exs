@@ -29,7 +29,9 @@ defmodule Ganesha.Assistant.AgentTest do
 
     @impl true
     def call(_input, thread) do
-      {:ok, draft} = Assistant.create_draft(thread, %{kind: "unknown", parsed: %{}})
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "x"}})
+
       {"draft created", draft.id}
     end
   end

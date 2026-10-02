@@ -1,7 +1,81 @@
 defmodule Ganesha.AssistantTest do
   use Ganesha.DataCase
-  alias Ganesha.Assistant
-  alias Ganesha.{Catalog, People, Roster, Sales, Studio}
+
+  alias Ganesha.{Assistant, Catalog, Clock, Enrolling, People, Sales, Studio}
+  alias Ganesha.Assistant.Draft
+  alias Ganesha.Assistant.Tasks.{BookOneOff, RecordPayment}
+  alias Ganesha.Sales.Payment
+
+  setup do
+    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+    %{thread: thread}
+  end
+
+  defp ctx(thread), do: %{thread: thread, locale: "zh-TW", today: Clock.today()}
+
+  defp makeup(thread, note, student_id \\ nil) do
+    Assistant.create_draft(thread, %{
+      kind: "makeup_request",
+      student_id: student_id,
+      parsed: %{"note" => note}
+    })
+  end
+
+  defp payment_draft(thread, overrides \\ %{}) do
+    {:ok, student} = People.create_student(%{display_name: "Lulu"})
+    {:ok, package} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+
+    {:ok, _} =
+      Sales.create_purchase(%{student_id: student.id, package_id: package.id, list_price: 400})
+
+    {:ok, %{student_id: student_id, parsed: parsed}} =
+      RecordPayment.propose(
+        %{"student_id" => student.id, "amount" => 400, "method" => "cash"},
+        ctx(thread)
+      )
+
+    {:ok, draft} =
+      Assistant.create_draft(thread, %{
+        kind: "record_payment",
+        student_id: student_id,
+        parsed: Map.merge(parsed, overrides)
+      })
+
+    draft
+  end
+
+  defp one_off_draft(thread, overrides \\ %{}) do
+    {:ok, student} = People.create_student(%{display_name: "Amy"})
+
+    {:ok, slot} =
+      Studio.create_slot(%{
+        weekday: 3,
+        start_time: ~T[19:00:00],
+        end_time: ~T[20:15:00],
+        default_style: "Hatha",
+        label: "基礎"
+      })
+
+    {:ok, session} =
+      Studio.create_session(%{slot_id: slot.id, date: ~D[2026-10-07], style: "Hatha"})
+
+    {:ok, package} = Catalog.create_package(%{name: "體驗", kind: "trial", price_per_class: 300})
+
+    {:ok, %{student_id: student_id, parsed: parsed}} =
+      BookOneOff.propose(
+        %{"student_id" => student.id, "session_id" => session.id, "package_id" => package.id},
+        ctx(thread)
+      )
+
+    {:ok, draft} =
+      Assistant.create_draft(thread, %{
+        kind: "book_one_off",
+        student_id: student_id,
+        parsed: Map.merge(parsed, overrides)
+      })
+
+    %{draft: draft, student: student, session: session, package: package}
+  end
 
   test "get_or_create_thread/2 creates once and reuses on repeat calls" do
     assert {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
@@ -20,182 +94,208 @@ defmodule Ganesha.AssistantTest do
     assert "is invalid" in errors_on(changeset).source_type
   end
 
-  test "append_message/4 and list_messages/1 round-trip in insertion order" do
-    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
-
+  test "append_message/4 and list_messages/1 round-trip in insertion order", %{thread: thread} do
     {:ok, _} = Assistant.append_message(thread, "user", "誰欠錢？", nil)
 
     {:ok, _} =
       Assistant.append_message(thread, "assistant", nil, [
-        %{id: "t1", name: "student_balance", input: %{}}
+        %{id: "t1", name: "record_payment", input: %{}}
       ])
 
     assert [first, second] = Assistant.list_messages(thread)
     assert first.role == "user"
     assert first.content == "誰欠錢？"
     assert second.role == "assistant"
-    assert [%{"id" => "t1", "name" => "student_balance"}] = second.tool_calls
+    assert [%{"id" => "t1", "name" => "record_payment"}] = second.tool_calls
   end
 
-  test "append_message/4 rejects an unknown role" do
-    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+  test "append_message/4 rejects an unknown role", %{thread: thread} do
     assert {:error, changeset} = Assistant.append_message(thread, "system", "x", nil)
     assert "is invalid" in errors_on(changeset).role
   end
 
-  test "create_draft/2 stamps the thread's latest user message as its origin" do
-    {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
-    {:ok, _} = Assistant.append_message(thread, "user", "2.Lulu （Line pay 1200元）", nil)
-
-    assert {:ok, draft} =
-             Assistant.create_draft(thread, %{
-               kind: "payment",
-               parsed: %{"amount" => 1200, "method" => "line_pay"},
-               confidence: 0.8
-             })
-
-    [origin] = Assistant.list_messages(thread)
-    assert draft.origin_message_id == origin.id
-    assert draft.state == "pending"
-  end
-
-  test "create_draft/2 rejects an unknown kind" do
-    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
-
-    assert {:error, changeset} =
-             Assistant.create_draft(thread, %{kind: "bogus", parsed: %{}})
-
-    assert "is invalid" in errors_on(changeset).kind
-  end
-
-  test "get_draft!/1 fetches by id" do
-    {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
-    {:ok, draft} = Assistant.create_draft(thread, %{kind: "unknown", parsed: %{}})
+  test "get_draft!/1 fetches by id", %{thread: thread} do
+    {:ok, draft} = makeup(thread, "8/17")
     assert Assistant.get_draft!(draft.id).id == draft.id
   end
 
-  describe "apply_draft/2 and discard_draft/1" do
-    test "applying a payment draft records and confirms a payment" do
-      {:ok, student} = People.create_student(%{display_name: "Lulu"})
-      {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+  describe "create_draft/3" do
+    test "stamps the thread's latest user message as its origin" do
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      {:ok, _} = Assistant.append_message(thread, "user", "蘭子補課8/17or 8/31", nil)
 
-      {:ok, purchase} =
-        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+      assert {:ok, draft} = makeup(thread, "8/17 或 8/31")
 
-      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+      [origin] = Assistant.list_messages(thread)
+      assert draft.origin_message_id == origin.id
+      assert draft.state == "pending"
+    end
 
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{
-          kind: "payment",
-          parsed: %{
-            "purchase_id" => purchase.id,
-            "amount" => 400,
-            "method" => "cash",
-            "paid_on" => Date.to_iso8601(Ganesha.Clock.today())
-          }
-        })
+    test "rejects a kind that names no change task, including retired kinds", %{thread: thread} do
+      for kind <- ["bogus", "payment", "attendance", "unknown", "ask_teacher"] do
+        assert {:error, changeset} = Assistant.create_draft(thread, %{kind: kind, parsed: %{}})
+        assert "is invalid" in errors_on(changeset).kind
+      end
+    end
 
-      assert {:ok, updated} = Assistant.apply_draft(draft, "line:teacher")
-      assert updated.state == "applied"
-      assert updated.applied_record_type == "Ganesha.Sales.Payment"
+    test "replaces a pending Draft of the same thread", %{thread: thread} do
+      {:ok, old} = makeup(thread, "8/17")
 
-      [payment] = Sales.list_payments_for_purchase(purchase.id)
+      assert {:ok, new} =
+               Assistant.create_draft(
+                 thread,
+                 %{kind: "makeup_request", parsed: %{"note" => "8/24"}},
+                 replaces: old.id
+               )
+
+      old = Repo.reload!(old)
+      assert old.state == "replaced"
+      assert old.replaced_by_id == new.id
+      assert new.state == "pending"
+    end
+
+    test "leaves another thread's Draft and a settled Draft alone", %{thread: thread} do
+      {:ok, group} = Assistant.get_or_create_thread("group", "Cabc")
+      {:ok, foreign} = makeup(group, "x")
+      {:ok, settled} = makeup(thread, "y")
+      {:ok, _} = Assistant.discard_draft(settled)
+
+      for old <- [foreign, settled] do
+        assert {:ok, _} =
+                 Assistant.create_draft(
+                   thread,
+                   %{kind: "makeup_request", parsed: %{"note" => "z"}},
+                   replaces: old.id
+                 )
+      end
+
+      assert Repo.reload!(foreign).state == "pending"
+      assert Repo.reload!(settled).state == "discarded"
+    end
+  end
+
+  describe "confirm_draft/2" do
+    test "applies a record_payment Draft through Sales", %{thread: thread} do
+      draft = payment_draft(thread)
+
+      assert {:ok,
+              %Draft{state: "applied", applied_record_type: "Ganesha.Sales.Payment"} = applied} =
+               Assistant.confirm_draft(draft, "line:teacher")
+
+      payment = Repo.get!(Payment, applied.applied_record_id)
       assert payment.state == "confirmed"
-      assert payment.source == "line_draft"
+      assert payment.confirmed_by == "line:teacher"
     end
 
-    test "applying a payment draft with no paid_on defaults to today" do
-      {:ok, student} = People.create_student(%{display_name: "Lulu"})
-      {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+    test "applies exactly once when confirmed twice at the same time", %{thread: thread} do
+      draft = payment_draft(thread)
 
-      {:ok, purchase} =
-        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 400})
+      results =
+        [
+          Task.async(fn -> Assistant.confirm_draft(draft, "line:teacher") end),
+          Task.async(fn -> Assistant.confirm_draft(draft, "line:teacher") end)
+        ]
+        |> Task.await_many()
 
-      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
-
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{
-          kind: "payment",
-          parsed: %{"purchase_id" => purchase.id, "amount" => 400, "method" => "cash"}
-        })
-
-      assert {:ok, _updated} = Assistant.apply_draft(draft, "line:teacher")
-
-      [payment] = Sales.list_payments_for_purchase(purchase.id)
-      assert payment.paid_on == Ganesha.Clock.today()
+      assert Enum.count(results, &match?({:ok, %Draft{state: "applied"}}, &1)) == 1
+      assert Enum.count(results, &(&1 == {:error, :not_pending})) == 1
+      assert Repo.aggregate(Payment, :count) == 1
     end
 
-    test "applying a payment draft without a purchase_id fails instead of guessing" do
-      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+    test "marks the Draft failed with an atom reason and writes nothing", %{thread: thread} do
+      draft = payment_draft(thread, %{"purchase_id" => nil})
 
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{kind: "payment", parsed: %{"amount" => 400}})
+      assert {:error, {:failed, %Draft{state: "failed", failure_reason: "missing_purchase_id"}}} =
+               Assistant.confirm_draft(draft, "line:teacher")
 
-      assert {:error, :missing_purchase_id} = Assistant.apply_draft(draft, "line:teacher")
-      assert Assistant.get_draft!(draft.id).state == "pending"
+      assert Repo.reload!(draft).state == "failed"
+      assert Repo.aggregate(Payment, :count) == 0
     end
 
-    test "applying an attendance draft creates an attendance row" do
-      {:ok, slot} =
-        Studio.create_slot(%{
-          weekday: 1,
-          start_time: ~T[09:00:00],
-          end_time: ~T[10:00:00],
-          default_style: "Hatha",
-          label: "一"
-        })
+    test "marks the Draft failed with the changeset's errors and rolls back the whole change", %{
+      thread: thread
+    } do
+      %{draft: draft, student: student, session: session, package: package} =
+        one_off_draft(thread)
 
-      {:ok, session} =
-        Studio.create_session(%{slot_id: slot.id, date: ~D[2026-09-14], style: "Hatha"})
+      # Booked on the web after the Draft was made.
+      {:ok, _} = Enrolling.add_one_off(session, student, package, [])
 
-      {:ok, student} = People.create_student(%{display_name: "Lulu"})
-      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
-
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{
-          kind: "attendance",
-          parsed: %{"session_id" => session.id, "student_id" => student.id, "kind" => "drop_in"}
-        })
-
-      assert {:ok, updated} = Assistant.apply_draft(draft, "line:teacher")
-      assert updated.applied_record_type == "Ganesha.Roster.Attendance"
-      assert [attendance] = Roster.list_for_session(session)
-      assert attendance.student_id == student.id
+      assert {:error, {:failed, failed}} = Assistant.confirm_draft(draft, "line:teacher")
+      assert failed.failure_reason == "session_id: has already been taken"
+      assert length(Sales.list_purchases_for_student(student.id)) == 1
     end
 
-    test "applying an attendance draft proposing a makeup is refused, never books one for free" do
-      {:ok, student} = People.create_student(%{display_name: "Lulu"})
-      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+    test "an exception rolls back and leaves the Draft pending", %{thread: thread} do
+      %{draft: draft, student: student} = one_off_draft(thread, %{"custom_amount" => -5})
 
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{
-          kind: "attendance",
-          parsed: %{"session_id" => 1, "student_id" => student.id, "kind" => "makeup"}
-        })
+      assert_raise MatchError, fn -> Assistant.confirm_draft(draft, "line:teacher") end
 
-      assert {:error, :makeup_requires_credit} = Assistant.apply_draft(draft, "line:teacher")
-      assert Assistant.get_draft!(draft.id).state == "pending"
-      assert Roster.list_for_student(student.id) == []
+      assert Repo.reload!(draft).state == "pending"
+      assert Sales.list_purchases_for_student(student.id) == []
     end
 
-    test "applying a makeup_request draft marks it applied without creating a ledger row" do
-      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+    test "a Draft that is not pending is never applied", %{thread: thread} do
+      {:ok, discarded} = makeup(thread, "a")
+      {:ok, _} = Assistant.discard_draft(discarded)
+      {:ok, replaced} = makeup(thread, "b")
 
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
+      {:ok, _} =
+        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "c"}},
+          replaces: replaced.id
+        )
 
-      assert {:ok, updated} = Assistant.apply_draft(draft, "line:teacher")
-      assert updated.state == "applied"
-      assert is_nil(updated.applied_record_type)
+      assert {:error, :not_pending} = Assistant.confirm_draft(discarded, "line:teacher")
+      assert {:error, :not_pending} = Assistant.confirm_draft(replaced, "line:teacher")
     end
 
-    test "applying or discarding an already-resolved draft fails cleanly" do
-      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
-      {:ok, draft} = Assistant.create_draft(thread, %{kind: "unknown", parsed: %{}})
-      {:ok, discarded} = Assistant.discard_draft(draft)
+    test "a makeup_request is acknowledged without a ledger row", %{thread: thread} do
+      {:ok, draft} = makeup(thread, "8/17")
 
-      assert {:error, :not_pending} = Assistant.discard_draft(discarded)
-      assert {:error, :not_pending} = Assistant.apply_draft(discarded, "line:teacher")
+      assert {:ok, %Draft{state: "applied", applied_record_type: nil, applied_record_id: nil}} =
+               Assistant.confirm_draft(draft, "line:teacher")
+    end
+  end
+
+  describe "discard_draft/1" do
+    test "discards a pending Draft", %{thread: thread} do
+      {:ok, draft} = makeup(thread, "8/17")
+      assert {:ok, %Draft{state: "discarded"}} = Assistant.discard_draft(draft)
+    end
+
+    test "refuses a Draft that was already settled, even from a stale copy", %{thread: thread} do
+      {:ok, draft} = makeup(thread, "8/17")
+      {:ok, _} = Assistant.confirm_draft(draft, "line:teacher")
+
+      assert {:error, :not_pending} = Assistant.discard_draft(draft)
+      assert Repo.reload!(draft).state == "applied"
+    end
+  end
+
+  test "list_pending_drafts/0 lists pending Drafts oldest first with the student loaded", %{
+    thread: thread
+  } do
+    {:ok, lulu} = People.create_student(%{display_name: "Lulu"})
+    {:ok, first} = makeup(thread, "a", lulu.id)
+    {:ok, middle} = makeup(thread, "b")
+    {:ok, last} = makeup(thread, "c")
+    {:ok, _} = Assistant.discard_draft(middle)
+
+    assert [%Draft{id: first_id, student: %{display_name: "Lulu"}}, %Draft{id: last_id}] =
+             Assistant.list_pending_drafts()
+
+    assert {first_id, last_id} == {first.id, last.id}
+  end
+
+  describe "describe_draft/2" do
+    test "describes a Draft with its task", %{thread: thread} do
+      draft = payment_draft(thread)
+      assert %{title: "收款 Lulu NT$400"} = Assistant.describe_draft(draft, "zh-TW")
+    end
+
+    test "falls back to the kind for a retired Draft" do
+      assert %{title: "attendance", lines: [], changes: [], web_path: nil} =
+               Assistant.describe_draft(%Draft{kind: "attendance", parsed: %{}}, "zh-TW")
     end
   end
 end

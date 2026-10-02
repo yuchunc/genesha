@@ -265,7 +265,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
 
       drafts = Ganesha.Repo.all(Assistant.Draft) |> Enum.filter(&(&1.thread_id == thread.id))
-      assert [%Assistant.Draft{state: "pending", kind: "payment"}] = drafts
+      assert [%Assistant.Draft{state: "pending", kind: "record_payment"}] = drafts
     end
 
     test "agent failure returns :ok without retrying and duplicating the user message" do
@@ -453,7 +453,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       {:ok, draft} =
         Assistant.create_draft(thread, %{
-          kind: "payment",
+          kind: "record_payment",
           parsed: %{
             "purchase_id" => purchase.id,
             "amount" => 400,
@@ -469,23 +469,25 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert [{:reply, {"rt-postback", [%{type: "text", text: "已確認並記錄。"}]}}] = LineMock.calls()
     end
 
-    test "confirm on a draft missing purchase_id explains why, without applying" do
+    test "confirm on a draft that no longer applies marks it failed and says why" do
       {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
 
       {:ok, draft} =
-        Assistant.create_draft(thread, %{kind: "payment", parsed: %{"amount" => 400}})
+        Assistant.create_draft(thread, %{kind: "record_payment", parsed: %{"amount" => 400}})
 
       job = enqueue_teacher_postback("action=confirm&draft_id=#{draft.id}")
       assert :ok = perform_job(ProcessEventWorker, job.args)
 
-      assert Assistant.get_draft!(draft.id).state == "pending"
+      assert Assistant.get_draft!(draft.id).state == "failed"
       assert [{:reply, {"rt-postback", [%{type: "text", text: text}]}}] = LineMock.calls()
-      assert text =~ "App 內編輯"
+      assert text =~ "missing_purchase_id"
     end
 
     test "discard marks a pending draft discarded" do
       {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
-      {:ok, draft} = Assistant.create_draft(thread, %{kind: "unknown", parsed: %{}})
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
 
       job = enqueue_teacher_postback("action=discard&draft_id=#{draft.id}")
       assert :ok = perform_job(ProcessEventWorker, job.args)
