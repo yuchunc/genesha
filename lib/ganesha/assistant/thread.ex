@@ -12,6 +12,8 @@ defmodule Ganesha.Assistant.Thread do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{}
+
   def source_types, do: @source_types
 
   def changeset(thread, attrs) do
