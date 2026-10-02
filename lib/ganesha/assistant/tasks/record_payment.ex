@@ -163,16 +163,7 @@ defmodule Ganesha.Assistant.Tasks.RecordPayment do
 
   defp pick(_owing, _purchase_id, _student), do: {:error, "purchase_id must be an integer"}
 
-  defp owed(purchase) do
-    paid =
-      purchase.id
-      |> Sales.list_payments_for_purchase()
-      |> Enum.filter(&(&1.state == "confirmed"))
-      |> Enum.map(& &1.amount)
-      |> Enum.sum()
-
-    Sales.payable(purchase) - paid
-  end
+  defp owed(purchase), do: Sales.payable(purchase) - Sales.confirmed_paid(purchase.id)
 
   defp purchase_text({purchase, owed}) do
     slot = if purchase.slot, do: " #{purchase.slot.label}", else: ""

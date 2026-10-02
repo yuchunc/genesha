@@ -98,6 +98,54 @@ defmodule Ganesha.Sales.PurchaseTest do
     refute su.package_id == cai.package_id
   end
 
+  test "confirmed_paid/1 sums only this purchase's confirmed payments" do
+    {student, monthly} = student_and_monthly()
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: monthly.id, list_price: 1600})
+
+    {:ok, other} =
+      Sales.create_purchase(%{student_id: student.id, package_id: monthly.id, list_price: 1600})
+
+    pay = fn purchase, amount ->
+      {:ok, payment} =
+        Sales.record_payment(%{
+          purchase_id: purchase.id,
+          amount: amount,
+          method: "cash",
+          paid_on: ~D[2026-10-02]
+        })
+
+      payment
+    end
+
+    {:ok, _} = purchase |> pay.(1000) |> Sales.confirm_payment("teacher@example.com")
+    {:ok, _} = purchase |> pay.(200) |> Sales.confirm_payment("teacher@example.com")
+    _claimed = pay.(purchase, 300)
+    {:ok, _} = other |> pay.(700) |> Sales.confirm_payment("teacher@example.com")
+
+    assert Sales.confirmed_paid(purchase.id) == 1200
+  end
+
+  test "confirmed_paid/1 is 0 when nothing has been confirmed" do
+    {student, monthly} = student_and_monthly()
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: monthly.id, list_price: 1600})
+
+    assert Sales.confirmed_paid(purchase.id) == 0
+
+    {:ok, _} =
+      Sales.record_payment(%{
+        purchase_id: purchase.id,
+        amount: 400,
+        method: "cash",
+        paid_on: ~D[2026-10-02]
+      })
+
+    assert Sales.confirmed_paid(purchase.id) == 0
+  end
+
   test "list_purchases_for_student/1 preloads the package" do
     {student, monthly} = student_and_monthly()
 

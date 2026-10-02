@@ -102,6 +102,16 @@ defmodule Ganesha.Sales do
     Repo.all(from p in Payment, where: p.purchase_id == ^purchase_id, order_by: p.paid_on)
   end
 
+  @doc "What has actually arrived for this purchase: the sum of its confirmed payments."
+  @spec confirmed_paid(integer()) :: integer()
+  def confirmed_paid(purchase_id) do
+    Repo.aggregate(
+      from(p in Payment, where: p.purchase_id == ^purchase_id and p.state == "confirmed"),
+      :sum,
+      :amount
+    ) || 0
+  end
+
   @doc """
   Whether a repeated 帳後五碼 looks like a mistake rather than a deliberate split.
 

@@ -27,6 +27,7 @@ defmodule GaneshaWeb.StudentLive.Show do
     socket
     |> assign(:purchases, purchases)
     |> assign(:payments, payments)
+    |> assign(:paid, Map.new(purchases, &{&1.id, Sales.confirmed_paid(&1.id)}))
     |> assign(:outstanding, Reporting.outstanding_for_student(student.id))
     |> assign(:credits, Roster.available_credits(student.id, Clock.today()))
   end
@@ -79,14 +80,6 @@ defmodule GaneshaWeb.StudentLive.Show do
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
 
-  defp confirmed_paid(payment_rows) do
-    payment_rows
-    |> Enum.map(& &1.payment)
-    |> Enum.filter(&(&1.state == "confirmed"))
-    |> Enum.map(& &1.amount)
-    |> Enum.sum()
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
@@ -120,6 +113,7 @@ defmodule GaneshaWeb.StudentLive.Show do
           :for={purchase <- @purchases}
           purchase={purchase}
           payment_rows={@payments[purchase.id] || []}
+          paid={@paid[purchase.id]}
         />
       </.section>
     </Layouts.app>
@@ -141,12 +135,11 @@ defmodule GaneshaWeb.StudentLive.Show do
 
   attr :purchase, :map, required: true
   attr :payment_rows, :list, required: true
+  attr :paid, :integer, required: true
 
   defp purchase_group(assigns) do
     payable = Sales.payable(assigns.purchase)
-    paid = confirmed_paid(assigns.payment_rows)
-
-    assigns = assign(assigns, payable: payable, paid: paid, due: payable - paid)
+    assigns = assign(assigns, payable: payable, due: payable - assigns.paid)
 
     ~H"""
     <section
