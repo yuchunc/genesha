@@ -85,6 +85,7 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
          {:ok, package} <- load(:package, attrs["package_id"]),
          :ok <- still_scheduled(session),
          :ok <- still_available(package, student),
+         :ok <- same_price(package, parsed["price"]),
          {:ok, %{purchase: purchase}} <-
            Enrolling.add_one_off(session, student, package,
              custom_amount: attrs["custom_amount"],
@@ -160,6 +161,10 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
 
   defp still_available(package, student) do
     if available?(package, student), do: :ok, else: {:error, :package_unavailable}
+  end
+
+  defp same_price(package, price) do
+    if Catalog.price_for(package, 1) == price, do: :ok, else: {:error, :price_changed}
   end
 
   defp available?(package, student),

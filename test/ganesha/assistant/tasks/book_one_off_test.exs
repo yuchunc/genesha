@@ -2,6 +2,7 @@ defmodule Ganesha.Assistant.Tasks.BookOneOffTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Catalog, Enrolling, People, Roster, Sales, Studio}
+  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.BookOneOff
 
   setup do
@@ -113,6 +114,30 @@ defmodule Ganesha.Assistant.Tasks.BookOneOffTest do
       assert {:error, :package_unavailable} = BookOneOff.apply(parsed, "line:teacher")
       assert Sales.list_purchases_for_student(c.student.id) == []
       assert Roster.list_for_session(c.session) == []
+    end
+
+    test "fails if the package price changed after the Draft was made", c do
+      {:ok, %{parsed: parsed}} = BookOneOff.propose(input(c.student, c.session, c.drop_in), c.ctx)
+      {:ok, _} = Catalog.update_package(c.drop_in, %{price_per_class: 450})
+
+      assert {:error, :price_changed} = BookOneOff.apply(parsed, "line:teacher")
+      assert Sales.list_purchases_for_student(c.student.id) == []
+      assert Roster.list_for_session(c.session) == []
+    end
+
+    test "a custom amount of 0 is what the card shows and what the purchase owes", c do
+      input = Map.put(input(c.student, c.session, c.drop_in), "custom_amount", 0)
+      {:ok, %{parsed: parsed}} = BookOneOff.propose(input, c.ctx)
+
+      assert {_label, nil, owed} = List.last(BookOneOff.describe(parsed, "zh-TW").changes)
+      assert owed == Format.money(0)
+
+      assert {:ok, {"Ganesha.Sales.Purchase", purchase_id}} =
+               BookOneOff.apply(parsed, "line:teacher")
+
+      purchase = Sales.get_purchase!(purchase_id)
+      assert purchase.custom_amount == 0
+      assert purchase.list_price == 400
     end
 
     test "returns the changeset when the student was booked in the meantime", c do
