@@ -1612,7 +1612,18 @@ test "the five schedule change tasks are Teacher-only" do
 end
 ```
 
-**Modify** `test/ganesha/assistant/conversation_test.exs` (~line 154): replace the exact five-name tool list with membership over all Teacher tasks (foundation + slice 2 lookups if present + these five), e.g. `assert "cancel_session" in names` for each schedule task.
+**Modify** `test/ganesha/assistant/conversation_test.exs` (~line 154): replace the exact tool-name list with:
+
+```elixir
+      names = Enum.map(request.tools, & &1.name)
+
+      for expected <-
+            ~w(record_payment book_one_off makeup_request cancel_session set_session_style add_session add_slot copy_month ask_teacher set_language) do
+        assert expected in names
+      end
+```
+
+(Slice 2 adds six lookup tools to `@teacher` before this lands; extend the `~w(...)` list with those six names when they exist, same membership style.)
 
 - [ ] Commit registry + tests.
 
@@ -1628,6 +1639,159 @@ end
 
 Print Turn, Drafts, and `Reply.build/3` JSON like `line_real_turn.exs`.
 
+**Create:** `priv/scripts/line_real_schedule.exs`
+
+```elixir
+#!/usr/bin/env elixir
+# Real Teacher chat turns for schedule tasks (spec §8 slice 3).
+#
+#     mix ecto.migrate
+#     source .env.dev && mix run priv/scripts/line_real_schedule.exs
+#
+# Uses Anthropic + Line.Client.Mock. Seeds SMOKE schedule data, runs three
+# Conversation turns (cancel without reason, cancel with reason, style change).
+
+import Ecto.Query
+
+alias Ganesha.{Assistant, Catalog, People, Repo, Roster, Sales, Studio}
+alias Ganesha.Assistant.{Conversation, Draft, Message, Thread}
+alias Ganesha.Line.Reply
+
+Logger.configure(level: :warning)
+Application.put_env(:ganesha, :line_client, Ganesha.Line.Client.Mock)
+
+provider = Application.fetch_env!(:ganesha, :assistant) |> Keyword.fetch!(:provider)
+
+api_key =
+  :ganesha
+  |> Application.get_env(Ganesha.Assistant.Provider.Anthropic, [])
+  |> Keyword.get(:api_key, "")
+
+if provider != Ganesha.Assistant.Provider.Anthropic or api_key == "" do
+  IO.puts("Needs the dev Anthropic provider and ANTHROPIC_API_KEY: run `source .env.dev` first.")
+  System.halt(1)
+end
+
+teacher_id = "Usmokesched0000000000000000"
+
+cleanup = fn ->
+  session_ids =
+    from(s in Studio.Session,
+      join: sl in assoc(s, :slot),
+      where: like(sl.label, "SMOKE%"),
+      select: s.id
+    )
+
+  thread_ids = from(t in Thread, where: t.source_id == ^teacher_id, select: t.id)
+
+  Repo.delete_all(from(c in Ganesha.Roster.Credit, where: c.origin_session_id in subquery(session_ids)))
+  Repo.delete_all(from(a in Ganesha.Roster.Attendance, where: a.session_id in subquery(session_ids)))
+  Repo.delete_all(from(s in Studio.Session, where: s.id in subquery(session_ids)))
+  Repo.delete_all(from(sl in Studio.Slot, where: like(sl.label, "SMOKE%")))
+  Repo.delete_all(from(d in Draft, where: d.thread_id in subquery(thread_ids)))
+  Repo.delete_all(from(m in Message, where: m.thread_id in subquery(thread_ids)))
+  Repo.delete_all(from(t in Thread, where: t.source_id == ^teacher_id))
+  Repo.delete_all(from(s in People.Student, where: like(s.display_name, "SMOKE%")))
+  Repo.delete_all(from(p in Catalog.Package, where: like(p.name, "SMOKE%")))
+end
+
+run_turn = fn thread, text ->
+  IO.puts("\nTeacher: #{text}\n")
+  {:ok, _} = Assistant.append_message(thread, "user", text, nil)
+
+  case Conversation.run_turn(thread) do
+    {:ok, turn} ->
+      drafts = Assistant.get_drafts(turn.draft_ids)
+      IO.puts("== Turn")
+      IO.inspect(turn, pretty: true, charlists: :as_lists)
+      IO.puts("\n== Drafts")
+
+      Enum.each(
+        drafts,
+        &IO.inspect(Map.take(&1, [:id, :kind, :state, :student_id, :parsed]), pretty: true)
+      )
+
+      IO.puts("\n== LINE messages")
+      IO.puts(Jason.encode!(Reply.build(turn, drafts, "zh-TW"), pretty: true))
+      {thread, turn, drafts}
+
+    {:error, reason} ->
+      IO.puts("Agent failed: #{inspect(reason)}")
+      System.halt(1)
+  end
+end
+
+cleanup.()
+
+{:ok, slot} =
+  Studio.create_slot(%{
+    weekday: 3,
+    start_time: ~T[19:00:00],
+    end_time: ~T[20:15:00],
+    default_style: "Hatha",
+    label: "SMOKE 基礎"
+  })
+
+{:ok, session} =
+  Studio.create_session(%{slot_id: slot.id, date: ~D[2026-10-07], style: "Hatha", state: "scheduled"})
+
+{:ok, style_session} =
+  Studio.create_session(%{slot_id: slot.id, date: ~D[2026-10-14], style: "Hatha", state: "scheduled"})
+
+{:ok, student} = People.create_student(%{display_name: "SMOKE 蘭子"})
+
+{:ok, package} =
+  Catalog.create_package(%{name: "SMOKE 月課程", kind: "monthly", price_per_class: 400})
+
+{:ok, purchase} =
+  Sales.create_purchase(%{
+    student_id: student.id,
+    package_id: package.id,
+    slot_id: slot.id,
+    list_price: 2000
+  })
+
+{:ok, _} = Roster.enroll(session, student, purchase)
+
+{:ok, thread} = Assistant.get_or_create_thread("teacher", teacher_id)
+{:ok, thread} = Assistant.set_locale(thread, "zh-TW")
+
+{thread, _turn, drafts1} =
+  run_turn.(thread, "SMOKE 把 10/7 那堂基礎課停掉")
+
+if Enum.any?(drafts1, &(&1.kind == "cancel_session" and &1.state == "pending")) do
+  IO.puts("\n(Warning: model proposed cancel without a stated reason — check parsed.reason)\n")
+end
+
+{thread, turn2, drafts2} =
+  run_turn.(thread, "SMOKE 停課，原因是颱風假，session #{session.id}")
+
+case Enum.find(drafts2, &(&1.kind == "cancel_session")) do
+  %Draft{} = draft ->
+case Assistant.confirm_draft(draft, "line:teacher") do
+  {:ok, _} ->
+    IO.puts("Confirmed.")
+    if Studio.get_session!(session.id).state != "cancelled", do: System.halt(1)
+
+  other ->
+    IO.puts("confirm_draft failed: #{inspect(other)}")
+    System.halt(1)
+end
+
+  nil ->
+    IO.puts("Expected a cancel_session Draft on the second turn")
+    System.halt(1)
+end
+
+{thread, turn3, drafts3} =
+  run_turn.(thread, "SMOKE 把 10/14 週三的基礎課改成流動，先幫我排 10/14 單次課 19:00-20:15 基礎 Hatha")
+
+IO.inspect(Enum.map(drafts3, & &1.kind), label: "draft kinds on style turn")
+
+cleanup.()
+IO.puts("\nDone — SMOKE rows removed.")
+```
+
 Run:
 
 ```bash
@@ -1640,7 +1804,7 @@ source .env.dev && mix run priv/scripts/line_real_schedule.exs
 
 ## Verification note (plan author)
 
-Applied this plan's Task 1–8 code on a throwaway copy of branch HEAD (`/tmp/plan-slice-3`): `mix compile --warnings-as-errors` clean after fixes; slice tests 29/29 passed. Full suite 521/523 until `conversation_test` tool list updated (included in Task 8).
+Applied this plan's code on a throwaway copy of branch HEAD (`git worktree add /tmp/plan-slice-3 HEAD --detach`): after Task 8 test updates, `mix compile --warnings-as-errors` and `mix precommit` — **524 tests passed**.
 
 ## Ambiguities resolved
 
