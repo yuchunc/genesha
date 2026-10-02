@@ -8,8 +8,9 @@
 # outbound edges (the LLM provider and the LINE Messaging API client) are
 # swapped for the same in-process mocks the test suite uses. Everything
 # between them — signature verification, webhook persistence, dedup, Oban
-# dispatch, the agent loop, tool calls, draft creation, postback confirm and
-# the retention sweep — is production code writing to the real dev DB.
+# dispatch, the Conversation, the agent loop over tasks, Draft creation, the
+# Draft card, postback confirm and the retention sweep — is production code
+# writing to the real dev DB.
 #
 # Rows created here are prefixed SMOKE / smoke- and deleted again at the end.
 
@@ -17,7 +18,16 @@ import Ecto.Query
 
 alias Ganesha.{Catalog, Line, People, Repo, Sales}
 alias Ganesha.Assistant
-alias Ganesha.Assistant.{Draft, Message, ProcessEventWorker, PurgeGroupRawTextWorker, Thread}
+
+alias Ganesha.Assistant.{
+  Digest,
+  Draft,
+  Message,
+  ProcessEventWorker,
+  PurgeGroupRawTextWorker,
+  Thread
+}
+
 alias Ganesha.Assistant.Provider.Mock, as: ProviderMock
 alias Ganesha.Line.Client.Mock, as: LineMock
 alias Ganesha.Line.{LineEvent, VerifySignaturePlug}
@@ -70,8 +80,10 @@ cleanup = fn ->
 
   Repo.delete_all(from(p in Sales.Payment, where: p.purchase_id in subquery(purchase_ids)))
   Repo.delete_all(from(p in Sales.Purchase, where: p.student_id in subquery(student_ids)))
+  Repo.delete_all(from(p in Catalog.Package, where: like(p.name, "SMOKE%")))
 
   thread_ids = from(t in Thread, where: t.source_id in ^[teacher_id, group_id], select: t.id)
+  Repo.delete_all(from(d in Digest, where: d.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(d in Draft, where: d.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(m in Message, where: m.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(t in Thread, where: t.source_id in ^[teacher_id, group_id]))
@@ -144,7 +156,7 @@ jobs_after = Repo.aggregate(Oban.Job, :count)
 Smoke.check("exactly one job enqueued for two deliveries", jobs_after - jobs_before == 1)
 
 # ---------------------------------------------------------------- Step 3
-Smoke.step(3, "teacher 1:1 turn: agent runs, tool creates a draft, reply carries quick replies")
+Smoke.step(3, "teacher 1:1 turn: record_payment becomes a Draft, the reply carries its card")
 
 {:ok, student} = People.create_student(%{display_name: "SMOKE 小美", active: true})
 
@@ -167,7 +179,7 @@ package =
 
 ProviderMock.stub(fn messages, _tools, _opts ->
   if Enum.any?(messages, &(&1.role == "tool")) do
-    {:ok, %{text: "已建立一筆 3200 的付款草稿，請確認。", tool_calls: []}}
+    {:ok, %{text: "已建立一筆 3200 的收款草稿，請確認。", tool_calls: []}}
   else
     {:ok,
      %{
@@ -175,14 +187,13 @@ ProviderMock.stub(fn messages, _tools, _opts ->
        tool_calls: [
          %{
            id: "smoke-call-1",
-           name: "propose_payment_draft",
+           name: "record_payment",
            input: %{
              "student_id" => student.id,
              "purchase_id" => purchase.id,
              "amount" => 3200,
              "method" => "line_bank",
-             "reported_last5" => "12345",
-             "confidence" => 0.9
+             "reported_last5" => "12345"
            }
          }
        ]
@@ -215,8 +226,8 @@ Smoke.check(
 draft = Repo.one(from d in Draft, where: d.thread_id == ^teacher_thread.id)
 
 Smoke.check(
-  "pending payment draft created",
-  draft && draft.kind == "payment" && draft.state == "pending"
+  "pending record_payment draft created",
+  draft && draft.kind == "record_payment" && draft.state == "pending"
 )
 
 Smoke.check(
@@ -225,17 +236,32 @@ Smoke.check(
 )
 
 calls = LineMock.calls()
-reply_payload = Enum.find_value(calls, fn {:reply, {_token, msgs}} -> msgs end)
-quick_reply = reply_payload && hd(reply_payload)[:quickReply]
-labels = quick_reply && Enum.map(quick_reply.items, & &1.action.label)
-postback_data = quick_reply && Enum.map(quick_reply.items, & &1.action.data)
-
-Smoke.check("exactly one LINE reply sent to the teacher", length(calls) == 1)
-Smoke.check("reply offers 確認 / 捨棄 quick replies", labels == ["確認", "捨棄"])
+replies = for {:reply, {_token, messages}} <- calls, do: messages
 
 Smoke.check(
-  "quick replies carry this draft's id",
+  "loading animation shown before the reply",
+  match?([{:loading, {^teacher_id, 20}} | _], calls)
+)
+
+Smoke.check("exactly one LINE reply sent to the teacher", length(replies) == 1)
+
+carousel = replies |> List.first([]) |> Enum.find(&(&1[:type] == "flex"))
+bubble = carousel && hd(carousel.contents.contents)
+
+postback_data =
+  bubble &&
+    bubble.footer.contents
+    |> Enum.map(& &1.action[:data])
+    |> Enum.reject(&is_nil/1)
+
+Smoke.check(
+  "the reply carries this draft's card with 確認 / 捨棄",
   postback_data == ["action=confirm&draft_id=#{draft.id}", "action=discard&draft_id=#{draft.id}"]
+)
+
+Smoke.check(
+  "the model's reply records the card it sent",
+  List.last(teacher_messages).content =~ "[草稿 ##{draft.id} 待確認] 收款 SMOKE 小美 NT$3,200"
 )
 
 Smoke.check("event marked processed", Repo.reload!(teacher_line_event).processed_at != nil)
@@ -317,6 +343,19 @@ Smoke.check(
   "draft points at the payment row",
   applied.applied_record_type == "Ganesha.Sales.Payment" and
     applied.applied_record_id == payment.id
+)
+
+outcome_texts = for {:reply, {_token, [message]}} <- LineMock.calls(), do: message.text
+
+Smoke.check(
+  "the teacher is told what was confirmed",
+  outcome_texts == ["已確認：收款 SMOKE 小美 NT$3,200"]
+)
+
+Smoke.check(
+  "the outcome is in the model's history",
+  List.last(Assistant.list_messages(teacher_thread)).content ==
+    "[已確認] 草稿 ##{draft.id} 收款 SMOKE 小美 NT$3,200"
 )
 
 replay = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => postback_line_event.id}})
