@@ -288,7 +288,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
           content: "w"
         })
 
-      %{daily: daily, weekly: weekly}
+      %{thread: thread, daily: daily, weekly: weekly}
     end
 
     test "unsending a message drops the digests covering its day", c do
@@ -315,6 +315,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       refute Repo.reload(c.daily)
       refute Repo.reload(c.weekly)
+
+      assert %{role: "assistant", content: "改好了"} = List.last(Assistant.list_messages(c.thread))
     end
   end
 end

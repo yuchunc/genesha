@@ -65,27 +65,33 @@ defmodule Ganesha.Assistant.Memory do
 
     written_days = digest_starts(thread, "daily", first_day)
 
-    thread
-    |> counted_by_day(first_day, today)
-    |> Enum.reject(fn {day, _messages} -> MapSet.member?(written_days, day) end)
-    |> Enum.each(fn {day, messages} ->
-      write_digest(thread, locale, "daily", day, day, transcript(messages))
-    end)
+    failed_days =
+      thread
+      |> counted_messages(first_day, today)
+      |> Enum.group_by(&Clock.to_taipei_date(&1.inserted_at))
+      |> Enum.sort_by(fn {day, _messages} -> day end, Date)
+      |> Enum.reject(fn {day, _messages} -> MapSet.member?(written_days, day) end)
+      |> Enum.reject(fn {day, messages} ->
+        reread = fn -> counted_messages(thread, day, Date.add(day, 1)) end
+        write_digest(thread, locale, "daily", day, day, messages, reread) == :ok
+      end)
+      |> Enum.map(fn {day, _messages} -> day end)
 
     written_weeks = digest_starts(thread, "weekly", first_day)
 
+    # A week with a daily that failed tonight waits for the next night, so
+    # its weekly never lacks that day.
     first_day
     |> complete_weeks(last_day)
     |> Enum.reject(&MapSet.member?(written_weeks, &1))
+    |> Enum.reject(fn monday -> Enum.any?(failed_days, &in_week?(&1, monday)) end)
     |> Enum.each(fn monday ->
       sunday = Date.add(monday, 6)
+      reread = fn -> week_dailies(thread, monday, sunday) end
 
-      case daily_texts(thread, monday, sunday) do
-        [] ->
-          :ok
-
-        dailies ->
-          write_digest(thread, locale, "weekly", monday, sunday, Enum.join(dailies, "\n\n"))
+      case reread.() do
+        [] -> :ok
+        dailies -> write_digest(thread, locale, "weekly", monday, sunday, dailies, reread)
       end
     end)
 
@@ -186,28 +192,20 @@ defmodule Ganesha.Assistant.Memory do
 
   defp render(%Digest{} = digest), do: "[#{digest.period_start}]\n#{digest.content}"
 
-  # Counted messages with text from [first_day, today), grouped by Asia/Taipei
-  # date, oldest day first. An unsent message has no text and is left out.
-  defp counted_by_day(thread, first_day, today) do
+  # Counted messages with text from [from, to) in Asia/Taipei days, oldest
+  # first. An unsent message has no text and is left out.
+  defp counted_messages(thread, from, to) do
     Repo.all(
       from m in Message,
         where: m.thread_id == ^thread.id,
         where: ^counted(),
         where: not is_nil(m.content),
-        where: m.inserted_at >= ^Clock.day_start_utc(first_day),
-        where: m.inserted_at < ^Clock.day_start_utc(today),
-        order_by: m.id
+        where: m.inserted_at >= ^Clock.day_start_utc(from),
+        where: m.inserted_at < ^Clock.day_start_utc(to),
+        order_by: m.id,
+        select: %{id: m.id, role: m.role, content: m.content, inserted_at: m.inserted_at}
     )
-    |> Enum.group_by(&Clock.to_taipei_date(&1.inserted_at))
-    |> Enum.sort_by(fn {day, _messages} -> day end, Date)
   end
-
-  defp transcript(messages) do
-    Enum.map_join(messages, "\n", &"#{speaker(&1.role)}: #{&1.content}")
-  end
-
-  defp speaker("user"), do: "Teacher"
-  defp speaker(_role), do: "Assistant"
 
   defp digest_starts(thread, kind, first_day) do
     Repo.all(
@@ -226,24 +224,40 @@ defmodule Ganesha.Assistant.Memory do
     |> Enum.take_while(&(Date.compare(Date.add(&1, 6), last_day) != :gt))
   end
 
-  defp daily_texts(thread, from, to) do
+  defp in_week?(day, monday), do: Date.diff(day, monday) in 0..6
+
+  defp week_dailies(thread, from, to) do
     Repo.all(
       from d in Digest,
         where: d.thread_id == ^thread.id and d.kind == "daily",
         where: d.period_start >= ^from and d.period_start <= ^to,
         order_by: d.period_start,
-        select: {d.period_start, d.content}
+        select: %{id: d.id, period_start: d.period_start, content: d.content}
     )
-    |> Enum.map(fn {day, content} -> "[#{day}]\n#{content}" end)
   end
 
-  # Digests use the digest prompt and no tools (spec §6.4). A failure is
-  # logged and skipped; the next night retries the gap (spec §7).
-  defp write_digest(thread, locale, kind, period_start, period_end, text) do
-    messages = [%{role: "user", content: text, tool_calls: []}]
+  defp digest_input("daily", messages) do
+    Enum.map_join(messages, "\n", &"#{speaker(&1.role)}: #{&1.content}")
+  end
+
+  defp digest_input("weekly", dailies) do
+    Enum.map_join(dailies, "\n\n", &"[#{&1.period_start}]\n#{&1.content}")
+  end
+
+  defp speaker("user"), do: "Teacher"
+  defp speaker(_role), do: "Assistant"
+
+  # Digests use the digest prompt and no tools (spec §6.4). `source` is what
+  # the digest is written from; `reread` reads it again after the model
+  # answers, and a source that changed meanwhile (an unsend, an edit, an
+  # invalidated daily) means the digest is stale and is not inserted. A
+  # failure is logged and skipped; the next night retries the gap (spec §7).
+  defp write_digest(thread, locale, kind, period_start, period_end, source, reread) do
+    messages = [%{role: "user", content: digest_input(kind, source), tool_calls: []}]
 
     with {:ok, %{text: content}} when is_binary(content) and content != "" <-
            provider().complete(messages, [], system: Prompts.digest(locale)),
+         {:source, ^source} <- {:source, reread.()},
          {:ok, _digest} <-
            %Digest{}
            |> Digest.changeset(%{
@@ -256,10 +270,19 @@ defmodule Ganesha.Assistant.Memory do
            |> Repo.insert() do
       :ok
     else
+      {:source, _changed} ->
+        Logger.warning(
+          "#{kind} digest #{period_start} for thread #{thread.id} not written: source changed"
+        )
+
+        :error
+
       other ->
         Logger.warning(
           "#{kind} digest #{period_start} for thread #{thread.id} not written: #{inspect(other)}"
         )
+
+        :error
     end
   end
 

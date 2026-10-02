@@ -221,6 +221,60 @@ defmodule Ganesha.Assistant.MemoryTest do
       assert :ok = Memory.write_missing_digests(thread, @today)
       assert [~D[2026-09-30]] = Repo.all(from d in Digest, select: d.period_start)
     end
+
+    @tag :capture_log
+    test "a week whose daily failed gets no weekly until the next run writes the daily", %{
+      thread: thread
+    } do
+      put(thread, "user", "週一的事", ~U[2026-09-21 04:00:00Z])
+      put(thread, "user", "fail-day", ~U[2026-09-27 04:00:00Z])
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+      refute Repo.exists?(from d in Digest, where: d.kind == "weekly")
+
+      Mock.stub(fn _messages, [], _opts -> {:ok, %{text: "summary", tool_calls: []}} end)
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+
+      assert [{"daily", ~D[2026-09-21]}, {"daily", ~D[2026-09-27]}, {"weekly", ~D[2026-09-21]}] =
+               Repo.all(
+                 from d in Digest,
+                   order_by: [d.kind, d.period_start],
+                   select: {d.kind, d.period_start}
+               )
+    end
+
+    @tag :capture_log
+    test "a day whose message is unsent while its digest is written gets no digest", %{
+      thread: thread
+    } do
+      put(thread, "user", "第一句", ~U[2026-09-30 04:00:00Z])
+      unsent = put(thread, "user", "收回的話", ~U[2026-09-30 04:01:00Z])
+
+      Mock.stub(fn _messages, [], _opts ->
+        unsent |> Ecto.Changeset.change(content: nil) |> Repo.update!()
+        {:ok, %{text: "summary", tool_calls: []}}
+      end)
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+      refute Repo.exists?(from(d in Digest))
+    end
+
+    @tag :capture_log
+    test "a week whose daily is invalidated while its weekly is written gets no weekly", %{
+      thread: thread
+    } do
+      digest(thread, "daily", ~D[2026-09-21], ~D[2026-09-21], "週一的事")
+      digest(thread, "daily", ~D[2026-09-24], ~D[2026-09-24], "週四的事")
+
+      Mock.stub(fn _messages, [], _opts ->
+        Memory.invalidate_digests(thread.id, ~D[2026-09-24])
+        {:ok, %{text: "summary", tool_calls: []}}
+      end)
+
+      assert :ok = Memory.write_missing_digests(thread, @today)
+      refute Repo.exists?(from d in Digest, where: d.kind == "weekly")
+    end
   end
 
   describe "invalidate_digests/2" do
