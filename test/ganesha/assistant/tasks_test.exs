@@ -1,0 +1,59 @@
+defmodule Ganesha.Assistant.TasksTest do
+  use ExUnit.Case, async: true
+
+  alias Ganesha.Assistant.Tasks
+
+  alias Ganesha.Assistant.Tasks.{
+    AskTeacher,
+    BookOneOff,
+    MakeupRequest,
+    RecordPayment,
+    SetLanguage
+  }
+
+  defmodule Lookup do
+    @behaviour Ganesha.Assistant.Task
+    def name, do: "lookup_thing"
+    def kind, do: :lookup
+
+    def tool,
+      do: %{
+        description: "looks up",
+        input_schema: %{type: "object", properties: %{q: %{type: "string"}}}
+      }
+
+    def answer(_input, _ctx), do: {:ok, %{data: "x"}}
+  end
+
+  test "each chat gets its own tasks (spec §2 rule 7)" do
+    assert Tasks.for_chat(:group) == [RecordPayment, BookOneOff, MakeupRequest]
+    assert Tasks.for_chat(:student) == [SetLanguage]
+
+    assert Enum.sort(Tasks.for_chat(:teacher)) ==
+             Enum.sort([RecordPayment, BookOneOff, MakeupRequest, AskTeacher, SetLanguage])
+  end
+
+  test "fetch/1 finds a task by name" do
+    assert {:ok, RecordPayment} = Tasks.fetch("record_payment")
+    assert {:ok, AskTeacher} = Tasks.fetch("ask_teacher")
+    assert :error = Tasks.fetch("payment")
+    assert :error = Tasks.fetch(nil)
+  end
+
+  test "tool_schemas/1 names each tool and adds the shared fields by kind" do
+    [payment, ask, lookup] = Tasks.tool_schemas([RecordPayment, AskTeacher, Lookup])
+
+    assert payment.name == "record_payment"
+    assert payment.input_schema.properties.replaces_draft_id.type == "integer"
+    assert payment.input_schema.required == ["student_id", "amount", "method"]
+    refute Map.has_key?(payment.input_schema.properties, :show_card)
+
+    assert ask.name == "ask_teacher"
+    assert ask.input_schema == AskTeacher.tool().input_schema
+
+    assert lookup.name == "lookup_thing"
+    assert lookup.description == "looks up"
+    assert lookup.input_schema.properties.show_card.type == "boolean"
+    refute Map.has_key?(lookup.input_schema.properties, :replaces_draft_id)
+  end
+end
