@@ -185,58 +185,6 @@ defmodule Ganesha.Assistant do
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
-  defp studio_vocabulary("en") do
-    """
-    Reply in English. Be professional and concise. Use yoga-studio terms (class credits,
-    makeup class, drop-in, trial, monthly package). You can look up students, schedules,
-    and payments, and create drafts (payment, attendance, makeup) for the teacher to
-    confirm — never apply a draft yourself; only she can confirm.
-    """
-  end
-
-  defp studio_vocabulary(_locale) do
-    """
-    只用繁體中文回覆，語氣專業、簡潔，使用瑜珈教室慣用詞彙（堂數、補課、單堂、體驗、
-    月課程）。你可以查詢學生、堂數與帳務資料，也可以建立「草稿」（付款、出席、補課
-    需求）供她確認 — 你永遠不能把草稿直接變成正式紀錄，只有她本人確認後才算數。
-    """
-  end
-
-  def teacher_system_prompt(locale \\ "zh-TW") do
-    role =
-      if locale == "en",
-        do: "You are the studio ledger assistant speaking with the teacher directly.",
-        else: "你是師父的課程記帳助理，正在跟她本人對話。"
-
-    role <> studio_vocabulary(locale)
-  end
-
-  # Non-teacher 1:1 chats run with no tools, so the model has no studio data at
-  # all; without this rule it invents class times and prices.
-  def user_system_prompt("en") do
-    """
-    You are a helpful assistant for this yoga studio's LINE account. Reply in English. \
-    Be brief and friendly. You have no access to the studio's schedule, prices, \
-    class availability, bookings, or anyone's class credits. Never state or guess \
-    times, dates, prices, or availability. When asked about any of these, say the \
-    teacher will reply personally.
-    """
-  end
-
-  def user_system_prompt(_locale) do
-    """
-    你是這間瑜珈教室 LINE 官方帳號的助理。只用繁體中文回覆，語氣簡短友善。\
-    你看不到教室的課表、價格、名額、預約或任何人的堂數。絕對不要說出或猜測\
-    上課時間、日期、價格或名額；被問到這些時，告訴對方老師會親自回覆。
-    """
-  end
-
-  def group_system_prompt do
-    "你正在被動觀察師父的學生群組對話，任何人都看不到你的回覆 — 你唯一能做的事是視
-    情況建立草稿供師父之後確認，絕不能、也沒有管道對群組發送任何訊息。" <>
-      studio_vocabulary("zh-TW")
-  end
-
   @doc "A changeset's errors as `field: message`, joined with `; ` (spec §7)."
   def format_changeset_errors(%Ecto.Changeset{} = changeset) do
     changeset

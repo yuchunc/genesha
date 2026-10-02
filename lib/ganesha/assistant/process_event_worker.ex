@@ -18,7 +18,8 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   require Logger
 
   alias Ganesha.Assistant
-  alias Ganesha.Assistant.{Agent, Tasks}
+  alias Ganesha.Assistant.{Agent, Prompts, Snapshot, Tasks}
+  alias Ganesha.Clock
   alias Ganesha.Line
   alias Ganesha.Repo
 
@@ -114,7 +115,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     case Agent.run(
            thread,
            Tasks.for_chat(:group),
-           Assistant.group_system_prompt(),
+           group_system(),
            Assistant.list_messages(thread)
          ) do
       {:ok, _} ->
@@ -130,6 +131,12 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   end
 
   defp handle_group_message(_event, _group_id), do: :ok
+
+  # The Group chat's tasks need ids, so it gets the snapshot too; never
+  # summaries (ADR 0003).
+  defp group_system do
+    Prompts.group() <> "\n\n" <> Prompts.snapshot_section(Snapshot.build(Clock.today()))
+  end
 
   defp handle_unsend(%{payload: %{"unsend" => %{"messageId" => line_message_id}}}) do
     case Repo.get_by(Assistant.Message, line_message_id: line_message_id) do
@@ -158,9 +165,14 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
 
         system_prompt =
           case thread.source_type do
-            "teacher" -> Assistant.teacher_system_prompt(thread.locale || "zh-TW")
-            "group" -> Assistant.group_system_prompt()
-            _ -> Assistant.user_system_prompt(thread.locale || "zh-TW")
+            "teacher" ->
+              Prompts.teacher(thread.locale || "zh-TW", Snapshot.build(Clock.today()), nil)
+
+            "group" ->
+              group_system()
+
+            _ ->
+              Prompts.student(thread.locale || "zh-TW")
           end
 
         tasks =
@@ -261,8 +273,11 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   defp run_agent_and_reply(thread, source_type, reply_token, source_id, locale) do
     {prompt, tasks} =
       case source_type do
-        "teacher" -> {Assistant.teacher_system_prompt(locale), Tasks.for_chat(:teacher)}
-        _ -> {Assistant.user_system_prompt(locale), Tasks.for_chat(:student)}
+        "teacher" ->
+          {Prompts.teacher(locale, Snapshot.build(Clock.today()), nil), Tasks.for_chat(:teacher)}
+
+        _ ->
+          {Prompts.student(locale), Tasks.for_chat(:student)}
       end
 
     case Agent.run(thread, tasks, prompt, Assistant.list_messages(thread)) do
