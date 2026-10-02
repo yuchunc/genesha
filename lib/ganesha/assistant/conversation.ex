@@ -23,24 +23,25 @@ defmodule Ganesha.Assistant.Conversation do
   def handle_message(%Thread{} = thread, reply_token, source_id) do
     show_loading(source_id)
 
-    case run_turn(thread) do
+    result = run_turn(thread)
+    # The turn may have changed the language (set_language), even if it failed later.
+    thread = Assistant.get_thread!(thread.id)
+    locale = locale(thread)
+
+    case result do
       {:ok, turn} ->
-        # The turn may have changed the language (set_language).
-        thread = Assistant.get_thread!(thread.id)
-        locale = locale(thread)
         drafts = Assistant.get_drafts(turn.draft_ids)
         messages = Reply.build(turn, drafts, locale)
 
         deliver(reply_token, source_id, messages, fn -> text_only(turn, drafts, locale) end)
-        record_cards(thread, Reply.history_text(turn, drafts, locale))
+        record_cards(turn, Reply.history_text(turn, drafts, locale))
 
       {:error, reason} ->
         Logger.error(
           "Ganesha.Assistant.Agent.run/4 failed for thread #{thread.id}: #{inspect(reason)}"
         )
 
-        apology = Client.text_message(Labels.t(:apology, locale(thread)))
-        deliver(reply_token, source_id, [apology], nil)
+        deliver(reply_token, source_id, [Client.text_message(Labels.t(:apology, locale))], nil)
     end
 
     :ok
@@ -270,15 +271,15 @@ defmodule Ganesha.Assistant.Conversation do
     |> Enum.join("\n")
   end
 
-  defp record_cards(_thread, nil), do: :ok
+  defp record_cards(_turn, nil), do: :ok
 
-  defp record_cards(thread, text) do
-    case Assistant.append_to_last_reply(thread, text) do
+  defp record_cards(%Turn{reply_message_id: id}, text) do
+    case Assistant.append_to_message(id, text) do
       {:ok, _message} ->
         :ok
 
       {:error, reason} ->
-        Logger.warning("could not record cards on thread #{thread.id}: #{inspect(reason)}")
+        Logger.warning("could not record cards on message #{id}: #{inspect(reason)}")
     end
   end
 

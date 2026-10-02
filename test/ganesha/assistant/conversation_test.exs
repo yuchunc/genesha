@@ -31,6 +31,24 @@ defmodule Ganesha.Assistant.ConversationTest do
     def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
   end
 
+  # A Confirm postback that finishes while a turn is being delivered: its
+  # outcome line lands in the Teacher chat after the turn's own reply.
+  defmodule InterleavingLine do
+    @behaviour Ganesha.Line.ClientBehaviour
+
+    def reply(token, messages) do
+      {:ok, thread} =
+        Ganesha.Assistant.get_or_create_thread("teacher", "Uteacher0000000000000000000000")
+
+      {:ok, _} = Ganesha.Assistant.append_message(thread, "assistant", "outcome", nil)
+      LineMock.reply(token, messages)
+    end
+
+    def push(to, messages), do: LineMock.push(to, messages)
+    def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
+    def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
+  end
+
   setup do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", @teacher)
     {:ok, thread} = Assistant.set_locale(thread, "zh-TW")
@@ -227,6 +245,40 @@ defmodule Ganesha.Assistant.ConversationTest do
       apology = Labels.t(:apology, "en")
       assert [{:loading, _}, {:reply, {"rt-1", [%{text: ^apology}]}}] = LineMock.calls()
       assert [%{role: "user"}] = Assistant.list_messages(thread)
+    end
+
+    test "records the cards on the turn's own reply even when another message lands after it",
+         %{thread: thread, student: student} do
+      use_line(InterleavingLine)
+      model([record_payment_call(student)], "已建立草稿。")
+
+      :ok = Conversation.handle_message(say(thread, "Lulu 付了 400"), "rt-1", @teacher)
+
+      [draft] = Repo.all(Draft)
+
+      assert [%{content: reply}, %{content: "outcome"}] =
+               thread |> Assistant.list_messages() |> Enum.take(-2)
+
+      assert reply == "已建立草稿。\n" <> Cards.history_line({:draft, draft}, "zh-TW")
+    end
+
+    @tag :capture_log
+    test "apologizes in the language the turn switched to before failing", %{thread: thread} do
+      Mock.stub(fn messages, _tools, _opts ->
+        if Enum.any?(messages, &(&1.role == "tool")),
+          do: {:error, :overloaded},
+          else:
+            {:ok,
+             %{
+               text: nil,
+               tool_calls: [%{id: "t1", name: "set_language", input: %{"locale" => "en"}}]
+             }}
+      end)
+
+      :ok = Conversation.handle_message(say(thread, "English please"), "rt-1", @teacher)
+
+      apology = Labels.t(:apology, "en")
+      assert [{:loading, _}, {:reply, {"rt-1", [%{text: ^apology}]}}] = LineMock.calls()
     end
   end
 

@@ -49,21 +49,15 @@ defmodule Ganesha.Assistant do
   end
 
   @doc """
-  Appends `text` to the thread's latest assistant reply (spec §6.1 step 7),
-  so the model later sees which cards it sent.
+  Appends `text` as a new line of message `id` (spec §6.1 step 7): the cards
+  a turn sent are recorded on that turn's own reply, so the model later sees
+  them. Addressed by id because other assistant messages (Confirm outcomes)
+  can land in the thread while a turn is being delivered.
   """
-  def append_to_last_reply(%Thread{} = thread, text) when is_binary(text) do
-    reply =
-      Repo.one(
-        from m in Message,
-          where: m.thread_id == ^thread.id and m.role == "assistant" and is_nil(m.tool_calls),
-          order_by: [desc: m.id],
-          limit: 1
-      )
-
-    case reply do
+  def append_to_message(id, text) when is_integer(id) and is_binary(text) do
+    case Repo.get(Message, id) do
       nil ->
-        {:error, :no_reply}
+        {:error, :not_found}
 
       message ->
         content = Enum.join(Enum.reject([message.content, text], &(&1 in [nil, ""])), "\n")

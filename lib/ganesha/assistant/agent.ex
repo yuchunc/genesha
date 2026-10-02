@@ -36,8 +36,8 @@ defmodule Ganesha.Assistant.Agent do
 
     case state.provider.complete(messages, state.schemas, system: state.system) do
       {:ok, %{text: text, tool_calls: []}} ->
-        {:ok, _} = Assistant.append_message(thread, "assistant", text, nil)
-        {:ok, %Turn{turn | text: text}}
+        {:ok, reply} = Assistant.append_message(thread, "assistant", text, nil)
+        {:ok, %Turn{turn | text: text, reply_message_id: reply.id}}
 
       {:ok, %{text: text, tool_calls: calls}} ->
         {:ok, _} = Assistant.append_message(thread, "assistant", text, calls)

@@ -68,16 +68,17 @@ defmodule Ganesha.Assistant.AgentTest do
     |> Enum.map(& &1.content)
   end
 
-  test "returns the model's final text as a Turn and persists it", %{
+  test "returns the model's final text as a Turn and persists it, naming the reply row", %{
     thread: thread,
     history: history
   } do
-    script([])
+    script([[call("t1", "echo", %{"text" => "hi"})]])
 
-    assert {:ok, %Turn{text: "done", draft_ids: [], cards: [], choices: []}} =
+    assert {:ok, %Turn{text: "done", draft_ids: [], cards: [], choices: [], reply_message_id: id}} =
              Agent.run(thread, [Echo], "system", history)
 
-    assert [_user, %{role: "assistant", content: "done"}] = Assistant.list_messages(thread)
+    assert [_user, _calls, _results, %{id: ^id, role: "assistant", content: "done"}] =
+             Assistant.list_messages(thread)
   end
 
   test "sends the given history, every message with tool_calls present", %{thread: thread} do
