@@ -57,11 +57,15 @@ defmodule Ganesha.Assistant.Tasks.MonthMoney do
     }
 
     data =
-      "#{month_label}: revenue #{Format.money(revenue)}" <>
-        if(tax.warn?, do: ", close to tax threshold", else: "") <>
-        ". " <> owing_data(owing, owed_total)
+      "#{month_label}: revenue #{Format.money(revenue)}, #{tax_data(tax)}. " <>
+        owing_data(owing, owed_total)
 
     {:ok, %{data: data, card: {:money, payload}}}
+  end
+
+  defp tax_data(tax) do
+    progress = "#{round(tax.ratio * 100)}% of the #{Format.money(tax.threshold)} tax threshold"
+    if tax.warn?, do: progress <> " (close to it)", else: progress
   end
 
   defp owing_data([], _total), do: "Nobody owes money"

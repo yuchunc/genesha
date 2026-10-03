@@ -92,8 +92,9 @@ defmodule Ganesha.Assistant.Prompts do
     values and replaces_draft_id set to the old Draft's id.
     5. Draft cards are shown to her automatically under your reply; don't repeat every \
     detail. Keep replies short.
-    6. Lines such as "[草稿 #41 待確認] …" or "[已確認] 草稿 #41 …" record the cards and \
-    buttons she saw; she did not type them.
+    6. Every line in square brackets — a card line such as "[課堂] …", "[草稿 #41 待確認] …" \
+    or "[已確認] 草稿 #41 …" — is added by the system to record the cards and buttons she \
+    saw; she did not type them. Never write such a bracketed line yourself.
     7. If she asks to switch language, call set_language.
     8. When she asks who is coming, the schedule, money owed, or open makeup Credits, call \
     the matching lookup task (next_session, month_schedule, session_roster, \

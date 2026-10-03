@@ -86,15 +86,25 @@ defmodule Ganesha.Assistant.Tasks.MonthMoneyTest do
     assert payload["revenue"] == Format.money(300)
   end
 
-  test "warns once the month nears the tax threshold", c do
+  test "warns once the month nears the tax threshold and reports how far along it is", c do
     {_dan, dans} = purchase(c.package, "Dan", 45_000)
     pay(dans, 45_000, ~D[2026-10-02])
 
-    assert {:ok, %{card: {:money, payload}}} = MonthMoney.answer(%{}, c.ctx)
+    assert {:ok, %{data: data, card: {:money, payload}}} = MonthMoney.answer(%{}, c.ctx)
 
     assert payload["revenue"] == Format.money(45_000)
     assert payload["tax_warn"] == true
     assert payload["debtors"] == []
+    assert data =~ ~r/\b90% of the #{Regex.escape(Format.money(50_000))} tax threshold/
+  end
+
+  test "reports tax progress below the warning line too", c do
+    ledger(c.package)
+
+    assert {:ok, %{data: data}} = MonthMoney.answer(%{}, c.ctx)
+
+    # NT$800 of NT$50,000 rounds to 2%.
+    assert data =~ ~r/\b2% of the #{Regex.escape(Format.money(50_000))} tax threshold/
   end
 
   test "answers a month with no money and nobody owing", c do

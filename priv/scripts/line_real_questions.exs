@@ -185,8 +185,24 @@ ask = fn thread, text, expected ->
       IO.puts("history: " <> (history || "(no card history)"))
 
       shown? = Enum.any?(calls, fn {name, input} -> name == expected and input["show_card"] end)
-      IO.puts(if shown?, do: "=> OK #{expected} with show_card", else: "=> MISS #{expected}")
-      if shown?, do: :ok, else: {:miss, text}
+
+      # Card lines are the system's (prompt rule 6); the model must not write its own.
+      fabricated =
+        (turn.text || "") |> String.split("\n") |> Enum.filter(&(&1 =~ ~r/^\[[^\]]+\] /))
+
+      cond do
+        not shown? ->
+          IO.puts("=> MISS #{expected} (no call with show_card)")
+          {:miss, text}
+
+        fabricated != [] ->
+          IO.puts("=> MISS #{expected}: model wrote card lines #{inspect(fabricated)}")
+          {:fabricated, text}
+
+        true ->
+          IO.puts("=> OK #{expected} with show_card, no card lines in the text")
+          :ok
+      end
 
     {:error, reason} ->
       IO.puts("failed: #{inspect(reason)}")
@@ -217,7 +233,10 @@ results =
 
 case Enum.reject(results, &(&1 == :ok)) do
   [] ->
-    IO.puts("\nAll six questions called their lookup with show_card. SMOKE rows removed.")
+    IO.puts(
+      "\nAll six questions called their lookup with show_card and wrote no card lines. " <>
+        "SMOKE rows removed."
+    )
 
   problems ->
     IO.puts("\n#{length(problems)} question(s) need attention: #{inspect(problems)}")
