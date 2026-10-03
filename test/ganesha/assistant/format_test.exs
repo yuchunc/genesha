@@ -15,4 +15,23 @@ defmodule Ganesha.Assistant.FormatTest do
       assert Format.money(-1600) == "NT$−1,600"
     end
   end
+
+  describe "session_day/2" do
+    test "reads as she writes it, or weekday first in English" do
+      assert Format.session_day(~D[2026-10-07], "zh-TW") == "10/7 週三"
+      assert Format.session_day(~D[2026-10-07], "en") == "Wed 10/7"
+      assert Format.session_day(~D[2026-10-07], nil) == "10/7 週三"
+    end
+
+    test "is empty for a missing date" do
+      assert Format.session_day(nil, "en") == ""
+    end
+  end
+
+  describe "month_title/2" do
+    test "follows the chat's language" do
+      assert Format.month_title(~D[2026-10-01], "zh-TW") == "2026年10月"
+      assert Format.month_title(~D[2026-10-15], "en") == "October 2026"
+    end
+  end
 end
