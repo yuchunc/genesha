@@ -6,18 +6,25 @@ defmodule Ganesha.Assistant.TasksTest do
   alias Ganesha.Assistant.Tasks.{
     AddSession,
     AddSlot,
+    AddStudent,
     AskTeacher,
+    BookMakeup,
     BookOneOff,
     CancelSession,
+    ConfirmPayment,
     CopyMonth,
+    Enroll,
     MakeupRequest,
+    OverridePrice,
     MonthMoney,
     MonthSchedule,
     NextSession,
     OpenCredits,
     RecordPayment,
+    SavePackage,
     SessionRoster,
     SetLanguage,
+    SetNoShow,
     SetSessionStyle,
     StudentSummary
   }
@@ -42,8 +49,43 @@ defmodule Ganesha.Assistant.TasksTest do
 
     teacher = Tasks.for_chat(:teacher)
 
-    for task <- [RecordPayment, BookOneOff, MakeupRequest, AskTeacher, SetLanguage] do
+    for task <- [
+          RecordPayment,
+          BookOneOff,
+          MakeupRequest,
+          AskTeacher,
+          SetLanguage,
+          Enroll,
+          ConfirmPayment,
+          OverridePrice,
+          SetNoShow,
+          BookMakeup,
+          AddStudent,
+          SavePackage
+        ] do
       assert task in teacher
+    end
+  end
+
+  test "the seven student and money change tasks are Teacher chat only" do
+    teacher = Tasks.for_chat(:teacher)
+    group = Tasks.for_chat(:group)
+    student = Tasks.for_chat(:student)
+
+    for task <- [
+          Enroll,
+          ConfirmPayment,
+          OverridePrice,
+          SetNoShow,
+          BookMakeup,
+          AddStudent,
+          SavePackage
+        ] do
+      assert task in teacher
+      refute task in group
+      refute task in student
+      assert task.kind() == :change
+      assert {:ok, ^task} = Tasks.fetch(task.name())
     end
   end
 
