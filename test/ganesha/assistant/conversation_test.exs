@@ -1,8 +1,8 @@
 defmodule Ganesha.Assistant.ConversationTest do
   use Ganesha.DataCase
 
-  alias Ganesha.{Assistant, Catalog, Clock, People, Sales, Studio}
-  alias Ganesha.Assistant.{Conversation, Draft, Tasks}
+  alias Ganesha.{Assistant, Catalog, Clock, People, Roster, Sales, Studio}
+  alias Ganesha.Assistant.{Conversation, Draft, Format, Tasks}
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Assistant.Tasks.{BookOneOff, RecordPayment}
   alias Ganesha.Line.{Cards, Labels}
@@ -210,6 +210,43 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert [{:loading, _}, {:reply, {"rt-1", [message]}}] = LineMock.calls()
       assert message.text == "哪一位 Amy？"
       assert Enum.map(message.quickReply.items, & &1.action.text) == ["Amy 王", "Amy 李"]
+    end
+
+    test "a lookup with show_card true replies with its card and records it in the history",
+         %{thread: thread, student: student} do
+      {:ok, slot} =
+        Studio.create_slot(%{
+          weekday: 3,
+          start_time: ~T[19:00:00],
+          end_time: ~T[20:15:00],
+          default_style: "Hatha",
+          label: "基礎"
+        })
+
+      {:ok, session} =
+        Studio.create_session(%{
+          slot_id: slot.id,
+          date: Date.add(Clock.today(), 1),
+          style: "Hatha"
+        })
+
+      [purchase] = Sales.list_purchases_for_student(student.id)
+      {:ok, _} = Roster.add_drop_in(session, student, purchase)
+
+      model([%{id: "t1", name: "next_session", input: %{"show_card" => true}}], "明天有一堂。")
+
+      :ok = Conversation.handle_message(say(thread, "下一堂誰會來？"), "rt-1", @teacher)
+
+      assert [{:loading, _}, {:reply, {"rt-1", [text, flex]}}] = LineMock.calls()
+      assert text == %{type: "text", text: "明天有一堂。"}
+      assert %{type: "flex", contents: %{type: "bubble"} = bubble} = flex
+
+      assert [%{text: title}] = bubble.header.contents
+      assert title =~ Format.session_day(session.date, "zh-TW")
+      assert Enum.any?(bubble.body.contents, &(&1.text =~ "Lulu"))
+
+      assert last_message(thread).content ==
+               "明天有一堂。\n[#{Labels.t(:card_session, "zh-TW")}] #{title}"
     end
 
     test "pushes the same messages when the reply token is no longer valid", %{thread: thread} do
