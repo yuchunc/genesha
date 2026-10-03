@@ -6,7 +6,7 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
   """
   @behaviour Ganesha.Assistant.Task
 
-  alias Ganesha.{Clock, Scheduling, Studio}
+  alias Ganesha.{Scheduling, Studio}
   alias Ganesha.Assistant.Format
   alias GaneshaWeb.Fmt
 
@@ -49,7 +49,7 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
           "start_time" => Time.to_iso8601(attrs["start_time"]),
           "end_time" => Time.to_iso8601(attrs["end_time"]),
           "month" => Date.to_iso8601(month),
-          "session_count" => month |> dates_on_weekday(attrs["weekday"]) |> length()
+          "session_count" => month |> Studio.dates_in_month_on(attrs["weekday"]) |> length()
         })
 
       {:ok, %{student_id: nil, parsed: parsed}}
@@ -128,12 +128,6 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
   # Slots are unique on weekday + start_time, active or not.
   defp taken_by(%{"weekday" => weekday, "start_time" => start_time}) do
     Enum.find(Studio.list_slots(), &(&1.weekday == weekday and &1.start_time == start_time))
-  end
-
-  defp dates_on_weekday(%Date{} = month, weekday) do
-    month
-    |> Date.range(Clock.end_of_month(month))
-    |> Enum.filter(&(Date.day_of_week(&1) == weekday))
   end
 
   defp parse_weekday(n) when is_integer(n) and n in 1..7, do: {:ok, n}

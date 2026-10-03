@@ -270,42 +270,29 @@ defmodule Ganesha.StudioTest do
     end
   end
 
-  describe "count_new_sessions_for_month/1" do
-    test "counts the sessions copy_month/1 would create, without writing any" do
+  describe "missing_dates/2" do
+    test "lists the dates generate_month/2 would create, without writing any" do
       monday = monday_slot()
-
-      {:ok, _inactive} =
-        Studio.create_slot(%{
-          weekday: 5,
-          start_time: ~T[18:00:00],
-          end_time: ~T[19:00:00],
-          default_style: "流動",
-          label: "週五",
-          active: false
-        })
-
       {:ok, _} = Studio.create_session(%{slot_id: monday.id, date: ~D[2026-08-10], style: "基礎"})
 
-      assert Studio.count_new_sessions_for_month(~D[2026-08-01]) == 4
-      assert length(Studio.sessions_in_month(~D[2026-08-01])) == 1
-      assert {:ok, 4} = Studio.copy_month(~D[2026-08-01])
-      assert Studio.count_new_sessions_for_month(~D[2026-08-01]) == 0
+      {:ok, cancelled} =
+        Studio.create_session(%{slot_id: monday.id, date: ~D[2026-08-17], style: "基礎"})
+
+      {:ok, _} = Studio.cancel_session(cancelled, "颱風")
+
+      # A cancelled Session still holds its date, so copying never revives it.
+      assert Studio.missing_dates(monday, ~D[2026-08-15]) ==
+               [~D[2026-08-03], ~D[2026-08-24], ~D[2026-08-31]]
+
+      assert length(Studio.sessions_in_month(~D[2026-08-01])) == 2
+      {:ok, _} = Studio.generate_month(monday, ~D[2026-08-01])
+      assert Studio.missing_dates(monday, ~D[2026-08-01]) == []
     end
+  end
 
-    test "sums every active slot" do
-      monday_slot()
-
-      {:ok, _friday} =
-        Studio.create_slot(%{
-          weekday: 5,
-          start_time: ~T[18:00:00],
-          end_time: ~T[19:00:00],
-          default_style: "流動",
-          label: "週五"
-        })
-
-      assert Studio.count_new_sessions_for_month(~D[2026-08-15]) == 9
-    end
+  test "dates_in_month_on/2 lists the month's dates on a weekday" do
+    assert Studio.dates_in_month_on(~D[2026-08-20], 5) ==
+             [~D[2026-08-07], ~D[2026-08-14], ~D[2026-08-21], ~D[2026-08-28]]
   end
 
   test "sessions_between/2 returns scheduled sessions within an inclusive date range" do

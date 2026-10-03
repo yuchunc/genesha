@@ -35,18 +35,23 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
 
   @impl true
   def propose(input, _ctx) do
-    with {:ok, month} <- parse_month(input["month"]) do
-      case Studio.count_new_sessions_for_month(month) do
-        0 ->
+    with {:ok, month} <- parse_month(input["month"]),
+         {:ok, slots} <- active_slots() do
+      case new_sessions(slots, month) do
+        [] ->
           {:error,
            "every active slot already has all its sessions in #{Date.to_iso8601(month)}; " <>
              "there is nothing to copy"}
 
-        count ->
+        new_sessions ->
           {:ok,
            %{
              student_id: nil,
-             parsed: %{"month" => Date.to_iso8601(month), "session_count" => count}
+             parsed: %{
+               "month" => Date.to_iso8601(month),
+               "session_count" => length(new_sessions),
+               "new_sessions" => new_sessions
+             }
            }}
       end
     end
@@ -56,7 +61,7 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
   @impl true
   def apply(parsed, _confirmed_by) do
     with {:ok, month} <- parse_month(parsed["month"]),
-         :ok <- same_count(month, parsed["session_count"]),
+         :ok <- same_sessions(month, parsed["new_sessions"]),
          {:ok, _created} <- Studio.copy_month(month) do
       {:ok, {nil, nil}}
     end
@@ -92,10 +97,27 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
 
   defp parse_date(_iso), do: nil
 
-  # The teacher confirmed a number; a Slot or Session change since propose
-  # would make the copy create a different one.
-  defp same_count(month, count) do
-    if Studio.count_new_sessions_for_month(month) == count,
+  defp active_slots do
+    case Studio.list_active_slots() do
+      [] -> {:error, "there are no active slots to copy; add a weekly slot first"}
+      slots -> {:ok, slots}
+    end
+  end
+
+  # The Sessions `Studio.copy_month/1` would create, as sorted
+  # `[slot_id, iso_date]` pairs (lists, so they survive the Draft's JSON).
+  defp new_sessions(slots, month) do
+    slots
+    |> Enum.flat_map(fn slot ->
+      Enum.map(Studio.missing_dates(slot, month), &[slot.id, Date.to_iso8601(&1)])
+    end)
+    |> Enum.sort()
+  end
+
+  # The teacher confirmed these exact Sessions; a Slot or Session change since
+  # propose would make the copy create different ones, even at the same count.
+  defp same_sessions(month, proposed) do
+    if new_sessions(Studio.list_active_slots(), month) == proposed,
       do: :ok,
       else: {:error, :schedule_changed}
   end

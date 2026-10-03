@@ -48,19 +48,23 @@ defmodule Ganesha.Assistant.Tasks.CopyMonthTest do
                CopyMonth.propose(%{"month" => "2026-09-20"}, ctx)
 
       # 3 Mondays (9/14 exists) + 5 Wednesdays; the inactive Friday slot is skipped.
-      assert parsed == %{"month" => "2026-09-01", "session_count" => 8}
+      assert parsed["month"] == "2026-09-01"
+      assert parsed["session_count"] == 8
       assert length(september()) == 1
     end
 
-    test "returns a message for the model when nothing would be created", %{ctx: ctx} do
-      assert {:error, message} = CopyMonth.propose(%{"month" => "2026-09-01"}, ctx)
-      assert is_binary(message)
-
-      slot = slot_fixture()
+    test "returns distinct messages for no active slots and an already full month",
+         %{ctx: ctx} do
+      slot = slot_fixture(%{active: false})
       {:ok, _} = Studio.generate_month(slot, ~D[2026-09-01])
+      assert {:error, no_slots} = CopyMonth.propose(%{"month" => "2026-09-01"}, ctx)
+      assert is_binary(no_slots)
 
-      assert {:error, message} = CopyMonth.propose(%{"month" => "2026-09-01"}, ctx)
-      assert is_binary(message)
+      {:ok, _} = Studio.update_slot(slot, %{active: true})
+      assert {:error, nothing_new} = CopyMonth.propose(%{"month" => "2026-09-01"}, ctx)
+      assert is_binary(nothing_new)
+
+      assert no_slots != nothing_new
     end
 
     test "returns a message for the model when the month is malformed", %{ctx: ctx} do
@@ -77,7 +81,8 @@ defmodule Ganesha.Assistant.Tasks.CopyMonthTest do
     test "creates the promised sessions for every active slot", %{ctx: ctx} do
       slot = slot_fixture()
       {:ok, _} = Studio.generate_month(slot, ~D[2026-08-01])
-      parsed = propose!(ctx)
+      # The Draft stores parsed as JSON; apply must accept it after the round trip.
+      parsed = ctx |> propose!() |> Jason.encode!() |> Jason.decode!()
 
       assert {:ok, {nil, nil}} = CopyMonth.apply(parsed, "line:teacher")
 
@@ -91,6 +96,17 @@ defmodule Ganesha.Assistant.Tasks.CopyMonthTest do
       slot_fixture()
       parsed = propose!(ctx)
       slot_fixture(%{weekday: 3})
+
+      assert {:error, :schedule_changed} = CopyMonth.apply(parsed, "line:teacher")
+      assert september() == []
+    end
+
+    test "fails when other sessions would be created, even at the same count", %{ctx: ctx} do
+      monday = slot_fixture()
+      parsed = propose!(ctx)
+      {:ok, _} = Studio.update_slot(monday, %{active: false})
+      # September 2026 also has four Thursdays (3, 10, 17, 24).
+      slot_fixture(%{weekday: 4})
 
       assert {:error, :schedule_changed} = CopyMonth.apply(parsed, "line:teacher")
       assert september() == []

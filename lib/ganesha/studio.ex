@@ -49,8 +49,11 @@ defmodule Ganesha.Studio do
     end)
   end
 
-  # The month's dates on the slot's weekday that have no session yet.
-  defp missing_dates(%Slot{} = slot, %Date{} = month) do
+  @doc """
+  The month's dates on the slot's weekday that have no session yet, in
+  order: exactly the dates `generate_month/2` would create.
+  """
+  def missing_dates(%Slot{} = slot, %Date{} = month) do
     existing = slot |> sessions_for_slot_in_month(month) |> MapSet.new(& &1.date)
 
     month
@@ -58,7 +61,8 @@ defmodule Ganesha.Studio do
     |> Enum.reject(&MapSet.member?(existing, &1))
   end
 
-  defp dates_in_month_on(%Date{} = month, weekday) do
+  @doc "Every date in `month` falling on `weekday` (1 = Monday … 7 = Sunday), in order."
+  def dates_in_month_on(%Date{} = month, weekday) do
     Date.range(Date.beginning_of_month(month), Clock.end_of_month(month))
     |> Enum.filter(&(Date.day_of_week(&1) == weekday))
   end
@@ -103,16 +107,6 @@ defmodule Ganesha.Studio do
         {:ok, sessions} = generate_month(slot, month)
         created + (length(sessions) - before_count)
       end)
-    end)
-  end
-
-  @doc """
-  How many sessions `copy_month/1` would create for `month`, without
-  creating any: each active slot's matching weekdays not yet in the month.
-  """
-  def count_new_sessions_for_month(%Date{} = month) do
-    Enum.reduce(list_active_slots(), 0, fn slot, count ->
-      count + length(missing_dates(slot, month))
     end)
   end
 
