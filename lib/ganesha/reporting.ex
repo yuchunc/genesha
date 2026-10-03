@@ -299,7 +299,8 @@ defmodule Ganesha.Reporting do
   are not urgent.
 
   Ordering is done in Elixir rather than SQL so the nil-expiry case does not
-  depend on how the backend sorts NULLs.
+  depend on how the backend sorts NULLs. Dates sort by Gregorian day: term
+  order on `%Date{}` structs is not chronological.
   """
   def open_credits(as_of \\ nil) do
     today = as_of || Clock.today()
@@ -311,7 +312,8 @@ defmodule Ganesha.Reporting do
         preload: [:student]
     )
     |> Enum.sort_by(fn credit ->
-      {is_nil(credit.expires_on), credit.expires_on || ~D[9999-12-31], credit.id}
+      {is_nil(credit.expires_on), credit.expires_on && Date.to_gregorian_days(credit.expires_on),
+       credit.id}
     end)
   end
 

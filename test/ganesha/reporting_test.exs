@@ -284,6 +284,29 @@ defmodule Ganesha.ReportingTest do
              ]
     end
 
+    test "orders expiries across months chronologically" do
+      {:ok, student} = People.create_student(%{display_name: "宜群"})
+
+      [november, october] =
+        for expires_on <- [~D[2026-11-30], ~D[2026-10-31]] do
+          {:ok, credit} =
+            %Ganesha.Roster.Credit{}
+            |> Ganesha.Roster.Credit.changeset(%{
+              student_id: student.id,
+              source: "package",
+              expires_on: expires_on
+            })
+            |> Repo.insert()
+
+          credit
+        end
+
+      assert Enum.map(Reporting.open_credits(~D[2026-10-01]), & &1.id) == [
+               october.id,
+               november.id
+             ]
+    end
+
     test "leaves out credits that are spent or already lapsed" do
       month = ~D[2026-08-01]
       {_slot_a, [origin | _]} = slot_with_sessions(1, month)
