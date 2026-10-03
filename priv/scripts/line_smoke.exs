@@ -681,6 +681,141 @@ Smoke.check(
   length(for {:reply, {"smoke-reply-6", _}} <- LineMock.calls(), do: :ok) == 1
 )
 
+# ---------------------------------------------------------------- Step 9
+Smoke.step(9, "teacher enroll: Draft card, Confirm creates purchase and attendances")
+
+{:ok, enroll_student} = People.create_student(%{display_name: "SMOKE 阿花", active: true})
+
+enroll_weekday = 5
+
+enroll_taken =
+  Repo.all(from s in Studio.Slot, where: s.weekday == ^enroll_weekday, select: s.start_time)
+
+enroll_start =
+  0..287
+  |> Enum.map(&Time.add(~T[00:00:00], &1 * 5 * 60))
+  |> Enum.find(&(&1 not in enroll_taken))
+
+{:ok, enroll_slot} =
+  Studio.create_slot(%{
+    weekday: enroll_weekday,
+    start_time: enroll_start,
+    end_time: Time.add(enroll_start, 60 * 60),
+    default_style: "Hatha",
+    label: "SMOKE 月課"
+  })
+
+{:ok, enroll_sessions} = Studio.generate_month(enroll_slot, ~D[2026-10-01])
+
+{:ok, enroll_package} =
+  Catalog.create_package(%{
+    name: "SMOKE 月課報名",
+    kind: "monthly",
+    price_per_class: 400,
+    included_makeups: 1
+  })
+
+enroll_event = %{
+  "webhookEventId" => "smoke-teacher-4",
+  "mode" => "active",
+  "type" => "message",
+  "replyToken" => "smoke-reply-7",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "message" => %{"id" => "smoke-msg-5", "type" => "text", "text" => "幫阿花報名十月月課"}
+}
+
+:ok = Line.record_event(enroll_event)
+enroll_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-teacher-4")
+
+ProviderMock.stub(fn messages, _tools, _opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
+      {:ok, %{text: "已建立報名草稿，請確認。", tool_calls: []}}
+
+    _ ->
+      {:ok,
+       %{
+         text: nil,
+         tool_calls: [
+           %{
+             id: "smoke-call-4",
+             name: "enroll",
+             input: %{
+               "student_id" => enroll_student.id,
+               "slot_id" => enroll_slot.id,
+               "month" => "2026-10",
+               "package_id" => enroll_package.id
+             }
+           }
+         ]
+       }}
+  end
+end)
+
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => enroll_line_event.id}})
+
+enroll_draft =
+  Repo.one(
+    from d in Draft,
+      where: d.thread_id == ^teacher_thread.id and d.kind == "enroll"
+  )
+
+Smoke.check(
+  "pending enroll draft created for SMOKE 阿花",
+  enroll_draft != nil and enroll_draft.state == "pending" and
+    enroll_draft.student_id == enroll_student.id and
+    enroll_draft.parsed["slot_id"] == enroll_slot.id
+)
+
+enroll_postback_event = %{
+  "webhookEventId" => "smoke-postback-3",
+  "mode" => "active",
+  "type" => "postback",
+  "replyToken" => "smoke-reply-8",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "postback" => %{"data" => "action=confirm&draft_id=#{enroll_draft && enroll_draft.id}"}
+}
+
+:ok = Line.record_event(enroll_postback_event)
+enroll_postback_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-postback-3")
+Process.delete(:line_client_mock_calls)
+
+:ok =
+  ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => enroll_postback_line_event.id}})
+
+enroll_purchase =
+  Repo.one(
+    from p in Sales.Purchase,
+      where: p.student_id == ^enroll_student.id and p.package_id == ^enroll_package.id
+  )
+
+enroll_attendance_count =
+  Repo.aggregate(
+    from(a in Roster.Attendance,
+      where: a.student_id == ^enroll_student.id and a.session_id in ^Enum.map(enroll_sessions, & &1.id)
+    ),
+    :count
+  )
+
+applied_enroll = enroll_draft && Repo.reload!(enroll_draft)
+
+Smoke.check(
+  "Confirm creates the monthly purchase",
+  enroll_purchase != nil and Sales.payable(enroll_purchase) > 0
+)
+
+Smoke.check(
+  "Confirm books every October session for the slot",
+  enroll_attendance_count == length(enroll_sessions)
+)
+
+Smoke.check(
+  "the enroll draft is applied",
+  applied_enroll != nil and applied_enroll.state == "applied" and
+    applied_enroll.applied_record_type == "Ganesha.Sales.Purchase"
+)
+
 # ---------------------------------------------------------------- teardown
 cleanup.()
 Oban.resume_all_queues()
