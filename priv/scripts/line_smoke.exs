@@ -83,6 +83,15 @@ cleanup = fn ->
   smoke_session_ids =
     from(s in Studio.Session, where: s.slot_id in subquery(smoke_slot_ids), select: s.id)
 
+  # Credits point at Sessions, Students and Attendances: they go first.
+  Repo.delete_all(
+    from(c in Roster.Credit,
+      where:
+        c.origin_session_id in subquery(smoke_session_ids) or
+          c.student_id in subquery(student_ids)
+    )
+  )
+
   Repo.delete_all(
     from(a in Roster.Attendance,
       where: a.session_id in subquery(smoke_session_ids) or a.student_id in subquery(student_ids)
@@ -527,6 +536,149 @@ Smoke.check(
 Smoke.check(
   "question event marked processed",
   Repo.reload!(question_line_event).processed_at != nil
+)
+
+# ---------------------------------------------------------------- Step 8
+Smoke.step(8, "teacher cancels a session: Draft card, Confirm cancels it and issues a Credit")
+
+cancel_start =
+  0..287
+  |> Enum.map(&Time.add(~T[00:00:00], &1 * 5 * 60))
+  |> Enum.find(&(&1 not in [start_time | taken]))
+
+{:ok, cancel_slot} =
+  Studio.create_slot(%{
+    weekday: weekday,
+    start_time: cancel_start,
+    end_time: Time.add(cancel_start, 60 * 60),
+    default_style: "Hatha",
+    label: "SMOKE 停課"
+  })
+
+cancel_date = Date.add(today, 7)
+
+{:ok, cancel_session} =
+  Studio.create_session(%{slot_id: cancel_slot.id, date: cancel_date, style: "Hatha"})
+
+{:ok, _} = Roster.enroll(cancel_session, student, purchase)
+
+cancel_event = %{
+  "webhookEventId" => "smoke-teacher-3",
+  "mode" => "active",
+  "type" => "message",
+  "replyToken" => "smoke-reply-5",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "message" => %{"id" => "smoke-msg-4", "type" => "text", "text" => "下週那堂停課，颱風假"}
+}
+
+:ok = Line.record_event(cancel_event)
+cancel_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-teacher-3")
+
+ProviderMock.stub(fn messages, _tools, _opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
+      {:ok, %{text: "已建立停課草稿，請確認。", tool_calls: []}}
+
+    _ ->
+      {:ok,
+       %{
+         text: nil,
+         tool_calls: [
+           %{
+             id: "smoke-call-3",
+             name: "cancel_session",
+             input: %{"session_id" => cancel_session.id, "reason" => "颱風假"}
+           }
+         ]
+       }}
+  end
+end)
+
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => cancel_line_event.id}})
+
+cancel_draft =
+  Repo.one(
+    from d in Draft,
+      where: d.thread_id == ^teacher_thread.id and d.kind == "cancel_session"
+  )
+
+Smoke.check(
+  "pending cancel_session draft created for the SMOKE session",
+  cancel_draft != nil and cancel_draft.state == "pending" and
+    cancel_draft.parsed["session_id"] == cancel_session.id and
+    cancel_draft.parsed["credit_count"] == 1
+)
+
+cancel_replies = for {:reply, {"smoke-reply-5", messages}} <- LineMock.calls(), do: messages
+cancel_carousel = cancel_replies |> List.first([]) |> Enum.find(&(&1[:type] == "flex"))
+
+cancel_postbacks =
+  case cancel_carousel do
+    %{contents: %{contents: [bubble | _]}} ->
+      bubble.footer.contents |> Enum.map(& &1.action[:data]) |> Enum.reject(&is_nil/1)
+
+    _ ->
+      nil
+  end
+
+Smoke.check(
+  "the reply carries the cancel draft's card with 確認 / 捨棄",
+  cancel_draft != nil and
+    cancel_postbacks == [
+      "action=confirm&draft_id=#{cancel_draft.id}",
+      "action=discard&draft_id=#{cancel_draft.id}"
+    ]
+)
+
+Smoke.check(
+  "the session is still scheduled before Confirm",
+  Studio.get_session!(cancel_session.id).state == "scheduled"
+)
+
+cancel_postback_event = %{
+  "webhookEventId" => "smoke-postback-2",
+  "mode" => "active",
+  "type" => "postback",
+  "replyToken" => "smoke-reply-6",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "postback" => %{"data" => "action=confirm&draft_id=#{cancel_draft && cancel_draft.id}"}
+}
+
+:ok = Line.record_event(cancel_postback_event)
+cancel_postback_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-postback-2")
+Process.delete(:line_client_mock_calls)
+
+:ok =
+  ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => cancel_postback_line_event.id}})
+
+cancelled = Studio.get_session!(cancel_session.id)
+
+Smoke.check(
+  "Confirm cancels the session with the stated reason",
+  cancelled.state == "cancelled" and cancelled.cancel_reason == "颱風假"
+)
+
+cancel_credits =
+  Repo.all(from c in Roster.Credit, where: c.origin_session_id == ^cancel_session.id)
+
+Smoke.check(
+  "the enrolled student gets one cancellation Credit",
+  match?([%{student_id: id, source: "cancellation"}] when id == student.id, cancel_credits)
+)
+
+applied_cancel = cancel_draft && Repo.reload!(cancel_draft)
+
+Smoke.check(
+  "the cancel draft is applied and points at the session",
+  applied_cancel != nil and applied_cancel.state == "applied" and
+    applied_cancel.applied_record_type == "Ganesha.Studio.Session" and
+    applied_cancel.applied_record_id == cancel_session.id
+)
+
+Smoke.check(
+  "the teacher is told the outcome",
+  length(for {:reply, {"smoke-reply-6", _}} <- LineMock.calls(), do: :ok) == 1
 )
 
 # ---------------------------------------------------------------- teardown
