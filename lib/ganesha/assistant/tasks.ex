@@ -13,6 +13,7 @@ defmodule Ganesha.Assistant.Tasks do
     BookOneOff,
     CancelSession,
     CopyMonth,
+    Enroll,
     MakeupRequest,
     MonthMoney,
     MonthSchedule,
@@ -35,9 +36,11 @@ defmodule Ganesha.Assistant.Tasks do
   ]
 
   @schedule [CancelSession, SetSessionStyle, AddSession, AddSlot, CopyMonth]
+  @students_money [Enroll]
 
   @teacher @questions ++
              [RecordPayment, BookOneOff, MakeupRequest] ++
+             @students_money ++
              @schedule ++ [AskTeacher, SetLanguage]
   @group [RecordPayment, BookOneOff, MakeupRequest]
   @student [SetLanguage]
