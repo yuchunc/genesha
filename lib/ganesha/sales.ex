@@ -16,6 +16,10 @@ defmodule Ganesha.Sales do
     Purchase |> Repo.get!(id) |> Repo.preload([:student, :package, :slot])
   end
 
+  def get_purchase(id) do
+    Purchase |> Repo.get(id) |> Repo.preload([:student, :package, :slot])
+  end
+
   def create_purchase(attrs) do
     %Purchase{} |> Purchase.changeset(attrs) |> Repo.insert()
   end
@@ -65,6 +69,8 @@ defmodule Ganesha.Sales do
   end
 
   alias Ganesha.Sales.Payment
+
+  def get_payment(id), do: Repo.get(Payment, id)
 
   def record_payment(attrs) do
     %Payment{} |> Payment.changeset(attrs) |> Repo.insert()

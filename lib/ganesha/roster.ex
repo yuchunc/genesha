@@ -59,6 +59,10 @@ defmodule Ganesha.Roster do
     Attendance |> Repo.get!(id) |> Repo.preload([:student, session: :slot])
   end
 
+  def get_attendance(id), do: Repo.get(Attendance, id)
+
+  def get_credit(id), do: Repo.get(Credit, id)
+
   def list_for_session(%Session{} = session) do
     Repo.all(
       from a in Attendance,

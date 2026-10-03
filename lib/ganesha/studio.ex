@@ -16,6 +16,8 @@ defmodule Ganesha.Studio do
 
   def get_slot!(id), do: Repo.get!(Slot, id)
 
+  def get_slot(id), do: Repo.get(Slot, id)
+
   def create_slot(attrs), do: %Slot{} |> Slot.changeset(attrs) |> Repo.insert()
 
   def update_slot(%Slot{} = slot, attrs), do: slot |> Slot.changeset(attrs) |> Repo.update()
