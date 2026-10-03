@@ -29,6 +29,34 @@ defmodule Ganesha.Line.ClientTest do
     assert {:error, {400, %{"message" => "bad"}}} = Client.loading("Uteacher", 20)
   end
 
+  test "validate_reply/1 asks LINE to check the messages without sending them" do
+    parent = self()
+    messages = [Client.text_message("嗨")]
+
+    Req.Test.stub(Client, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(parent, {:request, conn.method, conn.request_path, Jason.decode!(body)})
+      conn |> Plug.Conn.put_status(200) |> Req.Test.json(%{})
+    end)
+
+    assert :ok = Client.validate_reply(messages)
+
+    assert_receive {:request, "POST", "/v2/bot/message/validate/reply",
+                    %{"messages" => [%{"type" => "text", "text" => "嗨"}]} = body}
+
+    refute Map.has_key?(body, "replyToken")
+  end
+
+  test "validate_reply/1 returns LINE's reason for an invalid message" do
+    reason = %{"message" => "A message (messages[0]) in the request body is invalid"}
+
+    Req.Test.stub(Client, fn conn ->
+      conn |> Plug.Conn.put_status(400) |> Req.Test.json(reason)
+    end)
+
+    assert {:error, {400, ^reason}} = Client.validate_reply([%{type: "text", text: ""}])
+  end
+
   test "flex_message/2 wraps the contents and cuts altText to 400 characters" do
     message = Client.flex_message(String.duplicate("字", 450), %{type: "bubble"})
 

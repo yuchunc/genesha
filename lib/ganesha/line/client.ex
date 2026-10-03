@@ -25,6 +25,15 @@ defmodule Ganesha.Line.Client do
     post("/v2/bot/chat/loading/start", %{chatId: chat_id, loadingSeconds: seconds})
   end
 
+  @doc """
+  Asks LINE whether `messages` would be accepted as a reply, without sending
+  anything to anyone (spec §8, `mix line.validate_cards`).
+  """
+  @impl true
+  def validate_reply(messages) when is_list(messages) do
+    post("/v2/bot/message/validate/reply", %{messages: messages})
+  end
+
   @impl true
   def get_group_member(group_id, user_id) do
     case Req.get(req(), url: "/v2/bot/group/#{group_id}/member/#{user_id}") do

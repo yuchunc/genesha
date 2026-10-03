@@ -4,6 +4,7 @@ defmodule Ganesha.Line.ClientBehaviour do
   @callback reply(reply_token :: String.t(), messages :: [map()]) :: :ok | {:error, term()}
   @callback push(to :: String.t(), messages :: [map()]) :: :ok | {:error, term()}
   @callback loading(chat_id :: String.t(), seconds :: pos_integer()) :: :ok | {:error, term()}
+  @callback validate_reply(messages :: [map()]) :: :ok | {:error, term()}
   @callback get_group_member(group_id :: String.t(), user_id :: String.t()) ::
               {:ok, map()} | {:error, term()}
 end

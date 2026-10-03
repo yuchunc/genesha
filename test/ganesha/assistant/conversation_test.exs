@@ -16,6 +16,7 @@ defmodule Ganesha.Assistant.ConversationTest do
     def reply(_token, _messages), do: {:error, {400, %{"message" => "Invalid reply token"}}}
     def push(to, messages), do: LineMock.push(to, messages)
     def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
+    def validate_reply(messages), do: LineMock.validate_reply(messages)
     def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
   end
 
@@ -28,6 +29,7 @@ defmodule Ganesha.Assistant.ConversationTest do
 
     def push(to, messages), do: LineMock.push(to, messages)
     def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
+    def validate_reply(messages), do: LineMock.validate_reply(messages)
     def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
   end
 
@@ -46,6 +48,7 @@ defmodule Ganesha.Assistant.ConversationTest do
 
     def push(to, messages), do: LineMock.push(to, messages)
     def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
+    def validate_reply(messages), do: LineMock.validate_reply(messages)
     def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
   end
 

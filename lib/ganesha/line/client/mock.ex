@@ -25,6 +25,12 @@ defmodule Ganesha.Line.Client.Mock do
   end
 
   @impl true
+  def validate_reply(messages) do
+    record(:validate_reply, messages)
+    :ok
+  end
+
+  @impl true
   def get_group_member(_group_id, _user_id), do: {:ok, %{"displayName" => "測試學生"}}
 
   def calls, do: Process.get(:line_client_mock_calls, []) |> Enum.reverse()
