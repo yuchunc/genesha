@@ -9,6 +9,7 @@ defmodule Ganesha.Assistant.Tasks do
   alias Ganesha.Assistant.Tasks.{
     AddSession,
     AddSlot,
+    AddStudent,
     AskTeacher,
     BookMakeup,
     BookOneOff,
@@ -23,6 +24,7 @@ defmodule Ganesha.Assistant.Tasks do
     NextSession,
     OpenCredits,
     RecordPayment,
+    SavePackage,
     SessionRoster,
     SetLanguage,
     SetNoShow,
@@ -40,7 +42,15 @@ defmodule Ganesha.Assistant.Tasks do
   ]
 
   @schedule [CancelSession, SetSessionStyle, AddSession, AddSlot, CopyMonth]
-  @students_money [Enroll, ConfirmPayment, OverridePrice, SetNoShow, BookMakeup]
+  @students_money [
+    Enroll,
+    ConfirmPayment,
+    OverridePrice,
+    SetNoShow,
+    BookMakeup,
+    AddStudent,
+    SavePackage
+  ]
 
   @teacher @questions ++
              [RecordPayment, BookOneOff, MakeupRequest] ++
