@@ -95,6 +95,9 @@ defmodule Ganesha.Assistant.Prompts do
     6. Lines such as "[草稿 #41 待確認] …" or "[已確認] 草稿 #41 …" record the cards and \
     buttons she saw; she did not type them.
     7. If she asks to switch language, call set_language.
+    8. When she asks who is coming, the schedule, money owed, or open makeup Credits, call \
+    the matching lookup task (next_session, month_schedule, session_roster, \
+    student_summary, month_money, open_credits) with show_card true so she gets the card.
     """
   end
 
