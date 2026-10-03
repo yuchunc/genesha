@@ -7,8 +7,12 @@ defmodule Ganesha.Assistant.Tasks do
   """
 
   alias Ganesha.Assistant.Tasks.{
+    AddSession,
+    AddSlot,
     AskTeacher,
     BookOneOff,
+    CancelSession,
+    CopyMonth,
     MakeupRequest,
     MonthMoney,
     MonthSchedule,
@@ -17,6 +21,7 @@ defmodule Ganesha.Assistant.Tasks do
     RecordPayment,
     SessionRoster,
     SetLanguage,
+    SetSessionStyle,
     StudentSummary
   }
 
@@ -29,7 +34,11 @@ defmodule Ganesha.Assistant.Tasks do
     OpenCredits
   ]
 
-  @teacher @questions ++ [RecordPayment, BookOneOff, MakeupRequest, AskTeacher, SetLanguage]
+  @schedule [CancelSession, SetSessionStyle, AddSession, AddSlot, CopyMonth]
+
+  @teacher @questions ++
+             [RecordPayment, BookOneOff, MakeupRequest] ++
+             @schedule ++ [AskTeacher, SetLanguage]
   @group [RecordPayment, BookOneOff, MakeupRequest]
   @student [SetLanguage]
 

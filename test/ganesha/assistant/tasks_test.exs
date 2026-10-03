@@ -4,8 +4,12 @@ defmodule Ganesha.Assistant.TasksTest do
   alias Ganesha.Assistant.Tasks
 
   alias Ganesha.Assistant.Tasks.{
+    AddSession,
+    AddSlot,
     AskTeacher,
     BookOneOff,
+    CancelSession,
+    CopyMonth,
     MakeupRequest,
     MonthMoney,
     MonthSchedule,
@@ -14,6 +18,7 @@ defmodule Ganesha.Assistant.TasksTest do
     RecordPayment,
     SessionRoster,
     SetLanguage,
+    SetSessionStyle,
     StudentSummary
   }
 
@@ -59,6 +64,20 @@ defmodule Ganesha.Assistant.TasksTest do
       refute task in group
       refute task in student
       assert task.kind() == :lookup
+      assert {:ok, ^task} = Tasks.fetch(task.name())
+    end
+  end
+
+  test "the five schedule change tasks are Teacher chat only" do
+    teacher = Tasks.for_chat(:teacher)
+    group = Tasks.for_chat(:group)
+    student = Tasks.for_chat(:student)
+
+    for task <- [CancelSession, SetSessionStyle, AddSession, AddSlot, CopyMonth] do
+      assert task in teacher
+      refute task in group
+      refute task in student
+      assert task.kind() == :change
       assert {:ok, ^task} = Tasks.fetch(task.name())
     end
   end
