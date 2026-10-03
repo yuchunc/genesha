@@ -100,6 +100,23 @@ defmodule Ganesha.Studio do
     end)
   end
 
+  @doc """
+  How many sessions `copy_month/1` would create for `month`, without
+  creating any: each active slot's matching weekdays not yet in the month.
+  """
+  def count_new_sessions_for_month(%Date{} = month) do
+    Enum.reduce(list_active_slots(), 0, fn slot, count ->
+      existing = slot |> sessions_for_slot_in_month(month) |> MapSet.new(& &1.date)
+
+      new_dates =
+        month
+        |> dates_in_month_on(slot.weekday)
+        |> Enum.reject(&MapSet.member?(existing, &1))
+
+      count + length(new_dates)
+    end)
+  end
+
   def set_style(%Session{} = session, style) do
     session |> Session.changeset(%{style: style}) |> Repo.update()
   end

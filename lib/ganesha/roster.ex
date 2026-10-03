@@ -156,17 +156,25 @@ defmodule Ganesha.Roster do
   end
 
   @doc """
+  How many Credits cancelling this session would issue: one per seated
+  student, counted the same way `issue_cancellation_credits/1` picks them.
+  """
+  def cancellation_credit_count(%Session{} = session) do
+    session |> credited_on_cancel() |> Repo.aggregate(:count)
+  end
+
+  defp credited_on_cancel(%Session{} = session) do
+    from a in Attendance,
+      where: a.session_id == ^session.id and a.kind in ^@cancelled_session_credit_kinds
+  end
+
+  @doc """
   Issues one never-expiring makeup credit per seated student on a cancelled
   session. Idempotent via the partial unique index on
   `(origin_session_id, student_id)`.
   """
   def issue_cancellation_credits(%Session{} = session) do
-    student_ids =
-      Repo.all(
-        from a in Attendance,
-          where: a.session_id == ^session.id and a.kind in ^@cancelled_session_credit_kinds,
-          select: a.student_id
-      )
+    student_ids = session |> credited_on_cancel() |> select([a], a.student_id) |> Repo.all()
 
     credits =
       Enum.map(student_ids, fn student_id ->

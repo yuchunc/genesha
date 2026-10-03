@@ -141,6 +141,35 @@ defmodule Ganesha.Roster.CreditTest do
     assert hd(first).id == hd(second).id
   end
 
+  test "cancellation_credit_count/1 predicts how many credits a cancellation issues" do
+    {slot, sessions} = monday_slot_with_sessions()
+    _ = enrolled_monthly(slot, sessions, "蘭子")
+    _ = enrolled_monthly(slot, sessions, "丹丹")
+    [session, other | _] = sessions
+
+    {:ok, guest} = People.create_student(%{display_name: "小米"})
+    {:ok, pkg} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 450})
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: guest.id, package_id: pkg.id, list_price: 450})
+
+    {:ok, _} = Roster.add_drop_in(session, guest, purchase)
+    [row | _] = Roster.list_for_session(session)
+    {:ok, _} = Roster.mark_no_show(row)
+
+    assert Roster.cancellation_credit_count(session) == 3
+    assert Roster.cancellation_credit_count(other) == 2
+
+    {:ok, cancelled} = Studio.cancel_session(session, "颱風假")
+    {:ok, credits} = Roster.issue_cancellation_credits(cancelled)
+    assert length(credits) == 3
+  end
+
+  test "cancellation_credit_count/1 is zero for an empty session" do
+    {_slot, [session | _]} = monday_slot_with_sessions()
+    assert Roster.cancellation_credit_count(session) == 0
+  end
+
   test "book_makeup/3 spends a credit on another weekday and creates a free row" do
     {monday, monday_sessions} = monday_slot_with_sessions()
     %{student: student, purchase: purchase} = enrolled_monthly(monday, monday_sessions, "蘭子")

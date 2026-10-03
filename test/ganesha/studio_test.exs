@@ -270,6 +270,44 @@ defmodule Ganesha.StudioTest do
     end
   end
 
+  describe "count_new_sessions_for_month/1" do
+    test "counts the sessions copy_month/1 would create, without writing any" do
+      monday = monday_slot()
+
+      {:ok, _inactive} =
+        Studio.create_slot(%{
+          weekday: 5,
+          start_time: ~T[18:00:00],
+          end_time: ~T[19:00:00],
+          default_style: "流動",
+          label: "週五",
+          active: false
+        })
+
+      {:ok, _} = Studio.create_session(%{slot_id: monday.id, date: ~D[2026-08-10], style: "基礎"})
+
+      assert Studio.count_new_sessions_for_month(~D[2026-08-01]) == 4
+      assert length(Studio.sessions_in_month(~D[2026-08-01])) == 1
+      assert {:ok, 4} = Studio.copy_month(~D[2026-08-01])
+      assert Studio.count_new_sessions_for_month(~D[2026-08-01]) == 0
+    end
+
+    test "sums every active slot" do
+      monday_slot()
+
+      {:ok, _friday} =
+        Studio.create_slot(%{
+          weekday: 5,
+          start_time: ~T[18:00:00],
+          end_time: ~T[19:00:00],
+          default_style: "流動",
+          label: "週五"
+        })
+
+      assert Studio.count_new_sessions_for_month(~D[2026-08-15]) == 9
+    end
+  end
+
   test "sessions_between/2 returns scheduled sessions within an inclusive date range" do
     {:ok, slot} =
       Studio.create_slot(%{
