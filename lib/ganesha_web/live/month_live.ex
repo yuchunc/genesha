@@ -1,7 +1,7 @@
 defmodule GaneshaWeb.MonthLive do
   use GaneshaWeb, :live_view
 
-  alias Ganesha.{Clock, Repo, Roster, Studio}
+  alias Ganesha.{Clock, Roster, Scheduling, Studio}
   alias GaneshaWeb.Fmt
 
   @impl true
@@ -124,25 +124,11 @@ defmodule GaneshaWeb.MonthLive do
   def handle_event("cancel", %{"session-id" => id, "reason" => reason}, socket) do
     session = Studio.get_session!(id)
 
-    # Credits are issued here rather than inside Studio so both steps are
-    # visible at the call site; wrapped in one transaction so a session is
-    # never left cancelled without its students' makeup credits, or the
-    # reverse — the render guard hides the cancel form once state flips, so
-    # there is no UI path to retry a partial failure.
-    result =
-      Repo.transaction(fn ->
-        case Studio.cancel_session(session, reason) do
-          {:ok, cancelled} ->
-            {:ok, credits} = Roster.issue_cancellation_credits(cancelled)
-            credits
-
-          {:error, changeset} ->
-            Repo.rollback(changeset)
-        end
-      end)
-
-    case result do
-      {:ok, credits} ->
+    # The cancellation and its makeup credits commit together, so the render
+    # guard hiding the cancel form once state flips never strands a partial
+    # change with no UI path to retry it.
+    case Scheduling.cancel_session(session, reason) do
+      {:ok, %{credits: credits}} ->
         {:noreply,
          socket
          |> put_flash(:info, "已停課，發出 #{length(credits)} 張補課額度")

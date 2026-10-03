@@ -1,7 +1,7 @@
 defmodule GaneshaWeb.ScheduleLive do
   use GaneshaWeb, :live_view
 
-  alias Ganesha.{Clock, Studio}
+  alias Ganesha.{Clock, Scheduling, Studio}
   alias GaneshaWeb.Fmt
 
   @modes ~w(standalone recurring)
@@ -49,11 +49,10 @@ defmodule GaneshaWeb.ScheduleLive do
 
   def handle_event("create_recurring", %{"slot" => params}, socket) do
     attrs = normalize_times(params, ["start_time", "end_time"])
+    month = socket.assigns.month
 
-    case Studio.create_slot(attrs) do
-      {:ok, slot} ->
-        {:ok, _sessions} = Studio.generate_month(slot, socket.assigns.month)
-        month = socket.assigns.month
+    case Scheduling.add_weekly_class(attrs, month) do
+      {:ok, _} ->
         {:noreply, push_navigate(socket, to: ~p"/class/#{month.year}/#{month.month}")}
 
       {:error, changeset} ->
