@@ -2,7 +2,7 @@ defmodule Ganesha.Assistant.ConversationTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Catalog, Clock, People, Sales, Studio}
-  alias Ganesha.Assistant.{Conversation, Draft}
+  alias Ganesha.Assistant.{Conversation, Draft, Tasks}
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Assistant.Tasks.{BookOneOff, RecordPayment}
   alias Ganesha.Line.{Cards, Labels}
@@ -155,7 +155,9 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert request.system =~ "- student #{student.id}: Lulu"
 
       assert Enum.map(request.tools, & &1.name) ==
-               ~w(record_payment book_one_off makeup_request ask_teacher set_language)
+               Enum.map(Tasks.for_chat(:teacher), & &1.name())
+
+      assert "next_session" in Enum.map(request.tools, & &1.name)
 
       assert [%{role: "user", content: "嗨"}] = request.messages
     end

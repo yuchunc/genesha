@@ -7,8 +7,14 @@ defmodule Ganesha.Assistant.TasksTest do
     AskTeacher,
     BookOneOff,
     MakeupRequest,
+    MonthMoney,
+    MonthSchedule,
+    NextSession,
+    OpenCredits,
     RecordPayment,
-    SetLanguage
+    SessionRoster,
+    SetLanguage,
+    StudentSummary
   }
 
   defmodule Lookup do
@@ -29,8 +35,32 @@ defmodule Ganesha.Assistant.TasksTest do
     assert Tasks.for_chat(:group) == [RecordPayment, BookOneOff, MakeupRequest]
     assert Tasks.for_chat(:student) == [SetLanguage]
 
-    assert Enum.sort(Tasks.for_chat(:teacher)) ==
-             Enum.sort([RecordPayment, BookOneOff, MakeupRequest, AskTeacher, SetLanguage])
+    teacher = Tasks.for_chat(:teacher)
+
+    for task <- [RecordPayment, BookOneOff, MakeupRequest, AskTeacher, SetLanguage] do
+      assert task in teacher
+    end
+  end
+
+  test "the six questions are Teacher chat lookups only" do
+    teacher = Tasks.for_chat(:teacher)
+    group = Tasks.for_chat(:group)
+    student = Tasks.for_chat(:student)
+
+    for task <- [
+          NextSession,
+          MonthSchedule,
+          SessionRoster,
+          StudentSummary,
+          MonthMoney,
+          OpenCredits
+        ] do
+      assert task in teacher
+      refute task in group
+      refute task in student
+      assert task.kind() == :lookup
+      assert {:ok, ^task} = Tasks.fetch(task.name())
+    end
   end
 
   test "fetch/1 finds a task by name" do

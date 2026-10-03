@@ -10,11 +10,26 @@ defmodule Ganesha.Assistant.Tasks do
     AskTeacher,
     BookOneOff,
     MakeupRequest,
+    MonthMoney,
+    MonthSchedule,
+    NextSession,
+    OpenCredits,
     RecordPayment,
-    SetLanguage
+    SessionRoster,
+    SetLanguage,
+    StudentSummary
   }
 
-  @teacher [RecordPayment, BookOneOff, MakeupRequest, AskTeacher, SetLanguage]
+  @questions [
+    NextSession,
+    MonthSchedule,
+    SessionRoster,
+    StudentSummary,
+    MonthMoney,
+    OpenCredits
+  ]
+
+  @teacher @questions ++ [RecordPayment, BookOneOff, MakeupRequest, AskTeacher, SetLanguage]
   @group [RecordPayment, BookOneOff, MakeupRequest]
   @student [SetLanguage]
 
