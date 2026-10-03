@@ -1783,8 +1783,8 @@ end
     System.halt(1)
 end
 
-{thread, turn3, drafts3} =
-  run_turn.(thread, "SMOKE 把 10/14 週三的基礎課改成流動，先幫我排 10/14 單次課 19:00-20:15 基礎 Hatha")
+{thread, _turn3, drafts3} =
+  run_turn.(thread, "SMOKE 把 session #{style_session.id} 的課型改成流動")
 
 IO.inspect(Enum.map(drafts3, & &1.kind), label: "draft kinds on style turn")
 
