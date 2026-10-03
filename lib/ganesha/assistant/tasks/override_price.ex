@@ -1,0 +1,153 @@
+defmodule Ganesha.Assistant.Tasks.OverridePrice do
+  @moduledoc """
+  `override_price` (spec §3.1 #16): set or clear a purchase's
+  `custom_amount` through `Ganesha.Sales.update_purchase/2`, as the student
+  screen's override form does.
+  """
+  @behaviour Ganesha.Assistant.Task
+
+  alias Ganesha.Sales
+  alias Ganesha.Assistant.Format
+
+  @apply_keys ~w(purchase_id custom_amount note)
+
+  @impl true
+  def name, do: "override_price"
+
+  @impl true
+  def kind, do: :change
+
+  @impl true
+  def tool do
+    %{
+      description: """
+      Override what a student owes on a purchase (議價). This only proposes a Draft; \
+      the purchase is updated when the teacher taps Confirm. Pass custom_amount to \
+      set the agreed NT$ total, or omit it / pass null to clear the override back to \
+      list price. Use purchase_id from the studio snapshot or student_summary.\
+      """,
+      input_schema: %{
+        type: "object",
+        properties: %{
+          purchase_id: %{type: "integer"},
+          custom_amount: %{
+            type: ["integer", "null"],
+            description: "NT$ owed instead of list price; null clears the override"
+          },
+          note: %{type: "string"}
+        },
+        required: ["purchase_id"]
+      }
+    }
+  end
+
+  @impl true
+  def propose(input, _ctx) do
+    with {:ok, purchase} <- fetch_purchase(input["purchase_id"]),
+         :ok <- check_amount(input["custom_amount"]) do
+      student = purchase.student
+      before_payable = Sales.payable(purchase)
+      after_payable = after_payable(purchase, input["custom_amount"])
+
+      parsed = %{
+        "purchase_id" => purchase.id,
+        "custom_amount" => blank_amount(input["custom_amount"]),
+        "note" => input["note"],
+        "student_id" => student.id,
+        "student_name" => student.display_name,
+        "package_name" => purchase.package.name,
+        "list_price" => purchase.list_price,
+        "before_custom_amount" => purchase.custom_amount,
+        "before_payable" => before_payable,
+        "after_payable" => after_payable
+      }
+
+      {:ok, %{student_id: student.id, parsed: parsed}}
+    end
+  end
+
+  @impl true
+  def apply(parsed, _confirmed_by) do
+    attrs = Map.take(parsed, @apply_keys)
+
+    with {:ok, purchase} <- load_purchase(attrs["purchase_id"]),
+         :ok <- same_custom_amount(purchase, parsed["before_custom_amount"]),
+         {:ok, updated} <-
+           Sales.update_purchase(purchase, %{
+             custom_amount: attrs["custom_amount"],
+             note: attrs["note"]
+           }) do
+      {:ok, {"Ganesha.Sales.Purchase", updated.id}}
+    end
+  end
+
+  @impl true
+  def describe(parsed, locale) do
+    %{
+      title:
+        "#{label(:title, locale)} #{parsed["student_name"]} #{parsed["package_name"]}",
+      lines:
+        Enum.reject(
+          [
+            line(:list_price, Format.money(parsed["list_price"]), locale),
+            note_line(parsed["note"], locale)
+          ],
+          &is_nil/1
+        ),
+      changes: [
+        {label(:owed, locale), Format.money(parsed["before_payable"]),
+         Format.money(parsed["after_payable"])}
+      ],
+      web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
+    }
+  end
+
+  defp fetch_purchase(id) when is_integer(id) do
+    case Sales.get_purchase(id) do
+      nil -> {:error, "no purchase with id #{id}"}
+      purchase -> {:ok, purchase}
+    end
+  end
+
+  defp fetch_purchase(_id), do: {:error, "purchase_id must be an integer"}
+
+  defp load_purchase(id) when is_integer(id) do
+    case Sales.get_purchase(id) do
+      nil -> {:error, :not_found}
+      purchase -> {:ok, purchase}
+    end
+  end
+
+  defp load_purchase(_id), do: {:error, :not_found}
+
+  defp check_amount(nil), do: :ok
+  defp check_amount(amount) when is_integer(amount) and amount >= 0, do: :ok
+
+  defp check_amount(_amount),
+    do: {:error, "custom_amount must be a whole NT$ amount of 0 or more, or null to clear"}
+
+  defp blank_amount(nil), do: nil
+  defp blank_amount(amount), do: amount
+
+  defp after_payable(purchase, nil), do: purchase.list_price
+  defp after_payable(_purchase, amount) when is_integer(amount), do: amount
+
+  defp same_custom_amount(%{custom_amount: current}, expected) do
+    if current == expected, do: :ok, else: {:error, :purchase_changed}
+  end
+
+  defp label(:title, "en"), do: "Override price"
+  defp label(:title, _), do: "議價"
+  defp label(:list_price, "en"), do: "List price"
+  defp label(:list_price, _), do: "原價"
+  defp label(:owed, "en"), do: "Owed"
+  defp label(:owed, _), do: "應付"
+
+  defp line(_key, value, _locale) when value in [nil, ""], do: nil
+  defp line(key, value, "en"), do: "#{label(key, "en")}: #{value}"
+  defp line(key, value, locale), do: "#{label(key, locale)}：#{value}"
+
+  defp note_line(note, _locale) when note in [nil, ""], do: nil
+  defp note_line(note, "en"), do: "Note: #{note}"
+  defp note_line(note, _locale), do: "備註：#{note}"
+end
