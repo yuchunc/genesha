@@ -16,7 +16,7 @@
 
 import Ecto.Query
 
-alias Ganesha.{Catalog, Line, People, Repo, Sales}
+alias Ganesha.{Catalog, Clock, Line, People, Repo, Roster, Sales, Studio}
 alias Ganesha.Assistant
 
 alias Ganesha.Assistant.{
@@ -78,8 +78,21 @@ cleanup = fn ->
   smoke_event_ids =
     Repo.all(from e in LineEvent, where: like(e.webhook_event_id, "smoke-%"), select: e.id)
 
+  smoke_slot_ids = from(s in Studio.Slot, where: like(s.label, "SMOKE%"), select: s.id)
+
+  smoke_session_ids =
+    from(s in Studio.Session, where: s.slot_id in subquery(smoke_slot_ids), select: s.id)
+
+  Repo.delete_all(
+    from(a in Roster.Attendance,
+      where: a.session_id in subquery(smoke_session_ids) or a.student_id in subquery(student_ids)
+    )
+  )
+
   Repo.delete_all(from(p in Sales.Payment, where: p.purchase_id in subquery(purchase_ids)))
   Repo.delete_all(from(p in Sales.Purchase, where: p.student_id in subquery(student_ids)))
+  Repo.delete_all(from(s in Studio.Session, where: s.id in subquery(smoke_session_ids)))
+  Repo.delete_all(from(s in Studio.Slot, where: like(s.label, "SMOKE%")))
   Repo.delete_all(from(p in Catalog.Package, where: like(p.name, "SMOKE%")))
 
   thread_ids = from(t in Thread, where: t.source_id in ^[teacher_id, group_id], select: t.id)
@@ -419,6 +432,101 @@ Smoke.check(
 Smoke.check(
   "confirmed draft's parsed data retained",
   Repo.reload!(draft).parsed["amount"] == 3200
+)
+
+# ---------------------------------------------------------------- Step 7
+Smoke.step(7, "teacher question: next_session with show_card replies with the session card")
+
+today = Clock.today()
+weekday = Date.day_of_week(today)
+taken = Repo.all(from s in Studio.Slot, where: s.weekday == ^weekday, select: s.start_time)
+
+# Slots are unique on weekday + start_time. Today's earliest free time also
+# makes this SMOKE Session the next one Studio.next_session/0 finds.
+start_time =
+  0..287
+  |> Enum.map(&Time.add(~T[00:00:00], &1 * 5 * 60))
+  |> Enum.find(&(&1 not in taken))
+
+{:ok, smoke_slot} =
+  Studio.create_slot(%{
+    weekday: weekday,
+    start_time: start_time,
+    end_time: Time.add(start_time, 60 * 60),
+    default_style: "Hatha",
+    label: "SMOKE 基礎"
+  })
+
+{:ok, smoke_session} =
+  Studio.create_session(%{slot_id: smoke_slot.id, date: today, style: "Hatha"})
+
+{:ok, _} = Roster.enroll(smoke_session, student, purchase)
+
+question_event = %{
+  "webhookEventId" => "smoke-teacher-2",
+  "mode" => "active",
+  "type" => "message",
+  "replyToken" => "smoke-reply-4",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "message" => %{"id" => "smoke-msg-3", "type" => "text", "text" => "下一堂課誰會來？"}
+}
+
+:ok = Line.record_event(question_event)
+question_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-teacher-2")
+
+# The thread already holds Step 3's tool round, so only the latest message
+# tells whether next_session has been answered.
+ProviderMock.stub(fn messages, _tools, _opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
+      {:ok, %{text: "今天有一堂，SMOKE 小美會來。", tool_calls: []}}
+
+    _ ->
+      {:ok,
+       %{
+         text: nil,
+         tool_calls: [%{id: "smoke-call-2", name: "next_session", input: %{"show_card" => true}}]
+       }}
+  end
+end)
+
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => question_line_event.id}})
+
+question_replies = for {:reply, {"smoke-reply-4", messages}} <- LineMock.calls(), do: messages
+Smoke.check("exactly one LINE reply sent to the question", length(question_replies) == 1)
+
+session_card =
+  question_replies
+  |> List.first([])
+  |> Enum.find(&(&1[:type] == "flex" and &1.contents.type == "bubble"))
+
+card_title =
+  case session_card do
+    %{contents: %{header: %{contents: [%{text: title}]}}} -> title
+    _ -> nil
+  end
+
+Smoke.check(
+  "the reply carries a Flex bubble for the SMOKE session",
+  is_binary(card_title) and card_title =~ Assistant.Format.session_day(today, "zh-TW") and
+    card_title =~ "SMOKE 基礎"
+)
+
+Smoke.check(
+  "the card lists who is coming",
+  session_card != nil and Enum.any?(session_card.contents.body.contents, &(&1.text =~ "SMOKE 小美"))
+)
+
+Smoke.check(
+  "the model's reply records the session card it sent",
+  List.last(Assistant.list_messages(teacher_thread)).content ==
+    "今天有一堂，SMOKE 小美會來。\n[#{Line.Labels.t(:card_session, "zh-TW")}] #{card_title}"
+)
+
+Smoke.check(
+  "question event marked processed",
+  Repo.reload!(question_line_event).processed_at != nil
 )
 
 # ---------------------------------------------------------------- teardown
