@@ -68,4 +68,15 @@ defmodule Ganesha.Assistant.Tasks.Lookup do
   end
 
   def fetch_session(_id), do: {:error, "session_id must be a session id from the snapshot"}
+
+  @doc "Confirm-time Session load: `{:error, :not_found}` instead of a message for the model."
+  @spec load_session(term()) :: {:ok, %Ganesha.Studio.Session{}} | {:error, :not_found}
+  def load_session(id) when is_integer(id) do
+    case Ganesha.Studio.get_session(id) do
+      nil -> {:error, :not_found}
+      session -> {:ok, session}
+    end
+  end
+
+  def load_session(_id), do: {:error, :not_found}
 end

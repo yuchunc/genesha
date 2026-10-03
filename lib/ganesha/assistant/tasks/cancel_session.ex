@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
   """
   @behaviour Ganesha.Assistant.Task
 
-  alias Ganesha.{Roster, Scheduling, Studio}
+  alias Ganesha.{Roster, Scheduling}
   alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
@@ -66,7 +66,7 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
   def apply(parsed, _confirmed_by) do
     attrs = Map.take(parsed, @apply_keys)
 
-    with {:ok, session} <- load_session(attrs["session_id"]),
+    with {:ok, session} <- Lookup.load_session(attrs["session_id"]),
          :ok <- still_scheduled(session),
          :ok <- same_credit_count(session, parsed["credit_count"]),
          {:ok, %{session: cancelled}} <- Scheduling.cancel_session(session, attrs["reason"]) do
@@ -89,15 +89,6 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
       web_path: parsed["session_id"] && "/sessions/#{parsed["session_id"]}"
     }
   end
-
-  defp load_session(id) when is_integer(id) do
-    case Studio.get_session(id) do
-      nil -> {:error, :not_found}
-      session -> {:ok, session}
-    end
-  end
-
-  defp load_session(_id), do: {:error, :not_found}
 
   defp check_scheduled(%{state: "scheduled"}), do: :ok
 

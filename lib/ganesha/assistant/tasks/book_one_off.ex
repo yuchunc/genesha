@@ -8,6 +8,7 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
 
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
 
   @apply_keys ~w(student_id session_id package_id custom_amount note)
@@ -81,7 +82,7 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
     attrs = Map.take(parsed, @apply_keys)
 
     with {:ok, student} <- load(:student, attrs["student_id"]),
-         {:ok, session} <- load(:session, attrs["session_id"]),
+         {:ok, session} <- Lookup.load_session(attrs["session_id"]),
          {:ok, package} <- load(:package, attrs["package_id"]),
          :ok <- still_scheduled(session),
          :ok <- still_available(package, student),

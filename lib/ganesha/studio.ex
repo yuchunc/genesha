@@ -36,11 +36,8 @@ defmodule Ganesha.Studio do
   """
   def generate_month(%Slot{} = slot, %Date{} = month) do
     Repo.transaction(fn ->
-      existing = slot |> sessions_for_slot_in_month(month) |> MapSet.new(& &1.date)
-
-      month
-      |> dates_in_month_on(slot.weekday)
-      |> Enum.reject(&MapSet.member?(existing, &1))
+      slot
+      |> missing_dates(month)
       |> Enum.reduce_while(:ok, fn date, :ok ->
         case create_session(%{slot_id: slot.id, date: date, style: slot.default_style}) do
           {:ok, _session} -> {:cont, :ok}
@@ -50,6 +47,15 @@ defmodule Ganesha.Studio do
 
       sessions_for_slot_in_month(slot, month)
     end)
+  end
+
+  # The month's dates on the slot's weekday that have no session yet.
+  defp missing_dates(%Slot{} = slot, %Date{} = month) do
+    existing = slot |> sessions_for_slot_in_month(month) |> MapSet.new(& &1.date)
+
+    month
+    |> dates_in_month_on(slot.weekday)
+    |> Enum.reject(&MapSet.member?(existing, &1))
   end
 
   defp dates_in_month_on(%Date{} = month, weekday) do
@@ -106,14 +112,7 @@ defmodule Ganesha.Studio do
   """
   def count_new_sessions_for_month(%Date{} = month) do
     Enum.reduce(list_active_slots(), 0, fn slot, count ->
-      existing = slot |> sessions_for_slot_in_month(month) |> MapSet.new(& &1.date)
-
-      new_dates =
-        month
-        |> dates_in_month_on(slot.weekday)
-        |> Enum.reject(&MapSet.member?(existing, &1))
-
-      count + length(new_dates)
+      count + length(missing_dates(slot, month))
     end)
   end
 
