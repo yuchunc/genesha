@@ -6,7 +6,8 @@ defmodule Ganesha.Assistant.Agent do
 
   - `:change` → `propose/2`, then `Assistant.create_draft/3` (with
     `replaces: input["replaces_draft_id"]`); the Draft id joins `draft_ids`.
-  - `:lookup` → `answer/2`; the card is kept only when `input["show_card"] == true`.
+  - `:lookup` → `answer/2`; the card is kept only when `input["show_card"] == true`;
+    optional `draft_ids` in the answer are merged onto the Turn (deduped).
   - `:control` → `answer/2`; its `choices` become `Turn.choices`.
   """
 
@@ -100,7 +101,9 @@ defmodule Ganesha.Assistant.Agent do
             do: turn.cards ++ [answer.card],
             else: turn.cards
 
-        {data, %Turn{turn | cards: cards}}
+        listed = Map.get(answer, :draft_ids, []) -- turn.draft_ids
+
+        {data, %Turn{turn | cards: cards, draft_ids: turn.draft_ids ++ listed}}
 
       {:error, text} ->
         {text, turn}

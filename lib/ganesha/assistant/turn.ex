@@ -1,7 +1,8 @@
 defmodule Ganesha.Assistant.Turn do
   @moduledoc """
   What one agent turn produced (spec §4.2): the model's final text, the
-  Drafts it created, the lookup cards it chose to show, the quick-reply
+  Drafts it created or listed (via lookup `draft_ids`), the lookup cards it
+  chose to show, the quick-reply
   choices from `ask_teacher`, and the id of the stored final reply (where
   the cards it sent are recorded).
   """

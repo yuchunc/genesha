@@ -6,6 +6,9 @@ defmodule Ganesha.Assistant.Task do
   `:change` tasks implement `propose/2`, `apply/2` and `describe/2`;
   `:lookup` and `:control` tasks implement `answer/2`.
 
+  - A `:lookup` answer may name pending Drafts in `draft_ids`; the agent adds
+    them to the Turn, so they are shown as the Draft carousel (`pending_drafts`).
+
   - `propose/2` never writes. It resolves ids, checks the request against
     current data, and captures "before" values into `parsed`. Its
     `{:error, text}` goes back to the model as the tool result.
@@ -46,7 +49,8 @@ defmodule Ganesha.Assistant.Task do
                %{
                  required(:data) => String.t(),
                  optional(:card) => card(),
-                 optional(:choices) => [String.t()]
+                 optional(:choices) => [String.t()],
+                 optional(:draft_ids) => [integer()]
                }}
               | {:error, String.t()}
 

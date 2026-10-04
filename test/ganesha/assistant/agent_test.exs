@@ -4,7 +4,7 @@ defmodule Ganesha.Assistant.AgentTest do
   alias Ganesha.Assistant
   alias Ganesha.Assistant.{Agent, Draft, Turn}
   alias Ganesha.Assistant.Provider.Mock
-  alias Ganesha.Assistant.Tasks.MakeupRequest
+  alias Ganesha.Assistant.Tasks.{MakeupRequest, PendingDrafts}
 
   defmodule Echo do
     @behaviour Ganesha.Assistant.Task
@@ -176,6 +176,18 @@ defmodule Ganesha.Assistant.AgentTest do
 
     assert {:ok, %Turn{draft_ids: [id]}} = Agent.run(thread, [MakeupRequest], "system", history)
     assert Repo.get!(Draft, id).parsed["note"] == "8/24"
+  end
+
+  test "a lookup's draft_ids join the Turn", %{thread: thread, history: history} do
+    {:ok, draft} =
+      Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
+
+    script([[call("t1", "pending_drafts", %{})]])
+
+    assert {:ok, %Turn{draft_ids: [id]}} =
+             Agent.run(thread, [PendingDrafts], "system", history)
+
+    assert id == draft.id
   end
 
   test "a lookup's card is kept only when show_card is true", %{thread: thread, history: history} do
