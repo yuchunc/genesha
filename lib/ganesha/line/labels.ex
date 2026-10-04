@@ -71,7 +71,13 @@ defmodule Ganesha.Line.Labels do
     credits_title: {"未使用的補課券", "Open credits"},
     credits_count:
       {"共 %{count} 張，%{expiring} 張本月到期", "%{count} open, %{expiring} expire this month"},
-    no_credits: {"沒有未使用的補課券", "No open credits"}
+    no_credits: {"沒有未使用的補課券", "No open credits"},
+    group_drafts_push_intro:
+      {"群組有新草稿待確認，請在下方卡片確認或捨棄。",
+       "New drafts from the group chat are waiting below — confirm or discard each card."},
+    pending_drafts_section: {"待確認草稿", "Pending drafts"},
+    pending_drafts_empty: {"目前沒有待確認的草稿。", "No drafts are waiting."},
+    pending_drafts_student_link: {"學生", "Student"}
   }
 
   @spec t(atom(), String.t() | nil, keyword()) :: String.t()

@@ -206,6 +206,21 @@ defmodule Ganesha.Assistant do
   end
 
   @doc """
+  Sets `notified_at` on the listed pending Drafts (spec §6.6). Used after a
+  successful `GroupDraftNotifier` push. Returns `{:error, :not_all_marked}`
+  when any id is missing or no longer pending, so a partial push can retry.
+  """
+  def mark_drafts_notified(ids) when is_list(ids) do
+    now = now()
+
+    {count, _} =
+      from(d in Draft, where: d.id in ^ids and d.state == "pending")
+      |> Repo.update_all(set: [notified_at: now, updated_at: now])
+
+    if count == length(ids), do: :ok, else: {:error, :not_all_marked}
+  end
+
+  @doc """
   The Draft's description from its task's `describe/2`. A Draft of a retired
   kind (kept as history) falls back to its kind as the title.
   """

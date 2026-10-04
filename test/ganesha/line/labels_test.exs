@@ -11,7 +11,8 @@ defmodule Ganesha.Line.LabelsTest do
            kind_trial schedule_title sessions_count booked_count no_sessions money_title revenue
            tax_threshold tax_warn owed_total nothing_owed owes paid_up purchases paid_of upcoming
            credits_heading source_package source_cancellation expires_on no_expiry credits_title
-           credits_count no_credits)a
+           credits_count no_credits group_drafts_push_intro pending_drafts_section
+           pending_drafts_empty pending_drafts_student_link)a
 
   test "every label speaks both languages, and they differ" do
     for key <- @keys do
