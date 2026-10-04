@@ -23,7 +23,7 @@ defmodule Ganesha.Assistant.Tasks.SetNoShow do
       description: """
       Mark a student as a no-show on one Session, or undo a no-show back to expected. \
       This only proposes a Draft; the attendance row is updated when the teacher taps \
-      Confirm. Use attendance_id from session_roster or the studio snapshot.\
+      Confirm. Get attendance_id by calling session_roster for the Session first.\
       """,
       input_schema: %{
         type: "object",

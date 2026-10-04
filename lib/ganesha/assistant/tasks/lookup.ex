@@ -16,7 +16,11 @@ defmodule Ganesha.Assistant.Tasks.Lookup do
 
   def session_data(session, roster, ctx) do
     title = session_title(session, ctx.locale)
-    names = Enum.map_join(roster, ", ", & &1.student.display_name)
+    # Each attendee with the attendance id `set_no_show` needs.
+    names =
+      Enum.map_join(roster, ", ", fn a ->
+        "#{a.student.display_name} (attendance #{a.id}, #{a.state})"
+      end)
 
     base =
       "Session #{session.id}: #{title}, #{length(roster)} booked" <>

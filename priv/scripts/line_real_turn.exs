@@ -96,17 +96,17 @@ text =
 
       {:ok, slot} =
         Studio.create_slot(%{
-          weekday: 4,
+          weekday: Date.day_of_week(Date.add(Ganesha.Clock.today(), -2)),
           start_time: ~T[19:00:00],
           end_time: ~T[20:15:00],
           default_style: "SMOKE Hatha",
-          label: "SMOKE 週四"
+          label: "SMOKE 晚課"
         })
 
       {:ok, session} =
         Studio.create_session(%{
           slot_id: slot.id,
-          date: ~D[2026-10-08],
+          date: Date.add(Ganesha.Clock.today(), -2),
           style: "SMOKE Hatha"
         })
 
