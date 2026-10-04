@@ -21,7 +21,11 @@ defmodule Ganesha.Assistant.Tasks.ConfirmPaymentTest do
         source: "manual"
       })
 
-    %{ctx: %{thread: thread, locale: "zh-TW", today: ~D[2026-10-02]}, student: student, payment: payment}
+    %{
+      ctx: %{thread: thread, locale: "zh-TW", today: ~D[2026-10-02]},
+      student: student,
+      payment: payment
+    }
   end
 
   describe "propose/2" do

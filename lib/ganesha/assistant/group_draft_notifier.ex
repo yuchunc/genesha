@@ -28,7 +28,7 @@ defmodule Ganesha.Assistant.GroupDraftNotifier do
     if drafts == [] do
       :ok
     else
-      push_and_mark(drafts)
+      push_and_mark(drafts, group_id)
     end
   end
 
@@ -55,7 +55,7 @@ defmodule Ganesha.Assistant.GroupDraftNotifier do
     )
   end
 
-  defp push_and_mark(drafts) do
+  defp push_and_mark(drafts, group_id) do
     locale = teacher_locale()
     {shown, hidden} = Enum.split(drafts, @max_bubbles)
     hidden_count = length(hidden)
@@ -80,10 +80,17 @@ defmodule Ganesha.Assistant.GroupDraftNotifier do
 
     with :ok <- line_client().push(teacher_id, messages),
          :ok <- Assistant.mark_drafts_notified(Enum.map(shown, & &1.id)) do
-      :ok
-    else
-      {:error, reason} -> {:error, reason}
+      schedule_remainder(hidden, group_id)
     end
+  end
+
+  # The rest go in the next job (spec §6.6). This job is still executing, so
+  # schedule/1 would collapse into it; the follow-up skips the unique check.
+  defp schedule_remainder([], _group_id), do: :ok
+
+  defp schedule_remainder(_hidden, group_id) do
+    {:ok, _} = %{group_id: group_id} |> new(schedule_in: 60, unique: false) |> Oban.insert()
+    :ok
   end
 
   defp teacher_locale do

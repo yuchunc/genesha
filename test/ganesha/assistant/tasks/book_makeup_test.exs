@@ -6,6 +6,7 @@ defmodule Ganesha.Assistant.Tasks.BookMakeupTest do
 
   setup do
     {:ok, student} = People.create_student(%{display_name: "Lulu"})
+
     {:ok, slot} =
       Studio.create_slot(%{
         weekday: 4,

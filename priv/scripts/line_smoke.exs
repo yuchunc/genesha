@@ -120,6 +120,13 @@ cleanup = fn ->
       where: json_extract_path(j.args, ["line_event_id"]) in ^smoke_event_ids
     )
   )
+
+  Repo.delete_all(
+    from(j in Oban.Job,
+      where: j.worker == "Ganesha.Assistant.GroupDraftNotifier",
+      where: json_extract_path(j.args, ["group_id"]) == ^group_id
+    )
+  )
 end
 
 Smoke.init()

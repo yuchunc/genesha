@@ -72,6 +72,17 @@ defmodule Ganesha.Assistant.GroupDraftNotifierTest do
     assert job1.id == job2.id
   end
 
+  test "pushes 12 and enqueues a follow-up for the rest", %{group: group} do
+    drafts = for n <- 1..13, do: group_draft!(group, %{"note" => "#{n}"})
+    Process.delete(:line_client_mock_calls)
+
+    assert :ok = perform_job(GroupDraftNotifier, %{"group_id" => @group_id})
+
+    notified = Enum.count(drafts, &Repo.reload!(&1).notified_at)
+    assert notified == 12
+    assert_enqueued(worker: GroupDraftNotifier, args: %{"group_id" => @group_id})
+  end
+
   test "skips drafts that are already notified", %{group: group} do
     draft = group_draft!(group)
     now = DateTime.utc_now() |> DateTime.truncate(:second)

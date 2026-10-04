@@ -161,7 +161,12 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
         Enum.reject(
           [
             change(:price, parsed["before_price_per_class"], parsed["price_per_class"], locale),
-            change(:makeups, parsed["before_included_makeups"], parsed["included_makeups"], locale),
+            change(
+              :makeups,
+              parsed["before_included_makeups"],
+              parsed["included_makeups"],
+              locale
+            ),
             change(:active, parsed["before_active"], parsed["active"], locale),
             change(
               :grandfather,
@@ -233,7 +238,9 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
     do: {:error, "name and kind are required when creating a package"}
 
   defp validate_package(attrs) do
-    case %Package{} |> Package.changeset(normalize_package_attrs(attrs)) |> Ecto.Changeset.apply_action(:validate) do
+    case %Package{}
+         |> Package.changeset(normalize_package_attrs(attrs))
+         |> Ecto.Changeset.apply_action(:validate) do
       {:ok, _} -> :ok
       {:error, changeset} -> {:error, Assistant.format_changeset_errors(changeset)}
     end
@@ -265,7 +272,9 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
   end
 
   defp fields_unchanged?(parsed, attrs) do
-    if Enum.all?(@create_keys, &(parsed[&1] == attrs[&1])), do: :ok, else: {:error, :package_changed}
+    if Enum.all?(@create_keys, &(parsed[&1] == attrs[&1])),
+      do: :ok,
+      else: {:error, :package_changed}
   end
 
   defp package_unchanged?(package, parsed) do

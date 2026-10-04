@@ -37,6 +37,12 @@ defmodule Ganesha.Clock do
     utc |> DateTime.add(@offset_seconds, :second) |> DateTime.to_date()
   end
 
+  @doc "The Taipei wall-clock time of a UTC instant, for display only."
+  @spec to_taipei_naive(utc_datetime()) :: NaiveDateTime.t()
+  def to_taipei_naive(%DateTime{time_zone: "Etc/UTC"} = utc) do
+    utc |> DateTime.add(@offset_seconds, :second) |> DateTime.to_naive()
+  end
+
   @doc "The UTC instant at which `date` begins in Taipei (00:00 Asia/Taipei)."
   @spec day_start_utc(Date.t()) :: DateTime.t()
   def day_start_utc(%Date{} = date) do

@@ -11,7 +11,9 @@ defmodule Ganesha.Assistant.Tasks.AddStudentTest do
     assert {:ok, %{parsed: parsed}} =
              AddStudent.propose(%{"display_name" => "Amy", "aliases" => ["小艾"]}, ctx)
 
-    assert {:ok, {"Ganesha.People.Student", student_id}} = AddStudent.apply(parsed, "line:teacher")
+    assert {:ok, {"Ganesha.People.Student", student_id}} =
+             AddStudent.apply(parsed, "line:teacher")
+
     assert People.get_student!(student_id).display_name == "Amy"
     assert Repo.get_by(StudentAlias, student_id: student_id, alias: "小艾")
   end

@@ -52,7 +52,9 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
       parsed = %{
         "purchase_id" => purchase.id,
         "custom_amount" => blank_amount(input["custom_amount"]),
-        "note" => input["note"],
+        # An omitted note keeps the purchase's note, as the web form's prefill does.
+        "note" => input["note"] || purchase.note,
+        "before_note" => purchase.note,
         "student_id" => student.id,
         "student_name" => student.display_name,
         "package_name" => purchase.package.name,
@@ -72,6 +74,7 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
 
     with {:ok, purchase} <- load_purchase(attrs["purchase_id"]),
          :ok <- same_custom_amount(purchase, parsed["before_custom_amount"]),
+         :ok <- same_note(purchase, parsed["before_note"]),
          {:ok, updated} <-
            Sales.update_purchase(purchase, %{
              custom_amount: attrs["custom_amount"],
@@ -84,8 +87,7 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
   @impl true
   def describe(parsed, locale) do
     %{
-      title:
-        "#{label(:title, locale)} #{parsed["student_name"]} #{parsed["package_name"]}",
+      title: "#{label(:title, locale)} #{parsed["student_name"]} #{parsed["package_name"]}",
       lines:
         Enum.reject(
           [
@@ -133,6 +135,10 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
   defp after_payable(_purchase, amount) when is_integer(amount), do: amount
 
   defp same_custom_amount(%{custom_amount: current}, expected) do
+    if current == expected, do: :ok, else: {:error, :purchase_changed}
+  end
+
+  defp same_note(%{note: current}, expected) do
     if current == expected, do: :ok, else: {:error, :purchase_changed}
   end
 

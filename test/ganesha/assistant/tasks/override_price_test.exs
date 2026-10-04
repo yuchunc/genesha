@@ -13,12 +13,19 @@ defmodule Ganesha.Assistant.Tasks.OverridePriceTest do
     {:ok, purchase} =
       Sales.create_purchase(%{student_id: student.id, package_id: package.id, list_price: 1600})
 
-    %{ctx: %{thread: thread, locale: "zh-TW", today: ~D[2026-10-02]}, student: student, purchase: purchase}
+    %{
+      ctx: %{thread: thread, locale: "zh-TW", today: ~D[2026-10-02]},
+      student: student,
+      purchase: purchase
+    }
   end
 
   test "propose captures payable before and after", c do
     assert {:ok, %{parsed: parsed}} =
-             OverridePrice.propose(%{"purchase_id" => c.purchase.id, "custom_amount" => 1500}, c.ctx)
+             OverridePrice.propose(
+               %{"purchase_id" => c.purchase.id, "custom_amount" => 1500},
+               c.ctx
+             )
 
     assert parsed["before_payable"] == 1600
     assert parsed["after_payable"] == 1500
@@ -39,6 +46,16 @@ defmodule Ganesha.Assistant.Tasks.OverridePriceTest do
 
     {:ok, _} = Sales.update_purchase(c.purchase, %{custom_amount: 1400})
     assert {:error, :purchase_changed} = OverridePrice.apply(parsed, "line:teacher")
+  end
+
+  test "apply keeps the purchase's note when none is given", c do
+    {:ok, purchase} = Sales.update_purchase(c.purchase, %{note: "老學生優惠"})
+
+    {:ok, %{parsed: parsed}} =
+      OverridePrice.propose(%{"purchase_id" => purchase.id, "custom_amount" => 1500}, c.ctx)
+
+    {:ok, _} = OverridePrice.apply(parsed, "line:teacher")
+    assert Sales.get_purchase!(purchase.id).note == "老學生優惠"
   end
 
   test "describe shows owed before → after", c do

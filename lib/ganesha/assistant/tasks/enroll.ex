@@ -140,7 +140,9 @@ defmodule Ganesha.Assistant.Tasks.Enroll do
           ],
           &is_nil/1
         ),
-      changes: [{owed_label(locale), nil, Format.money(parsed["custom_amount"] || parsed["price"])}],
+      changes: [
+        {owed_label(locale), nil, Format.money(parsed["custom_amount"] || parsed["price"])}
+      ],
       web_path: web_path(parsed["slot_id"], month)
     }
   end

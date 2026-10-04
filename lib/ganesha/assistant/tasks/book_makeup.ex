@@ -219,7 +219,8 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
       "補課券：#{credit_source(parsed["credit_source"])}" <>
         expiry_text(parsed["credit_expires_on"], "zh-TW")
 
-  defp expiry_text(nil, _locale), do: " (no expiry)"
+  defp expiry_text(nil, "en"), do: " (no expiry)"
+  defp expiry_text(nil, _locale), do: "（不會過期）"
   defp expiry_text(iso, "en"), do: " (expires #{iso})"
 
   defp expiry_text(iso, _locale) do

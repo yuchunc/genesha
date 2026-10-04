@@ -25,8 +25,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     Memory,
     Prompts,
     Snapshot,
-    Tasks,
-    Turn
+    Tasks
   }
 
   @impl Oban.Worker
@@ -116,9 +115,8 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
-    result = run_group_agent(thread)
-    log_failure(result, thread, "group message")
-    maybe_schedule_group_notifier(result, group_id)
+    thread |> run_group_agent() |> log_failure(thread, "group message")
+    maybe_schedule_group_notifier(thread)
   end
 
   defp handle_group_message(_event, _group_id), do: :ok
@@ -163,21 +161,25 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
 
         log_failure(result, thread, "messageEdited")
 
-        if thread.source_type == "group" do
-          maybe_schedule_group_notifier(result, thread.source_id)
-        else
-          :ok
-        end
+        if thread.source_type == "group", do: maybe_schedule_group_notifier(thread), else: :ok
     end
   end
 
-  defp maybe_schedule_group_notifier({:ok, %Turn{draft_ids: ids}}, group_id)
-       when ids != [] do
-    {:ok, _} = GroupDraftNotifier.schedule(group_id)
+  # From the stored Drafts, not the Turn: a turn that fails after creating a
+  # Draft returns an error, yet its Draft still waits for the teacher.
+  defp maybe_schedule_group_notifier(thread) do
+    unnotified? =
+      Repo.exists?(
+        from d in Assistant.Draft,
+          where: d.thread_id == ^thread.id and d.state == "pending" and is_nil(d.notified_at)
+      )
+
+    if unnotified? do
+      {:ok, _} = GroupDraftNotifier.schedule(thread.source_id)
+    end
+
     :ok
   end
-
-  defp maybe_schedule_group_notifier(_result, _group_id), do: :ok
 
   defp log_failure({:ok, _turn}, _thread, _what), do: :ok
 

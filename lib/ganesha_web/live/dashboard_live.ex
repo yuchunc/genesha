@@ -148,7 +148,7 @@ defmodule GaneshaWeb.DashboardLive do
               {Assistant.describe_draft(draft, "zh-TW").title}
             </p>
             <p class="text-xs text-ink-faint">
-              {Calendar.strftime(draft.inserted_at, "%Y-%m-%d %H:%M")}
+              {Calendar.strftime(Clock.to_taipei_naive(draft.inserted_at), "%Y-%m-%d %H:%M")}
             </p>
           </div>
           <.link

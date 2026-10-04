@@ -44,7 +44,8 @@ defmodule Ganesha.Assistant.Tasks.AddStudent do
   def propose(input, _ctx) do
     with {:ok, display_name} <- require_name(input["display_name"]),
          {:ok, aliases} <- normalize_aliases(input["aliases"]),
-         :ok <- validate_student(%{display_name: display_name, line_user_id: input["line_user_id"]}) do
+         :ok <-
+           validate_student(%{display_name: display_name, line_user_id: input["line_user_id"]}) do
       parsed = %{
         "display_name" => display_name,
         "line_user_id" => blank_to_nil(input["line_user_id"]),
@@ -109,7 +110,9 @@ defmodule Ganesha.Assistant.Tasks.AddStudent do
   defp normalize_aliases(_aliases), do: {:error, "aliases must be a list of strings"}
 
   defp validate_student(attrs) do
-    case %People.Student{} |> People.change_student(attrs) |> Ecto.Changeset.apply_action(:validate) do
+    case %People.Student{}
+         |> People.change_student(attrs)
+         |> Ecto.Changeset.apply_action(:validate) do
       {:ok, _student} -> :ok
       {:error, changeset} -> {:error, Assistant.format_changeset_errors(changeset)}
     end

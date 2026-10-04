@@ -78,7 +78,8 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
     end
 
     test "rejects a session that is not the slot's in that month", c do
-      {:ok, other} = Studio.create_session(%{slot_id: c.slot.id, date: ~D[2026-11-03], style: "Hatha"})
+      {:ok, other} =
+        Studio.create_session(%{slot_id: c.slot.id, date: ~D[2026-11-03], style: "Hatha"})
 
       assert {:error, message} =
                Enroll.propose(input(c, %{"session_ids" => [other.id]}), c.ctx)

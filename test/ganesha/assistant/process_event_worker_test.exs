@@ -196,6 +196,25 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert_enqueued(worker: GroupDraftNotifier, args: %{"group_id" => "Cabc"})
     end
 
+    @tag :capture_log
+    test "enqueues a notifier when the turn fails after creating a Draft" do
+      student = lulu()
+      Process.put(:round, 0)
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        round = Process.get(:round)
+        Process.put(:round, round + 1)
+
+        if round == 0,
+          do: {:ok, %{text: nil, tool_calls: [payment_call("t1", student, 1200)]}},
+          else: {:error, :overloaded}
+      end)
+
+      assert {:ok, _} = deliver(group_text("Ustudent1", "2.Lulu （Line pay 1200元）"))
+      assert [%Assistant.Draft{state: "pending"}] = Repo.all(Assistant.Draft)
+      assert_enqueued(worker: GroupDraftNotifier, args: %{"group_id" => "Cabc"})
+    end
+
     test "does not enqueue a notifier when the group turn creates no Drafts" do
       Mock.stub(fn _messages, _tools, _opts ->
         {:ok, %{text: "logged internally", tool_calls: []}}
