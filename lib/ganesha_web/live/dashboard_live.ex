@@ -15,7 +15,8 @@ defmodule GaneshaWeb.DashboardLive do
   """
   use GaneshaWeb, :live_view
 
-  alias Ganesha.{Clock, Reporting, Roster, Studio}
+  alias Ganesha.{Assistant, Clock, Reporting, Roster, Studio}
+  alias Ganesha.Line.Labels
   alias GaneshaWeb.Fmt
 
   @variants %{"a" => :day, "b" => :lanes, "c" => :ledger}
@@ -23,7 +24,10 @@ defmodule GaneshaWeb.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :month, Date.beginning_of_month(Clock.today()))}
+    {:ok,
+     socket
+     |> assign(:month, Date.beginning_of_month(Clock.today()))
+     |> assign_pending_drafts()}
   end
 
   @impl true
@@ -71,6 +75,7 @@ defmodule GaneshaWeb.DashboardLive do
       </.page_header>
 
       <.variant_picker variant={@variant} />
+      <.pending_drafts drafts={@pending_drafts} />
 
       <.day :if={@variant == :day} {assigns} />
       <.lanes :if={@variant == :lanes} {assigns} />
@@ -114,6 +119,50 @@ defmodule GaneshaWeb.DashboardLive do
       {"b", :lanes, "四軌", "本月課表"},
       {"c", :ledger, "帳", "收款與稅"}
     ]
+  end
+
+  defp assign_pending_drafts(socket) do
+    assign(socket, :pending_drafts, Assistant.list_pending_drafts())
+  end
+
+  attr :drafts, :list, required: true
+
+  defp pending_drafts(assigns) do
+    ~H"""
+    <.section
+      id="pending-drafts-section"
+      title={Labels.t(:pending_drafts_section, "zh-TW")}
+      count={length(@drafts)}
+    >
+      <p :if={@drafts == []} class="text-sm text-ink-soft">
+        {Labels.t(:pending_drafts_empty, "zh-TW")}
+      </p>
+      <ul :if={@drafts != []} class="divide-y divide-rule">
+        <li
+          :for={draft <- @drafts}
+          id={"pending-draft-#{draft.id}"}
+          class="flex flex-wrap items-baseline justify-between gap-2 py-3"
+        >
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-ink">
+              {Assistant.describe_draft(draft, "zh-TW").title}
+            </p>
+            <p class="text-xs text-ink-faint">
+              {Calendar.strftime(draft.inserted_at, "%Y-%m-%d %H:%M")}
+            </p>
+          </div>
+          <.link
+            :if={draft.student}
+            id={"pending-draft-student-#{draft.id}"}
+            navigate={~p"/students/#{draft.student.id}"}
+            class="text-sm text-ink-soft underline-offset-2 hover:underline"
+          >
+            {Labels.t(:pending_drafts_student_link, "zh-TW")} · {draft.student.display_name}
+          </.link>
+        </li>
+      </ul>
+    </.section>
+    """
   end
 
   # ── a · 今日 ──────────────────────────────────────────────────────────────

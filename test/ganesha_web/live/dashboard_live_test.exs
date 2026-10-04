@@ -1,7 +1,7 @@
 defmodule GaneshaWeb.DashboardLiveTest do
   use GaneshaWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
-  alias Ganesha.{Catalog, Clock, Enrolling, People, Studio}
+  alias Ganesha.{Assistant, Catalog, Clock, Enrolling, People, Studio}
 
   setup :register_and_log_in_user
 
@@ -73,6 +73,24 @@ defmodule GaneshaWeb.DashboardLiveTest do
   test "shows an invitation when nothing is scheduled", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/")
     assert has_element?(view, "#dash-no-session")
+  end
+
+  test "lists pending LINE assistant drafts with student links", %{conn: conn} do
+    {:ok, student} = People.create_student(%{display_name: "Amy"})
+    {:ok, thread} = Assistant.get_or_create_thread("group", "Cdashpending")
+
+    {:ok, draft} =
+      Assistant.create_draft(thread, %{
+        kind: "makeup_request",
+        student_id: student.id,
+        parsed: %{"note" => "8/17", "student_id" => student.id, "student_name" => "Amy"}
+      })
+
+    {:ok, view, _html} = live(conn, ~p"/")
+
+    assert has_element?(view, "#pending-drafts-section")
+    assert has_element?(view, "#pending-draft-#{draft.id}")
+    assert has_element?(view, "#pending-draft-student-#{draft.id}")
   end
 
   test "switches to the four-lane and ledger variants via the picker", %{conn: conn} do
