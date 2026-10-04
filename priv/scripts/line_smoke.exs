@@ -46,7 +46,7 @@ Application.put_env(:ganesha, :line_client, LineMock)
 Application.put_env(:ganesha, :line,
   channel_secret: secret,
   channel_access_token: "smoke_token",
-  teacher_line_user_id: teacher_id
+  teacher_line_user_ids: [teacher_id]
 )
 
 # Jobs must not run in a background queue process: the mocks live in this

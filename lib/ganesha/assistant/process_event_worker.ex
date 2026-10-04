@@ -31,55 +31,46 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"line_event_id" => line_event_id}}) do
     line_event = Line.get_event!(line_event_id)
-    teacher_id = Application.fetch_env!(:ganesha, :line) |> Keyword.fetch!(:teacher_line_user_id)
 
-    :ok = route(line_event, teacher_id)
+    :ok = route(line_event)
     Line.mark_processed(line_event)
     :ok
   end
 
-  defp route(%{source_type: "user", raw_type: "message"} = event, teacher_id) do
+  defp route(%{source_type: "user", raw_type: "message"} = event) do
     if simple_reply?(),
       do: handle_simple_reply(event),
-      else: handle_user_message(event, teacher_id)
+      else: handle_user_message(event)
   end
 
-  defp route(
-         %{
-           source_type: "user",
-           raw_type: "postback",
-           source_id: source_id,
-           payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}
-         },
-         teacher_id
-       ) do
-    Conversation.handle_postback(URI.decode_query(data), reply_token, source_id, teacher_id)
+  defp route(%{
+         source_type: "user",
+         raw_type: "postback",
+         source_id: source_id,
+         payload: %{"replyToken" => reply_token, "postback" => %{"data" => data}}
+       }) do
+    Conversation.handle_postback(URI.decode_query(data), reply_token, source_id)
   end
 
-  defp route(
-         %{source_type: "group", source_id: group_id, raw_type: "message"} = event,
-         teacher_id
-       ) do
-    if get_in(event.payload, ["source", "userId"]) == teacher_id,
+  # A teacher's own posts in the group are not student requests.
+  defp route(%{source_type: "group", source_id: group_id, raw_type: "message"} = event) do
+    if Line.teacher?(get_in(event.payload, ["source", "userId"])),
       do: :ok,
       else: handle_group_message(event, group_id)
   end
 
-  defp route(%{raw_type: "unsend"} = event, _teacher_id), do: handle_unsend(event)
-  defp route(%{raw_type: "messageEdited"} = event, _teacher_id), do: handle_message_edited(event)
-  defp route(_event, _teacher_id), do: :ok
+  defp route(%{raw_type: "unsend"} = event), do: handle_unsend(event)
+  defp route(%{raw_type: "messageEdited"} = event), do: handle_message_edited(event)
+  defp route(_event), do: :ok
 
-  defp handle_user_message(
-         %{
-           payload: %{
-             "replyToken" => reply_token,
-             "message" => %{"id" => line_message_id, "text" => text}
-           },
-           source_id: source_id
+  defp handle_user_message(%{
+         payload: %{
+           "replyToken" => reply_token,
+           "message" => %{"id" => line_message_id, "text" => text}
          },
-         teacher_id
-       ) do
-    thread = Conversation.thread_for(source_id, teacher_id)
+         source_id: source_id
+       }) do
+    thread = Conversation.thread_for(source_id)
 
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
@@ -92,7 +83,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
-  defp handle_user_message(_event, _teacher_id), do: :ok
+  defp handle_user_message(_event), do: :ok
 
   defp handle_simple_reply(%{
          payload: %{"replyToken" => reply_token, "message" => %{"text" => text}},

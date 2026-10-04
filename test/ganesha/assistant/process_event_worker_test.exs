@@ -9,6 +9,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   alias Ganesha.Line.Labels
 
   @teacher "Uteacher0000000000000000000000"
+  @other_teacher "Uteacher2000000000000000000000"
 
   # Records a webhook event and runs its job inline; returns the job's result
   # and the stored event.
@@ -133,6 +134,46 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       confirmed = Labels.t(:confirmed, "zh-TW", title: Assistant.draft_summary(draft, "zh-TW"))
 
       assert [{:reply, {"rt-p", [%{text: ^confirmed}]}}] = LineMock.calls()
+    end
+
+    test "the second teacher gets her own Teacher chat with the teacher's tasks" do
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", @other_teacher)
+      {:ok, _} = Assistant.set_locale(thread, "zh-TW")
+
+      Mock.stub(fn _messages, tools, _opts ->
+        Process.put(:tool_names, Enum.map(tools, & &1.name))
+        {:ok, %{text: "好", tool_calls: []}}
+      end)
+
+      assert {:ok, _} = deliver(text_from(@other_teacher, "下一堂？"))
+
+      assert "record_payment" in Process.get(:tool_names)
+      assert [%{content: "下一堂？"}, %{content: "好"}] = Assistant.list_messages(thread)
+      assert Assistant.list_messages(teacher_thread()) == []
+    end
+
+    test "either teacher can confirm a Draft proposed in the other's chat" do
+      {:ok, draft} =
+        Assistant.create_draft(teacher_thread(), %{
+          kind: "makeup_request",
+          parsed: %{"note" => "8/17"}
+        })
+
+      assert {:ok, _} =
+               deliver(postback_from(@other_teacher, "action=confirm&draft_id=#{draft.id}"))
+
+      assert Assistant.get_draft!(draft.id).state == "applied"
+    end
+
+    test "a non-teacher cannot confirm a Draft" do
+      {:ok, draft} =
+        Assistant.create_draft(teacher_thread(), %{
+          kind: "makeup_request",
+          parsed: %{"note" => "8/17"}
+        })
+
+      assert {:ok, _} = deliver(postback_from("Ustranger", "action=confirm&draft_id=#{draft.id}"))
+      assert Assistant.get_draft!(draft.id).state == "pending"
     end
   end
 

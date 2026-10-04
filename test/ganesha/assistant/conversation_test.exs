@@ -306,12 +306,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       draft = payment_draft(thread, student)
 
       assert :ok =
-               Conversation.handle_postback(
-                 postback("confirm", draft.id),
-                 "rt-p",
-                 @teacher,
-                 @teacher
-               )
+               Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher)
 
       assert Repo.reload!(draft).state == "applied"
       confirmed = Labels.t(:confirmed, "zh-TW", title: title(draft, "zh-TW"))
@@ -326,7 +321,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       draft = payment_draft(thread, student, %{"purchase_id" => nil})
 
       :ok =
-        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher, @teacher)
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher)
 
       failed = Repo.reload!(draft)
       assert failed.state == "failed"
@@ -361,7 +356,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       {:ok, _} = Sales.update_purchase(purchase, %{custom_amount: 1400})
 
       :ok =
-        Conversation.handle_postback(postback("confirm", draft.id), "rt-1", @teacher, @teacher)
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-1", @teacher)
 
       assert Repo.reload!(draft).failure_reason == "purchase_changed"
       assert [{:reply, {"rt-1", [%{text: text}]}}] = LineMock.calls()
@@ -373,7 +368,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       draft = payment_draft(thread, student)
 
       :ok =
-        Conversation.handle_postback(postback("discard", draft.id), "rt-p", @teacher, @teacher)
+        Conversation.handle_postback(postback("discard", draft.id), "rt-p", @teacher)
 
       assert Repo.reload!(draft).state == "discarded"
       discarded = Labels.t(:discarded, "zh-TW", title: title(draft, "zh-TW"))
@@ -385,12 +380,12 @@ defmodule Ganesha.Assistant.ConversationTest do
       draft = payment_draft(thread, student)
 
       :ok =
-        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher, @teacher)
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher)
 
       Process.delete(:line_client_mock_calls)
 
       :ok =
-        Conversation.handle_postback(postback("confirm", draft.id), "rt-q", @teacher, @teacher)
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-q", @teacher)
 
       already = Labels.t(:already_handled, "zh-TW")
       assert [{:reply, {"rt-q", [%{text: ^already}]}}] = LineMock.calls()
@@ -405,7 +400,7 @@ defmodule Ganesha.Assistant.ConversationTest do
           replaces: old.id
         )
 
-      :ok = Conversation.handle_postback(postback("confirm", old.id), "rt-p", @teacher, @teacher)
+      :ok = Conversation.handle_postback(postback("confirm", old.id), "rt-p", @teacher)
 
       replaced = Labels.t(:replaced, "zh-TW")
       assert [{:reply, {"rt-p", [%{text: ^replaced}]}}] = LineMock.calls()
@@ -413,8 +408,8 @@ defmodule Ganesha.Assistant.ConversationTest do
     end
 
     test "an unknown Draft id" do
-      :ok = Conversation.handle_postback(postback("confirm", 999_999), "rt-p", @teacher, @teacher)
-      :ok = Conversation.handle_postback(postback("discard", "abc"), "rt-q", @teacher, @teacher)
+      :ok = Conversation.handle_postback(postback("confirm", 999_999), "rt-p", @teacher)
+      :ok = Conversation.handle_postback(postback("discard", "abc"), "rt-q", @teacher)
 
       not_found = Labels.t(:not_found, "zh-TW")
 
@@ -457,7 +452,7 @@ defmodule Ganesha.Assistant.ConversationTest do
         })
 
       :ok =
-        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher, @teacher)
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher)
 
       assert Repo.reload!(draft).state == "pending"
       exception = Labels.t(:exception, "zh-TW")
@@ -469,7 +464,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       draft = payment_draft(thread, student)
 
       :ok =
-        Conversation.handle_postback(postback("confirm", draft.id), "rt-x", "Ustranger", @teacher)
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-x", "Ustranger")
 
       assert Repo.reload!(draft).state == "pending"
       unknown = Labels.t(:unknown_action, "zh-TW")
@@ -481,7 +476,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       draft = payment_draft(thread, student)
 
       :ok =
-        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher, @teacher)
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher)
 
       confirmed = Labels.t(:confirmed, "en", title: title(draft, "en"))
       assert [{:reply, {"rt-p", [%{text: ^confirmed}]}}] = LineMock.calls()
@@ -493,8 +488,7 @@ defmodule Ganesha.Assistant.ConversationTest do
         Conversation.handle_postback(
           %{"action" => "set_locale", "locale" => "en"},
           "rt-l",
-          "Unew",
-          @teacher
+          "Unew"
         )
 
       welcome = Labels.t(:welcome, "en")

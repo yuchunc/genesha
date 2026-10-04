@@ -17,18 +17,17 @@ defmodule Ganesha.Assistant.PurgeGroupRawTextWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     cutoff = DateTime.utc_now() |> DateTime.add(-@retention_seconds, :second)
-    teacher_id = Application.fetch_env!(:ganesha, :line) |> Keyword.fetch!(:teacher_line_user_id)
 
-    purge_line_events(cutoff, teacher_id)
+    purge_line_events(cutoff, Ganesha.Line.teacher_ids())
     purge_group_messages(cutoff)
 
     :ok
   end
 
-  defp purge_line_events(cutoff, teacher_id) do
+  defp purge_line_events(cutoff, teacher_ids) do
     from(e in LineEvent,
       where: e.inserted_at < ^cutoff,
-      where: not (e.source_type == "user" and e.source_id == ^teacher_id)
+      where: not (e.source_type == "user" and e.source_id in ^teacher_ids)
     )
     |> Repo.update_all(set: [payload: %{"purged" => true}])
   end

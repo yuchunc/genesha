@@ -34,11 +34,14 @@ defmodule Ganesha.Assistant.PurgeGroupRawTextWorkerTest do
     assert Line.get_event!(event.id).payload == %{"purged" => true}
   end
 
-  test "does not purge the teacher's own 1:1 line_events" do
-    teacher_id = Application.fetch_env!(:ganesha, :line) |> Keyword.fetch!(:teacher_line_user_id)
-    event = insert_old_line_event("user", teacher_id)
+  test "does not purge any teacher's own 1:1 line_events" do
+    events = for id <- Line.teacher_ids(), do: insert_old_line_event("user", id)
+    assert length(events) == 2
     assert :ok = perform_job(PurgeGroupRawTextWorker, %{})
-    assert Line.get_event!(event.id).payload == %{"message" => %{"text" => "secret"}}
+
+    for event <- events do
+      assert Line.get_event!(event.id).payload == %{"message" => %{"text" => "secret"}}
+    end
   end
 
   test "purges group thread message content older than 24h, leaves the teacher thread alone" do

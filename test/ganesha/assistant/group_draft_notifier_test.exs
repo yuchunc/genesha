@@ -9,6 +9,7 @@ defmodule Ganesha.Assistant.GroupDraftNotifierTest do
   alias Ganesha.Line.Client.Mock, as: LineMock
 
   @teacher "Uteacher0000000000000000000000"
+  @other_teacher "Uteacher2000000000000000000000"
   @group_id "Cgroupnotify000000000000000"
 
   setup do
@@ -27,15 +28,24 @@ defmodule Ganesha.Assistant.GroupDraftNotifierTest do
     draft
   end
 
-  test "pushes unnotified group drafts to the teacher and marks notified_at", %{group: group} do
+  test "pushes unnotified group drafts to every teacher and marks notified_at", %{group: group} do
     draft = group_draft!(group)
+    {:ok, other} = Assistant.get_or_create_thread("teacher", @other_teacher)
+    {:ok, _} = Assistant.set_locale(other, "en")
     Process.delete(:line_client_mock_calls)
 
     assert :ok = perform_job(GroupDraftNotifier, %{"group_id" => @group_id})
 
-    assert [{:push, {to, messages}}] = LineMock.calls()
-    assert to == @teacher
-    assert length(messages) == 2
+    pushes = for {:push, {to, messages}} <- LineMock.calls(), into: %{}, do: {to, messages}
+    assert Map.keys(pushes) |> Enum.sort() == Enum.sort([@teacher, @other_teacher])
+    assert Enum.all?(Map.values(pushes), &(length(&1) == 2))
+
+    # Each teacher reads the intro in their own language.
+    [%{text: zh} | _] = pushes[@teacher]
+    [%{text: en} | _] = pushes[@other_teacher]
+    assert zh == Ganesha.Line.Labels.t(:group_drafts_push_intro, "zh-TW")
+    assert en == Ganesha.Line.Labels.t(:group_drafts_push_intro, "en")
+
     assert Repo.reload!(draft).notified_at != nil
   end
 

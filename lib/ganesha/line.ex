@@ -39,6 +39,15 @@ defmodule Ganesha.Line do
 
   def record_event(_event), do: :ok
 
+  @doc "The LINE user ids that get the Teacher chat (config `:line, :teacher_line_user_ids`)."
+  @spec teacher_ids() :: [String.t()]
+  def teacher_ids do
+    Application.fetch_env!(:ganesha, :line) |> Keyword.fetch!(:teacher_line_user_ids)
+  end
+
+  @spec teacher?(String.t() | nil) :: boolean()
+  def teacher?(user_id), do: is_binary(user_id) and user_id in teacher_ids()
+
   # The thing later code routes on: which *group* a group message belongs
   # to, or which *user* sent a 1:1 message — never the per-message sender
   # inside a group, which real LINE group payloads also carry as `userId`

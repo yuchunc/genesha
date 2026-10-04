@@ -23,6 +23,12 @@ end
 config :ganesha, GaneshaWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4006"))]
 
+# TEACHER_LINE_USER_ID holds one LINE user id or several, comma-separated.
+teacher_ids = fn
+  nil -> []
+  value -> value |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+end
+
 if config_env() == :dev do
   # Reload browser tabs when matching files change.
   config :ganesha, GaneshaWeb.Endpoint,
@@ -44,7 +50,7 @@ if config_env() == :dev do
   config :ganesha, :line,
     channel_secret: System.get_env("LINE_CHANNEL_SECRET", ""),
     channel_access_token: System.get_env("LINE_CHANNEL_ACCESS_TOKEN", ""),
-    teacher_line_user_id: System.get_env("TEACHER_LINE_USER_ID", ""),
+    teacher_line_user_ids: teacher_ids.(System.get_env("TEACHER_LINE_USER_ID", "")),
     simple_reply: System.get_env("LINE_SIMPLE_REPLY", "true") == "true"
 
   config :ganesha, Ganesha.Assistant.Provider.Anthropic,
@@ -151,14 +157,17 @@ if config_env() == :prod do
     System.get_env("LINE_CHANNEL_ACCESS_TOKEN") ||
       raise "environment variable LINE_CHANNEL_ACCESS_TOKEN is missing"
 
-  teacher_line_user_id =
-    System.get_env("TEACHER_LINE_USER_ID") ||
-      raise "environment variable TEACHER_LINE_USER_ID is missing"
+  # One LINE user id, or several comma-separated (everyone who gets the Teacher chat).
+  teacher_line_user_ids =
+    case teacher_ids.(System.get_env("TEACHER_LINE_USER_ID")) do
+      [] -> raise "environment variable TEACHER_LINE_USER_ID is missing"
+      ids -> ids
+    end
 
   config :ganesha, :line,
     channel_secret: line_channel_secret,
     channel_access_token: line_channel_access_token,
-    teacher_line_user_id: teacher_line_user_id
+    teacher_line_user_ids: teacher_line_user_ids
 
   anthropic_api_key =
     System.get_env("ANTHROPIC_API_KEY") ||

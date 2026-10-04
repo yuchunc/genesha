@@ -1,12 +1,14 @@
 defmodule Ganesha.Assistant.GroupDraftNotifier do
   @moduledoc """
-  Pushes pending Group chat Drafts to the Teacher chat (spec §6.6, §7).
+  Pushes pending Group chat Drafts to every teacher's Teacher chat (spec §6.6, §7).
 
   Inserted with `schedule_in: 180` and `unique: [period: 180, keys: [:group_id]]`
   when a group turn creates Drafts. Each run pushes every still-pending,
   still-unnotified Draft from that group as one text message plus one Draft
-  carousel (≤ 12 bubbles); the rest wait for the next job. A push failure
-  leaves `notified_at` nil so Oban retries (max 3).
+  carousel (≤ 12 bubbles), in each teacher's own language; the rest wait for
+  the next job. The Drafts count as notified once any teacher's push
+  succeeds; when every push fails, `notified_at` stays nil so Oban retries
+  (max 3).
   """
   use Oban.Worker,
     queue: :default,
@@ -56,10 +58,26 @@ defmodule Ganesha.Assistant.GroupDraftNotifier do
   end
 
   defp push_and_mark(drafts, group_id) do
-    locale = teacher_locale()
     {shown, hidden} = Enum.split(drafts, @max_bubbles)
-    hidden_count = length(hidden)
 
+    results =
+      Enum.map(Ganesha.Line.teacher_ids(), fn teacher_id ->
+        line_client().push(
+          teacher_id,
+          messages(shown, length(hidden), teacher_locale(teacher_id))
+        )
+      end)
+
+    if :ok in results do
+      with :ok <- Assistant.mark_drafts_notified(Enum.map(shown, & &1.id)) do
+        schedule_remainder(hidden, group_id)
+      end
+    else
+      Enum.find(results, {:error, :no_teachers}, &match?({:error, _}, &1))
+    end
+  end
+
+  defp messages(shown, hidden_count, locale) do
     text =
       if hidden_count > 0 do
         Labels.t(:group_drafts_push_intro, locale) <>
@@ -71,17 +89,10 @@ defmodule Ganesha.Assistant.GroupDraftNotifier do
 
     alt_text = Enum.map_join(shown, "\n", &Cards.history_line({:draft, &1}, locale))
 
-    messages = [
+    [
       Client.text_message(text),
       Client.flex_message(alt_text, Cards.draft_carousel(shown, locale))
     ]
-
-    teacher_id = teacher_line_user_id()
-
-    with :ok <- line_client().push(teacher_id, messages),
-         :ok <- Assistant.mark_drafts_notified(Enum.map(shown, & &1.id)) do
-      schedule_remainder(hidden, group_id)
-    end
   end
 
   # The rest go in the next job (spec §6.6). This job is still executing, so
@@ -93,21 +104,12 @@ defmodule Ganesha.Assistant.GroupDraftNotifier do
     :ok
   end
 
-  defp teacher_locale do
-    teacher_id = teacher_line_user_id()
-
-    case Repo.one(
-           from t in Thread,
-             where: t.source_type == "teacher" and t.source_id == ^teacher_id,
-             select: t.locale
-         ) do
-      nil -> "zh-TW"
-      locale -> locale || "zh-TW"
-    end
-  end
-
-  defp teacher_line_user_id do
-    Application.fetch_env!(:ganesha, :line) |> Keyword.fetch!(:teacher_line_user_id)
+  defp teacher_locale(teacher_id) do
+    Repo.one(
+      from t in Thread,
+        where: t.source_type == "teacher" and t.source_id == ^teacher_id,
+        select: t.locale
+    ) || "zh-TW"
   end
 
   defp line_client, do: Application.get_env(:ganesha, :line_client, Ganesha.Line.Client)

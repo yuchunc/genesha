@@ -72,9 +72,9 @@ defmodule Ganesha.Assistant.Conversation do
     )
   end
 
-  @spec handle_postback(map(), String.t(), String.t(), String.t()) :: :ok
-  def handle_postback(%{"action" => "set_locale"} = params, reply_token, source_id, teacher_id) do
-    thread = thread_for(source_id, teacher_id)
+  @spec handle_postback(map(), String.t(), String.t()) :: :ok
+  def handle_postback(%{"action" => "set_locale"} = params, reply_token, source_id) do
+    thread = thread_for(source_id)
 
     case Assistant.set_locale(thread, params["locale"]) do
       {:ok, thread} ->
@@ -92,10 +92,30 @@ defmodule Ganesha.Assistant.Conversation do
     :ok
   end
 
-  # Only the teacher may confirm or discard (spec §6.3).
-  def handle_postback(%{"action" => action} = params, reply_token, source_id, teacher_id)
-      when action in ["confirm", "discard"] and source_id == teacher_id do
-    thread = thread_for(source_id, teacher_id)
+  # Only a teacher may confirm or discard (spec §6.3); any teacher may settle
+  # any Draft, whoever's chat it was proposed in.
+  def handle_postback(%{"action" => action} = params, reply_token, source_id)
+      when action in ["confirm", "discard"] do
+    if Ganesha.Line.teacher?(source_id),
+      do: settle_postback(action, params, reply_token, source_id),
+      else: unknown_action(reply_token, source_id)
+  end
+
+  def handle_postback(_params, reply_token, source_id), do: unknown_action(reply_token, source_id)
+
+  @doc """
+  The 1:1 thread for a LINE user: that teacher's Teacher chat when
+  `source_id` is one of the teachers, otherwise that user's Student chat.
+  """
+  @spec thread_for(String.t()) :: Thread.t()
+  def thread_for(source_id) do
+    source_type = if Ganesha.Line.teacher?(source_id), do: "teacher", else: "user"
+    {:ok, thread} = Assistant.get_or_create_thread(source_type, source_id)
+    thread
+  end
+
+  defp settle_postback(action, params, reply_token, source_id) do
+    thread = thread_for(source_id)
     locale = locale(thread)
     {text, history_line} = settle(action, parse_id(params["draft_id"]), locale)
 
@@ -108,21 +128,10 @@ defmodule Ganesha.Assistant.Conversation do
     :ok
   end
 
-  def handle_postback(_params, reply_token, source_id, teacher_id) do
-    locale = source_id |> thread_for(teacher_id) |> locale()
+  defp unknown_action(reply_token, source_id) do
+    locale = source_id |> thread_for() |> locale()
     deliver(reply_token, source_id, [Client.text_message(Labels.t(:unknown_action, locale))], nil)
     :ok
-  end
-
-  @doc """
-  The 1:1 thread for a LINE user: the Teacher chat when `source_id` is the
-  teacher, otherwise that user's Student chat.
-  """
-  @spec thread_for(String.t(), String.t()) :: Thread.t()
-  def thread_for(source_id, teacher_id) do
-    source_type = if source_id == teacher_id, do: "teacher", else: "user"
-    {:ok, thread} = Assistant.get_or_create_thread(source_type, source_id)
-    thread
   end
 
   @doc """
