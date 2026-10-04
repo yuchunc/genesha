@@ -8,6 +8,7 @@ defmodule Ganesha.Assistant.Tasks.AddSession do
 
   alias Ganesha.{Assistant, Studio}
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Summary
   alias Ganesha.Studio.Session
   alias GaneshaWeb.Fmt
 
@@ -62,6 +63,19 @@ defmodule Ganesha.Assistant.Tasks.AddSession do
          {:ok, session} <- Studio.create_session(create_attrs(attrs)) do
       {:ok, {"Ganesha.Studio.Session", session.id}}
     end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    session =
+      Summary.words([
+        Summary.day(parsed["date"], locale),
+        Summary.time_range(parsed["start_time"], parsed["end_time"]),
+        parsed["label"]
+      ])
+
+    style = Summary.paren([parsed["style"]], locale)
+    if locale == "en", do: "Add a class: #{session}" <> style, else: "加開 #{session}" <> style
   end
 
   @impl true

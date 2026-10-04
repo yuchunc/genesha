@@ -132,4 +132,21 @@ defmodule Ganesha.Assistant.Tasks.AddSessionTest do
       assert path == "/class/2026/11"
     end
   end
+
+  describe "summary/2" do
+    test "summary names the date, time, label and style" do
+      parsed = %{
+        "date" => "2026-10-10",
+        "start_time" => "10:00:00",
+        "end_time" => "11:15:00",
+        "label" => "週末班",
+        "style" => "流動"
+      }
+
+      for locale <- ["zh-TW", "en"] do
+        text = AddSession.summary(parsed, locale)
+        for fact <- ["10/10", "10:00–11:15", "週末班", "流動"], do: assert(text =~ fact)
+      end
+    end
+  end
 end

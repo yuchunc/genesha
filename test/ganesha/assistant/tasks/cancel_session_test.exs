@@ -178,4 +178,23 @@ defmodule Ganesha.Assistant.Tasks.CancelSessionTest do
       assert issued =~ "7"
     end
   end
+
+  describe "summary/2" do
+    test "summary names the session, the reason and the credits issued" do
+      parsed = %{
+        "session_date" => "2026-10-08",
+        "session_time" => "19:00–20:15",
+        "session_label" => "基礎",
+        "reason" => "颱風假",
+        "credit_count" => 3
+      }
+
+      for locale <- ["zh-TW", "en"] do
+        text = CancelSession.summary(parsed, locale)
+        for fact <- ["10/8", "19:00–20:15", "基礎", "颱風假", "3"], do: assert(text =~ fact)
+      end
+
+      refute CancelSession.summary(%{parsed | "credit_count" => 0}, "zh-TW") =~ "補課券"
+    end
+  end
 end

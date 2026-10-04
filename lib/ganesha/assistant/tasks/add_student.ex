@@ -71,6 +71,18 @@ defmodule Ganesha.Assistant.Tasks.AddStudent do
   end
 
   @impl true
+  def summary(parsed, locale) do
+    aliases = parsed["aliases"] || []
+
+    case {aliases, locale} do
+      {[], "en"} -> "Add student #{parsed["display_name"]}"
+      {[], _} -> "新增學生 #{parsed["display_name"]}"
+      {_, "en"} -> "Add student #{parsed["display_name"]} (aka #{Enum.join(aliases, ", ")})"
+      {_, _} -> "新增學生 #{parsed["display_name"]}（別名 #{Enum.join(aliases, "、")}）"
+    end
+  end
+
+  @impl true
   def describe(parsed, locale) do
     %{
       title: "#{label(:title, locale)} #{parsed["display_name"]}",

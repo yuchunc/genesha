@@ -8,6 +8,7 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
 
   alias Ganesha.Studio
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Summary
 
   @impl true
   def name, do: "copy_month"
@@ -65,6 +66,16 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
          {:ok, _created} <- Studio.copy_month(month) do
       {:ok, {nil, nil}}
     end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    month = Summary.month_name(parsed["month"], locale)
+    count = parsed["session_count"] || 0
+
+    if locale == "en",
+      do: "Schedule #{month} from the weekly classes: #{count} sessions",
+      else: "照固定班排 #{month} 課表，共 #{count} 堂"
   end
 
   @impl true

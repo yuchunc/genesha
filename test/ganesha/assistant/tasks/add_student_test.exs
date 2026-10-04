@@ -29,4 +29,12 @@ defmodule Ganesha.Assistant.Tasks.AddStudentTest do
     assert {:error, %Ecto.Changeset{}} = AddStudent.apply(parsed, "line:teacher")
     refute People.find_by_alias("Amy")
   end
+
+  test "summary names the student and any aliases" do
+    text = AddStudent.summary(%{"display_name" => "Amy", "aliases" => ["小艾", "艾咪"]}, "zh-TW")
+    assert text =~ "Amy"
+    assert text =~ "小艾"
+    assert text =~ "艾咪"
+    refute AddStudent.summary(%{"display_name" => "Amy", "aliases" => []}, "en") =~ "("
+  end
 end

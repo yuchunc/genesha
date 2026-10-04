@@ -9,6 +9,7 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
 
   alias Ganesha.{Roster, Scheduling}
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Summary
   alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
 
@@ -73,6 +74,26 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
       {:ok, {"Ganesha.Studio.Session", cancelled.id}}
     end
   end
+
+  @impl true
+  def summary(parsed, locale) do
+    session =
+      Summary.words([
+        Summary.day(parsed["session_date"], locale),
+        parsed["session_time"],
+        parsed["session_label"]
+      ])
+
+    reason = Summary.paren([parsed["reason"]], locale)
+    credits = credits_text(parsed["credit_count"] || 0, locale)
+    head = if locale == "en", do: "Cancel #{session}", else: "停課 #{session}"
+    head <> reason <> credits
+  end
+
+  defp credits_text(0, _locale), do: ""
+  defp credits_text(1, "en"), do: ", 1 student gets a makeup credit"
+  defp credits_text(n, "en"), do: ", #{n} students each get a makeup credit"
+  defp credits_text(n, _locale), do: "，#{n} 人各得一張補課券"
 
   @impl true
   def describe(parsed, locale) do

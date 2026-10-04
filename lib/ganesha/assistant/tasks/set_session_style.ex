@@ -7,6 +7,7 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyle do
 
   alias Ganesha.Studio
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Summary
   alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
 
@@ -65,6 +66,20 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyle do
          {:ok, updated} <- Studio.set_style(session, attrs["style"]) do
       {:ok, {"Ganesha.Studio.Session", updated.id}}
     end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    session =
+      Summary.words([
+        Summary.day(parsed["session_date"], locale),
+        parsed["session_time"],
+        parsed["session_label"]
+      ])
+
+    if locale == "en",
+      do: "Change #{session} to #{parsed["style"]} (was #{parsed["before_style"]})",
+      else: "#{session} 改上 #{parsed["style"]}（原本 #{parsed["before_style"]}）"
   end
 
   @impl true

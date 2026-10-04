@@ -184,4 +184,25 @@ defmodule Ganesha.Assistant.Tasks.AddSlotTest do
       assert path == "/class/2026/11"
     end
   end
+
+  describe "summary/2" do
+    test "summary names the weekday, time, label, month and how many sessions" do
+      parsed = %{
+        "weekday" => 1,
+        "start_time" => "09:30:00",
+        "end_time" => "10:45:00",
+        "label" => "基礎",
+        "month" => "2026-10-01",
+        "session_count" => 4
+      }
+
+      for locale <- ["zh-TW", "en"] do
+        text = AddSlot.summary(parsed, locale)
+        for fact <- ["9:30–10:45", "基礎", "4"], do: assert(text =~ fact)
+      end
+
+      assert AddSlot.summary(parsed, "zh-TW") =~ "週一"
+      assert AddSlot.summary(parsed, "en") =~ "October"
+    end
+  end
 end

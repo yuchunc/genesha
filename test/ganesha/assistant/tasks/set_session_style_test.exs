@@ -142,4 +142,21 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyleTest do
       assert {before, after_value} == {"Hatha", "陰瑜珈"}
     end
   end
+
+  describe "summary/2" do
+    test "summary names the session and the style before and after" do
+      parsed = %{
+        "session_date" => "2026-10-08",
+        "session_time" => "19:00–20:15",
+        "session_label" => "基礎",
+        "style" => "陰瑜珈",
+        "before_style" => "Hatha"
+      }
+
+      for locale <- ["zh-TW", "en"] do
+        text = SetSessionStyle.summary(parsed, locale)
+        for fact <- ["10/8", "基礎", "陰瑜珈", "Hatha"], do: assert(text =~ fact)
+      end
+    end
+  end
 end

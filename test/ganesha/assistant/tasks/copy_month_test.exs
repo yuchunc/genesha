@@ -136,4 +136,13 @@ defmodule Ganesha.Assistant.Tasks.CopyMonthTest do
       end
     end
   end
+
+  describe "summary/2" do
+    test "summary names the month and how many sessions it adds" do
+      parsed = %{"month" => "2026-11-01", "session_count" => 9}
+      assert CopyMonth.summary(parsed, "zh-TW") =~ "11月"
+      assert CopyMonth.summary(parsed, "en") =~ "November"
+      for locale <- ["zh-TW", "en"], do: assert(CopyMonth.summary(parsed, locale) =~ "9")
+    end
+  end
 end

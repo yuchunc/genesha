@@ -8,6 +8,7 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
 
   alias Ganesha.{Scheduling, Studio}
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Summary
   alias GaneshaWeb.Fmt
 
   @impl true
@@ -66,6 +67,19 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
            Scheduling.add_weekly_class(Map.put(attrs, "active", true), month) do
       {:ok, {"Ganesha.Studio.Slot", slot.id}}
     end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    time = Summary.time_range(parsed["start_time"], parsed["end_time"])
+    weekday = Summary.weekday(parsed["weekday"], locale)
+    month = Summary.month_name(parsed["month"], locale)
+    count = parsed["session_count"] || 0
+
+    if locale == "en",
+      do:
+        "New weekly class: #{parsed["label"]}, #{weekday} #{time}; #{count} classes in #{month}",
+      else: "新增固定班 每#{weekday} #{time} #{parsed["label"]}，#{month} #{count} 堂"
   end
 
   @impl true
