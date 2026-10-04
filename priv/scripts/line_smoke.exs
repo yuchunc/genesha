@@ -22,6 +22,7 @@ alias Ganesha.Assistant
 alias Ganesha.Assistant.{
   Digest,
   Draft,
+  GroupDraftNotifier,
   Message,
   ProcessEventWorker,
   PurgeGroupRawTextWorker,
@@ -814,6 +815,110 @@ Smoke.check(
   "the enroll draft is applied",
   applied_enroll != nil and applied_enroll.state == "applied" and
     applied_enroll.applied_record_type == "Ganesha.Sales.Purchase"
+)
+
+# ---------------------------------------------------------------- Step 10
+Smoke.step(10, "group payment draft: notifier push, then teacher confirms")
+
+group_pay_event = %{
+  "webhookEventId" => "smoke-group-2",
+  "mode" => "active",
+  "type" => "message",
+  "replyToken" => "smoke-reply-9",
+  "source" => %{"type" => "group", "groupId" => group_id, "userId" => "Usmokestudent000"},
+  "message" => %{"id" => "smoke-msg-6", "type" => "text", "text" => "2.SMOKE 小美 Line pay 3200"}
+}
+
+:ok = Line.record_event(group_pay_event)
+group_pay_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-group-2")
+
+ProviderMock.stub(fn messages, _tools, _opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
+      {:ok, %{text: "已建立收款草稿。", tool_calls: []}}
+
+    _ ->
+      {:ok,
+       %{
+         text: nil,
+         tool_calls: [
+           %{
+             id: "smoke-call-5",
+             name: "record_payment",
+             input: %{
+               "student_id" => student.id,
+               "purchase_id" => purchase.id,
+               "amount" => 3200,
+               "method" => "line_pay"
+             }
+           }
+         ]
+       }}
+  end
+end)
+
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => group_pay_line_event.id}})
+
+group_payment_draft =
+  Repo.one(
+    from d in Draft,
+      join: t in Thread,
+      on: d.thread_id == t.id,
+      where: t.source_id == ^group_id and d.kind == "record_payment" and d.state == "pending"
+  )
+
+notifier_jobs =
+  Repo.aggregate(
+    from(j in Oban.Job,
+      where: j.worker == "Ganesha.Assistant.GroupDraftNotifier",
+      where: fragment("json_extract(?, '$.group_id')", j.args) == ^group_id
+    ),
+    :count
+  )
+
+Smoke.check("group payment creates a pending draft", group_payment_draft != nil)
+Smoke.check("GroupDraftNotifier job enqueued for the group", notifier_jobs == 1)
+
+Process.delete(:line_client_mock_calls)
+:ok = GroupDraftNotifier.perform(%Oban.Job{args: %{"group_id" => group_id}})
+
+notified_draft = group_payment_draft && Repo.reload!(group_payment_draft)
+
+Smoke.check(
+  "notifier push reaches the teacher",
+  Enum.any?(LineMock.calls(), fn {:push, {to, _}} -> to == teacher_id end)
+)
+
+Smoke.check(
+  "notifier sets notified_at on the group draft",
+  notified_draft != nil and notified_draft.notified_at != nil
+)
+
+group_confirm_event = %{
+  "webhookEventId" => "smoke-postback-4",
+  "mode" => "active",
+  "type" => "postback",
+  "replyToken" => "smoke-reply-10",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "postback" => %{
+    "data" => "action=confirm&draft_id=#{group_payment_draft && group_payment_draft.id}"
+  }
+}
+
+:ok = Line.record_event(group_confirm_event)
+group_confirm_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-postback-4")
+Process.delete(:line_client_mock_calls)
+
+:ok =
+  ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => group_confirm_line_event.id}})
+
+applied_group_payment = group_payment_draft && Repo.reload!(group_payment_draft)
+
+Smoke.check(
+  "teacher Confirm applies the group-originated payment draft",
+  applied_group_payment != nil and applied_group_payment.state == "applied" and
+    applied_group_payment.applied_record_type == "Ganesha.Sales.Payment"
 )
 
 # ---------------------------------------------------------------- teardown
