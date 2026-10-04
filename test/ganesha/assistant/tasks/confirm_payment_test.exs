@@ -72,4 +72,18 @@ defmodule Ganesha.Assistant.Tasks.ConfirmPaymentTest do
       assert %{changes: [{"狀態", "待確認", "已確認"}]} = ConfirmPayment.describe(parsed, "zh-TW")
     end
   end
+
+  describe "summary/2" do
+    test "names the student, amount, method and date", c do
+      {:ok, %{parsed: parsed}} = ConfirmPayment.propose(%{"payment_id" => c.payment.id}, c.ctx)
+
+      for locale <- ["zh-TW", "en"] do
+        text = ConfirmPayment.summary(parsed, locale)
+        assert text =~ "Lulu"
+        assert text =~ "NT$800"
+        assert text =~ "LINE Pay"
+        assert text =~ "10/2"
+      end
+    end
+  end
 end

@@ -66,4 +66,22 @@ defmodule Ganesha.Assistant.Tasks.OverridePriceTest do
     assert before == Format.money(1600)
     assert after_value == Format.money(1500)
   end
+
+  test "summary names the new price and the old one, or the list price when clearing", c do
+    {:ok, %{parsed: parsed}} =
+      OverridePrice.propose(%{"purchase_id" => c.purchase.id, "custom_amount" => 1500}, c.ctx)
+
+    for locale <- ["zh-TW", "en"] do
+      text = OverridePrice.summary(parsed, locale)
+      assert text =~ "Lulu"
+      assert text =~ "月課程"
+      assert text =~ "NT$1,500"
+      assert text =~ "NT$1,600"
+    end
+
+    {:ok, %{parsed: cleared}} =
+      OverridePrice.propose(%{"purchase_id" => c.purchase.id, "custom_amount" => nil}, c.ctx)
+
+    assert OverridePrice.summary(cleared, "zh-TW") =~ "NT$1,600"
+  end
 end

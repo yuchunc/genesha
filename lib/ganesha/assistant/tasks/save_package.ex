@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Assistant, Catalog}
-  alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.{Format, Summary}
   alias Ganesha.Catalog.Package
 
   @create_keys ~w(name kind price_per_class included_makeups active grandfather_strategy)
@@ -69,6 +69,74 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
       "update" -> describe_update(parsed, locale)
     end
   end
+
+  @impl true
+  def summary(%{"mode" => "create"} = parsed, locale) do
+    price = Summary.money(parsed["price_per_class"])
+    makeups = parsed["included_makeups"] || 0
+
+    if locale == "en",
+      do:
+        "New package #{parsed["name"]} (#{kind_name(parsed["kind"], "en")}): #{price}/class, #{makeups} makeups",
+      else:
+        "新增方案 #{parsed["name"]}（#{kind_name(parsed["kind"], locale)}）每堂 #{price}，含 #{makeups} 次補課"
+  end
+
+  def summary(parsed, locale) do
+    changes =
+      Enum.reject(
+        [
+          change_text(
+            :price,
+            parsed["before_price_per_class"],
+            parsed["price_per_class"],
+            locale
+          ),
+          change_text(
+            :makeups,
+            parsed["before_included_makeups"],
+            parsed["included_makeups"],
+            locale
+          ),
+          change_text(:active, parsed["before_active"], parsed["active"], locale),
+          change_text(
+            :grandfather,
+            parsed["before_grandfather_strategy"],
+            parsed["grandfather_strategy"],
+            locale
+          )
+        ],
+        &is_nil/1
+      )
+
+    case {changes, locale} do
+      {[], "en"} -> "#{parsed["name"]}: no changes"
+      {[], _} -> "#{parsed["name"]}：沒有變更"
+      {_, "en"} -> "#{parsed["name"]}: " <> Enum.join(changes, ", ")
+      {_, _} -> "#{parsed["name"]}：" <> Enum.join(changes, "、")
+    end
+  end
+
+  defp change_text(_field, same, same, _locale), do: nil
+
+  defp change_text(:price, from, to, "en"),
+    do: "#{Summary.money(from)} → #{Summary.money(to)}/class"
+
+  defp change_text(:price, from, to, _), do: "每堂 #{Summary.money(from)} → #{Summary.money(to)}"
+  defp change_text(:makeups, from, to, "en"), do: "makeups #{from} → #{to}"
+  defp change_text(:makeups, from, to, _), do: "補課 #{from} → #{to} 次"
+
+  defp change_text(:active, from, to, "en"),
+    do: "open to new students #{bool_name(from, "en")} → #{bool_name(to, "en")}"
+
+  defp change_text(:active, from, to, locale),
+    do: "開放新學生 #{bool_name(from, locale)} → #{bool_name(to, locale)}"
+
+  defp change_text(:grandfather, from, to, "en"),
+    do: "when closed: #{grandfather_name(from, "en")} → #{grandfather_name(to, "en")}"
+
+  defp change_text(:grandfather, from, to, locale),
+    do: "停用後 #{grandfather_name(from, locale)} → #{grandfather_name(to, locale)}"
 
   defp propose_create(input) do
     attrs = take_create(input)

@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.Sales
-  alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.{Format, Summary}
 
   @apply_keys ~w(purchase_id custom_amount note)
 
@@ -102,6 +102,21 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
       ],
       web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
     }
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    name = parsed["student_name"] || "?"
+    package = parsed["package_name"]
+    list = Summary.money(parsed["list_price"])
+    was = Summary.money(parsed["before_payable"])
+
+    case {parsed["custom_amount"], locale} do
+      {nil, "en"} -> "Charge #{name} the list price #{list} for #{package}"
+      {nil, _} -> "#{name} 的#{package}改回原價 #{list}"
+      {amount, "en"} -> "Charge #{name} #{Summary.money(amount)} for #{package} (was #{was})"
+      {amount, _} -> "#{name} 的#{package}改收 #{Summary.money(amount)}（原本 #{was}）"
+    end
   end
 
   defp fetch_purchase(id) when is_integer(id) do

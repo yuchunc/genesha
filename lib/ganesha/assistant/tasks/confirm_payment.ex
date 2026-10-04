@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.ConfirmPayment do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{People, Sales}
-  alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.{Format, Summary}
   alias GaneshaWeb.Fmt
 
   @apply_keys ~w(payment_id)
@@ -91,6 +91,28 @@ defmodule Ganesha.Assistant.Tasks.ConfirmPayment do
       web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
     }
   end
+
+  @impl true
+  def summary(parsed, locale) do
+    name = parsed["student_name"] || "?"
+    amount = Summary.money(parsed["amount"])
+
+    details =
+      Summary.paren([Summary.method(parsed["method"], locale), short(parsed["paid_on"])], locale)
+
+    if locale == "en",
+      do: "Confirm #{amount} received from #{name}" <> details,
+      else: "確認收到 #{name} 的 #{amount}" <> details
+  end
+
+  defp short(iso) when is_binary(iso) do
+    case Date.from_iso8601(iso) do
+      {:ok, date} -> Fmt.short_date(date)
+      {:error, _} -> nil
+    end
+  end
+
+  defp short(_iso), do: nil
 
   defp fetch_payment(id) when is_integer(id) do
     case Sales.get_payment(id) do

@@ -166,4 +166,31 @@ defmodule Ganesha.Assistant.Tasks.RecordPaymentTest do
              } = RecordPayment.describe(@parsed, "en")
     end
   end
+
+  describe "summary/2" do
+    @summary_parsed %{
+      "student_name" => "Amy",
+      "amount" => 3200,
+      "method" => "line_pay",
+      "paid_on" => "2026-10-03",
+      "before_owed" => 3200
+    }
+
+    test "names who paid, how much, how, when, and what is still owed" do
+      for locale <- ["zh-TW", "en"] do
+        text = RecordPayment.summary(@summary_parsed, locale)
+        assert text =~ "Amy"
+        assert text =~ "NT$3,200"
+        assert text =~ "LINE Pay"
+        assert text =~ "10/3"
+        assert text =~ "→ NT$0"
+        refute text =~ "%{"
+      end
+    end
+
+    test "leaves the owed part out when nothing was owed before" do
+      text = RecordPayment.summary(%{@summary_parsed | "before_owed" => nil}, "zh-TW")
+      refute text =~ "→"
+    end
+  end
 end

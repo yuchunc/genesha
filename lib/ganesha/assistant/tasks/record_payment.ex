@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.RecordPayment do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Assistant, Clock, People, Sales}
-  alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.{Format, Summary}
   alias Ganesha.Sales.Payment
   alias GaneshaWeb.Fmt
 
@@ -117,6 +117,38 @@ defmodule Ganesha.Assistant.Tasks.RecordPayment do
       web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
     }
   end
+
+  @impl true
+  def summary(parsed, locale) do
+    name = parsed["student_name"] || "?"
+    amount = parsed["amount"]
+
+    details =
+      Summary.paren([Summary.method(parsed["method"], locale), short(parsed["paid_on"])], locale)
+
+    head =
+      if locale == "en",
+        do: "Record #{Summary.money(amount)} from #{name}",
+        else: "記錄 #{name} 付款 #{Summary.money(amount)}"
+
+    head <> details <> owed(parsed["before_owed"], amount, locale)
+  end
+
+  defp owed(before, amount, locale) when is_integer(before) and is_integer(amount) do
+    label = if locale == "en", do: "owes", else: "欠款"
+    " — #{label} #{Summary.money(before)} → #{Summary.money(max(before - amount, 0))}"
+  end
+
+  defp owed(_before, _amount, _locale), do: ""
+
+  defp short(iso) when is_binary(iso) do
+    case Date.from_iso8601(iso) do
+      {:ok, date} -> Fmt.short_date(date)
+      {:error, _} -> nil
+    end
+  end
+
+  defp short(_iso), do: nil
 
   defp fetch_student(id) when is_integer(id) do
     case People.get_student(id) do
