@@ -158,6 +158,7 @@ defmodule Ganesha.Assistant.ConversationTest do
                Enum.map(Tasks.for_chat(:teacher), & &1.name())
 
       assert "next_session" in Enum.map(request.tools, & &1.name)
+      assert "pending_drafts" in Enum.map(request.tools, & &1.name)
 
       assert [%{role: "user", content: "嗨"}] = request.messages
     end
