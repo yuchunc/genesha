@@ -43,6 +43,9 @@ defmodule Ganesha.Assistant.Task do
               web_path: String.t() | nil
             }
 
+  # The Draft in one chat sentence, built from `parsed` only (chat-first replies spec §1).
+  @callback summary(parsed :: map(), locale :: String.t()) :: String.t()
+
   # :lookup and :control tasks
   @callback answer(input :: map(), ctx()) ::
               {:ok,
@@ -54,5 +57,5 @@ defmodule Ganesha.Assistant.Task do
                }}
               | {:error, String.t()}
 
-  @optional_callbacks propose: 2, apply: 2, describe: 2, answer: 2
+  @optional_callbacks propose: 2, apply: 2, describe: 2, summary: 2, answer: 2
 end
