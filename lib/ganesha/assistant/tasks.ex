@@ -23,6 +23,7 @@ defmodule Ganesha.Assistant.Tasks do
     MonthSchedule,
     NextSession,
     OpenCredits,
+    PendingDrafts,
     RecordPayment,
     SavePackage,
     SessionRoster,
@@ -55,7 +56,7 @@ defmodule Ganesha.Assistant.Tasks do
   @teacher @questions ++
              [RecordPayment, BookOneOff, MakeupRequest] ++
              @students_money ++
-             @schedule ++ [AskTeacher, SetLanguage]
+             @schedule ++ [AskTeacher, SetLanguage, PendingDrafts]
   @group [RecordPayment, BookOneOff, MakeupRequest]
   @student [SetLanguage]
 

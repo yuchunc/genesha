@@ -20,6 +20,7 @@ defmodule Ganesha.Assistant.TasksTest do
     MonthSchedule,
     NextSession,
     OpenCredits,
+    PendingDrafts,
     RecordPayment,
     SavePackage,
     SessionRoster,
@@ -108,6 +109,18 @@ defmodule Ganesha.Assistant.TasksTest do
       assert task.kind() == :lookup
       assert {:ok, ^task} = Tasks.fetch(task.name())
     end
+  end
+
+  test "pending_drafts is Teacher chat only" do
+    teacher = Tasks.for_chat(:teacher)
+    group = Tasks.for_chat(:group)
+    student = Tasks.for_chat(:student)
+
+    assert PendingDrafts in teacher
+    refute PendingDrafts in group
+    refute PendingDrafts in student
+    assert PendingDrafts.kind() == :lookup
+    assert {:ok, PendingDrafts} = Tasks.fetch("pending_drafts")
   end
 
   test "the five schedule change tasks are Teacher chat only" do
