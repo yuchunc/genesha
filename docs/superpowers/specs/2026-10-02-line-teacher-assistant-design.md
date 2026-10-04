@@ -2,6 +2,10 @@
 
 **Date:** 2026-10-02
 **Status:** approved design; implementation planned in five slices
+
+> **Superseded in part (2026-10-04):** reply packing (§6.2), Draft cards, lookup cards
+> and `show_card` are replaced by `2026-10-04-line-chat-first-replies-design.md`.
+
 **Builds on:** `2026-09-11-line-ai-chat-design.md` (webhook, threads, Drafts, Group chat)
 **Decisions:** `docs/adr/0001-every-line-write-is-a-draft.md`,
 `docs/adr/0002-line-tools-are-use-cases.md`,
