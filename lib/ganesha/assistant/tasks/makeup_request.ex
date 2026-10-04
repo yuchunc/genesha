@@ -61,16 +61,6 @@ defmodule Ganesha.Assistant.Tasks.MakeupRequest do
   def summary(parsed, _locale),
     do: "#{parsed["student_name"] || "有人"}想補課：#{parsed["note"]}"
 
-  @impl true
-  def describe(parsed, locale) do
-    %{
-      title: Enum.join(Enum.reject([title(locale), parsed["student_name"]], &is_nil/1), " "),
-      lines: Enum.reject([parsed["note"]], &(&1 in [nil, ""])),
-      changes: [],
-      web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
-    }
-  end
-
   defp fetch_note(note) when is_binary(note) do
     case String.trim(note) do
       "" -> {:error, missing_note()}
@@ -95,7 +85,4 @@ defmodule Ganesha.Assistant.Tasks.MakeupRequest do
   end
 
   defp fetch_student(_id), do: {:error, "student_id must be an integer id from the snapshot"}
-
-  defp title("en"), do: "Makeup request"
-  defp title(_locale), do: "補課需求"
 end

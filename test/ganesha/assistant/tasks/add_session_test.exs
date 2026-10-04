@@ -2,9 +2,7 @@ defmodule Ganesha.Assistant.Tasks.AddSessionTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.AddSession
-  alias GaneshaWeb.Fmt
 
   @input %{
     "date" => "2026-10-20",
@@ -94,42 +92,6 @@ defmodule Ganesha.Assistant.Tasks.AddSessionTest do
 
       assert {:error, :duplicate_session} = AddSession.apply(parsed, "line:teacher")
       assert length(october()) == 1
-    end
-  end
-
-  describe "describe/2" do
-    test "shows the date, time and style of the new session", %{ctx: ctx} do
-      parsed = propose!(ctx)
-      date = ~D[2026-10-20]
-
-      for locale <- ["zh-TW", "en"] do
-        %{
-          title: title,
-          lines: [date_line, time_line, style_line],
-          changes: changes,
-          web_path: path
-        } =
-          AddSession.describe(parsed, locale)
-
-        assert title =~ "期間限定"
-        assert date_line =~ Format.session_day(date, locale)
-        assert time_line =~ Fmt.time_range(~T[19:00:00], ~T[20:00:00])
-        assert style_line =~ "流動"
-        assert [{_label, nil, "期間限定"}] = changes
-        assert path == "/class/2026/10"
-      end
-    end
-
-    test "shows the stored values, not the current database", %{ctx: ctx} do
-      parsed = %{propose!(ctx) | "date" => "2026-11-03", "label" => "週末班"}
-
-      %{title: title, lines: [date_line | _], changes: [{_, nil, label}], web_path: path} =
-        AddSession.describe(parsed, "zh-TW")
-
-      assert title =~ "週末班"
-      assert date_line =~ Format.session_day(~D[2026-11-03], "zh-TW")
-      assert label == "週末班"
-      assert path == "/class/2026/11"
     end
   end
 

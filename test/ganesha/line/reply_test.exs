@@ -17,6 +17,9 @@ defmodule Ganesha.Line.ReplyTest do
 
   defp line(draft), do: Cards.history_line({:draft, draft}, "zh-TW")
 
+  defp lookup(title),
+    do: {:session, %{"title" => title, "count" => 0, "cancelled" => false, "attendees" => []}}
+
   test "text alone is one text message" do
     assert [%{type: "text", text: "好的"}] = Reply.build(%Turn{text: "好的"}, [], "zh-TW")
   end
@@ -38,7 +41,7 @@ defmodule Ganesha.Line.ReplyTest do
   end
 
   test "never more than 5 messages: lookup cards past the limit are dropped" do
-    cards = Enum.map(1..6, &{:draft, draft(&1)})
+    cards = Enum.map(1..6, &lookup("課堂#{&1}"))
     messages = Reply.build(%Turn{text: "看看", cards: cards}, drafts(1), "zh-TW")
 
     assert [
@@ -51,7 +54,7 @@ defmodule Ganesha.Line.ReplyTest do
   end
 
   test "no Drafts means no carousel message, never an empty one" do
-    messages = Reply.build(%Turn{text: "看看", cards: [{:draft, draft(1)}]}, [], "zh-TW")
+    messages = Reply.build(%Turn{text: "看看", cards: [lookup("課堂")]}, [], "zh-TW")
 
     assert [%{type: "text"}, %{type: "flex", contents: %{type: "bubble"}}] = messages
     refute Enum.any?(messages, &match?(%{contents: %{type: "carousel"}}, &1))
@@ -64,7 +67,12 @@ defmodule Ganesha.Line.ReplyTest do
       parsed: %{"note" => "x", "student_name" => String.duplicate("長", 500)}
     }
 
-    messages = Reply.build(%Turn{cards: [{:draft, long}]}, List.duplicate(long, 3), "zh-TW")
+    messages =
+      Reply.build(
+        %Turn{cards: [lookup(String.duplicate("長", 500))]},
+        List.duplicate(long, 3),
+        "zh-TW"
+      )
 
     assert length(messages) == 2
 
@@ -124,12 +132,13 @@ defmodule Ganesha.Line.ReplyTest do
     end
 
     test "names only the lookup cards that were sent" do
-      cards = Enum.map(1..6, &{:draft, draft(&1)})
+      cards = Enum.map(1..6, &lookup("課堂#{&1}"))
       history = Reply.history_text(%Turn{text: "看看", cards: cards}, drafts(1), "zh-TW")
 
       # text + carousel leave room for three of the six lookup cards
       assert String.split(history, "\n") ==
-               Enum.map([1, 2, 3, 1], &line(draft(&1)))
+               Enum.map(1..3, &Cards.history_line(lookup("課堂#{&1}"), "zh-TW")) ++
+                 [line(draft(1))]
     end
 
     test "is nil when the turn sent no cards" do

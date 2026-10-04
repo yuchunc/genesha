@@ -7,9 +7,7 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Scheduling, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Summary
-  alias GaneshaWeb.Fmt
 
   @impl true
   def name, do: "add_slot"
@@ -80,27 +78,6 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
       do:
         "New weekly class: #{parsed["label"]}, #{weekday} #{time}; #{count} classes in #{month}",
       else: "新增固定班 每#{weekday} #{time} #{parsed["label"]}，#{month} #{count} 堂"
-  end
-
-  @impl true
-  def describe(parsed, locale) do
-    month = parse_date(parsed["month"])
-
-    %{
-      title: "#{title(locale)} #{parsed["label"]}",
-      lines:
-        Enum.reject(
-          [
-            weekday_line(parsed["weekday"], locale),
-            time_line(parse_time(parsed["start_time"]), parse_time(parsed["end_time"]), locale),
-            month_line(month, locale),
-            style_line(parsed["default_style"], locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [{sessions_label(locale), nil, session_count(parsed["session_count"], locale)}],
-      web_path: month && "/class/#{month.year}/#{month.month}"
-    }
   end
 
   defp build_attrs(input) do
@@ -190,42 +167,4 @@ defmodule Ganesha.Assistant.Tasks.AddSlot do
       do: :ok,
       else: {:error, "end_time must be after start_time"}
   end
-
-  defp parse_date(iso) when is_binary(iso) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp parse_date(_iso), do: nil
-
-  defp title("en"), do: "New weekly class"
-  defp title(_locale), do: "固定班次"
-
-  defp weekday_line(weekday, "en") when weekday in 1..7, do: "Weekday: #{weekday_en(weekday)}"
-  defp weekday_line(weekday, _locale) when weekday in 1..7, do: "星期：#{Fmt.weekday(weekday)}"
-  defp weekday_line(_weekday, _locale), do: nil
-
-  # 2024-01-01 is a Monday, so weekday 1..7 maps onto Mon..Sun.
-  defp weekday_en(weekday), do: ~D[2024-01-01] |> Date.add(weekday - 1) |> Calendar.strftime("%a")
-
-  defp time_line(start, stop, _locale) when is_nil(start) or is_nil(stop), do: nil
-  defp time_line(start, stop, "en"), do: "Time: #{Fmt.time_range(start, stop)}"
-  defp time_line(start, stop, _locale), do: "時間：#{Fmt.time_range(start, stop)}"
-
-  defp month_line(nil, _locale), do: nil
-  defp month_line(month, "en"), do: "Month: #{Format.month_title(month, "en")}"
-  defp month_line(month, locale), do: "月份：#{Format.month_title(month, locale)}"
-
-  defp style_line(style, _locale) when style in [nil, ""], do: nil
-  defp style_line(style, "en"), do: "Style: #{style}"
-  defp style_line(style, _locale), do: "課型：#{style}"
-
-  defp sessions_label("en"), do: "Sessions"
-  defp sessions_label(_locale), do: "課堂"
-
-  defp session_count(count, "en") when is_integer(count), do: "#{count} scheduled"
-  defp session_count(count, _locale) when is_integer(count), do: "排 #{count} 堂"
-  defp session_count(_count, _locale), do: "—"
 end

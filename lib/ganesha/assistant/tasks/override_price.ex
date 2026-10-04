@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.Sales
-  alias Ganesha.Assistant.{Format, Summary}
+  alias Ganesha.Assistant.Summary
 
   @apply_keys ~w(purchase_id custom_amount note)
 
@@ -85,26 +85,6 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
   end
 
   @impl true
-  def describe(parsed, locale) do
-    %{
-      title: "#{label(:title, locale)} #{parsed["student_name"]} #{parsed["package_name"]}",
-      lines:
-        Enum.reject(
-          [
-            line(:list_price, Format.money(parsed["list_price"]), locale),
-            note_line(parsed["note"], locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [
-        {label(:owed, locale), Format.money(parsed["before_payable"]),
-         Format.money(parsed["after_payable"])}
-      ],
-      web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
-    }
-  end
-
-  @impl true
   def summary(parsed, locale) do
     name = parsed["student_name"] || "?"
     package = parsed["package_name"]
@@ -156,19 +136,4 @@ defmodule Ganesha.Assistant.Tasks.OverridePrice do
   defp same_note(%{note: current}, expected) do
     if current == expected, do: :ok, else: {:error, :purchase_changed}
   end
-
-  defp label(:title, "en"), do: "Override price"
-  defp label(:title, _), do: "議價"
-  defp label(:list_price, "en"), do: "List price"
-  defp label(:list_price, _), do: "原價"
-  defp label(:owed, "en"), do: "Owed"
-  defp label(:owed, _), do: "應付"
-
-  defp line(_key, value, _locale) when value in [nil, ""], do: nil
-  defp line(key, value, "en"), do: "#{label(key, "en")}: #{value}"
-  defp line(key, value, locale), do: "#{label(key, locale)}：#{value}"
-
-  defp note_line(note, _locale) when note in [nil, ""], do: nil
-  defp note_line(note, "en"), do: "Note: #{note}"
-  defp note_line(note, _locale), do: "備註：#{note}"
 end

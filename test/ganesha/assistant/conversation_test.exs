@@ -114,7 +114,7 @@ defmodule Ganesha.Assistant.ConversationTest do
 
   defp last_message(thread), do: thread |> Assistant.list_messages() |> List.last()
 
-  defp title(draft, locale), do: Assistant.describe_draft(draft, locale).title
+  defp title(draft, locale), do: Assistant.draft_summary(draft, locale)
 
   # The outcome line the model reads next turn (prompt rule 6: "[已確認] 草稿 #41 …").
   defp outcome_line(tag, draft, locale),
@@ -360,12 +360,40 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert failed.failure_reason == "missing_purchase_id"
 
       expected =
-        Labels.t(:failed, "zh-TW", title: title(draft, "zh-TW"), reason: "missing_purchase_id")
+        Labels.t(:failed, "zh-TW",
+          title: title(draft, "zh-TW"),
+          reason: Labels.failure_reason("missing_purchase_id", "zh-TW")
+        )
 
       assert [{:reply, {"rt-p", [%{text: ^expected}]}}] = LineMock.calls()
 
       assert last_message(thread).content ==
                outcome_line(:tag_failed, draft, "zh-TW") <> " — missing_purchase_id"
+    end
+
+    test "a stale Draft fails with a readable reason, not the error code", %{thread: thread} do
+      {:ok, student} = People.create_student(%{display_name: "Amy"})
+      {:ok, pkg} = Catalog.create_package(%{name: "月課程", kind: "monthly", price_per_class: 400})
+
+      {:ok, purchase} =
+        Sales.create_purchase(%{student_id: student.id, package_id: pkg.id, list_price: 1600})
+
+      {:ok, %{parsed: parsed}} =
+        Tasks.OverridePrice.propose(
+          %{"purchase_id" => purchase.id, "custom_amount" => 1500},
+          %{thread: thread, locale: "zh-TW", today: ~D[2026-10-02]}
+        )
+
+      {:ok, draft} = Assistant.create_draft(thread, %{kind: "override_price", parsed: parsed})
+      {:ok, _} = Sales.update_purchase(purchase, %{custom_amount: 1400})
+
+      :ok =
+        Conversation.handle_postback(postback("confirm", draft.id), "rt-1", @teacher, @teacher)
+
+      assert Repo.reload!(draft).failure_reason == "purchase_changed"
+      assert [{:reply, {"rt-1", [%{text: text}]}}] = LineMock.calls()
+      refute text =~ "purchase_changed"
+      assert text =~ Labels.failure_reason(:purchase_changed, "zh-TW")
     end
 
     test "Discard discards the Draft", %{thread: thread, student: student} do

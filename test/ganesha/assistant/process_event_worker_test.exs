@@ -130,8 +130,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       assert Assistant.get_draft!(draft.id).state == "applied"
 
-      confirmed =
-        Labels.t(:confirmed, "zh-TW", title: Assistant.describe_draft(draft, "zh-TW").title)
+      confirmed = Labels.t(:confirmed, "zh-TW", title: Assistant.draft_summary(draft, "zh-TW"))
 
       assert [{:reply, {"rt-p", [%{text: ^confirmed}]}}] = LineMock.calls()
     end

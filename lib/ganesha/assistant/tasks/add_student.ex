@@ -82,23 +82,6 @@ defmodule Ganesha.Assistant.Tasks.AddStudent do
     end
   end
 
-  @impl true
-  def describe(parsed, locale) do
-    %{
-      title: "#{label(:title, locale)} #{parsed["display_name"]}",
-      lines:
-        Enum.reject(
-          [
-            line(:line_user_id, parsed["line_user_id"], locale),
-            aliases_line(parsed["aliases"], locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [],
-      web_path: nil
-    }
-  end
-
   defp require_name(name) when is_binary(name) do
     trimmed = String.trim(name)
 
@@ -142,17 +125,4 @@ defmodule Ganesha.Assistant.Tasks.AddStudent do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
-
-  defp label(:title, "en"), do: "Add student"
-  defp label(:title, _), do: "新增學生"
-  defp label(:line_user_id, "en"), do: "LINE user id"
-  defp label(:line_user_id, _), do: "LINE 使用者 id"
-
-  defp line(_key, value, _locale) when value in [nil, ""], do: nil
-  defp line(key, value, "en"), do: "#{label(key, "en")}: #{value}"
-  defp line(key, value, locale), do: "#{label(key, locale)}：#{value}"
-
-  defp aliases_line([], _locale), do: nil
-  defp aliases_line(aliases, "en"), do: "Aliases: #{Enum.join(aliases, ", ")}"
-  defp aliases_line(aliases, _locale), do: "別名：#{Enum.join(aliases, "、")}"
 end

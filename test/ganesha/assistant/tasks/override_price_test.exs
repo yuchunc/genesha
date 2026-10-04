@@ -2,7 +2,6 @@ defmodule Ganesha.Assistant.Tasks.OverridePriceTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Catalog, People, Sales}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.OverridePrice
 
   setup do
@@ -56,15 +55,6 @@ defmodule Ganesha.Assistant.Tasks.OverridePriceTest do
 
     {:ok, _} = OverridePrice.apply(parsed, "line:teacher")
     assert Sales.get_purchase!(purchase.id).note == "老學生優惠"
-  end
-
-  test "describe shows owed before → after", c do
-    {:ok, %{parsed: parsed}} =
-      OverridePrice.propose(%{"purchase_id" => c.purchase.id, "custom_amount" => 1500}, c.ctx)
-
-    assert [{_, before, after_value}] = OverridePrice.describe(parsed, "zh-TW").changes
-    assert before == Format.money(1600)
-    assert after_value == Format.money(1500)
   end
 
   test "summary names the new price and the old one, or the list price when clearing", c do

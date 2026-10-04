@@ -18,7 +18,7 @@ defmodule Mix.Tasks.Line.ValidateCards do
 
   @impl true
   def run(_args) do
-    # The Draft card's web button needs the Endpoint's URL, so the app must run.
+    # The LINE client's HTTP pool (Req) starts with the app, so the app must run.
     # Oban stays idle: this task must never process queued webhook events.
     Mix.Task.run("app.config")
     oban = Application.fetch_env!(:ganesha, Oban)

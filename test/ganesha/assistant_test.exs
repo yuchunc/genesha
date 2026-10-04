@@ -287,15 +287,16 @@ defmodule Ganesha.AssistantTest do
     assert {first_id, last_id} == {first.id, last.id}
   end
 
-  describe "describe_draft/2" do
-    test "describes a Draft with its task", %{thread: thread} do
+  describe "draft_summary/2" do
+    test "is the Draft's task summary", %{thread: thread} do
       draft = payment_draft(thread)
-      assert %{title: "收款 Lulu NT$400"} = Assistant.describe_draft(draft, "zh-TW")
+      assert Assistant.draft_summary(draft, "zh-TW") =~ "Lulu"
+      assert Assistant.draft_summary(draft, "zh-TW") =~ "NT$400"
     end
 
     test "falls back to the kind for a retired Draft" do
-      assert %{title: "attendance", lines: [], changes: [], web_path: nil} =
-               Assistant.describe_draft(%Draft{kind: "attendance", parsed: %{}}, "zh-TW")
+      assert Assistant.draft_summary(%Draft{kind: "attendance", parsed: %{}}, "zh-TW") ==
+               "attendance"
     end
   end
 end

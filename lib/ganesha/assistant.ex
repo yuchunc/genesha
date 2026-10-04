@@ -221,13 +221,14 @@ defmodule Ganesha.Assistant do
   end
 
   @doc """
-  The Draft's description from its task's `describe/2`. A Draft of a retired
-  kind (kept as history) falls back to its kind as the title.
+  The Draft in one chat sentence, from its task's `summary/2`. A Draft of a
+  retired kind (kept as history) falls back to its kind.
   """
-  def describe_draft(%Draft{kind: kind, parsed: parsed}, locale) do
+  @spec draft_summary(Draft.t(), String.t()) :: String.t()
+  def draft_summary(%Draft{kind: kind, parsed: parsed}, locale) do
     case Tasks.fetch(kind) do
-      {:ok, task} -> task.describe(parsed || %{}, locale)
-      :error -> %{title: kind, lines: [], changes: [], web_path: nil}
+      {:ok, task} -> task.summary(parsed || %{}, locale)
+      :error -> kind
     end
   end
 

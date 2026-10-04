@@ -289,9 +289,17 @@ Smoke.check(
   postback_data == ["action=confirm&draft_id=#{draft.id}", "action=discard&draft_id=#{draft.id}"]
 )
 
+summary = Assistant.draft_summary(draft, "zh-TW")
+
+Smoke.check(
+  "the card is one sentence naming the student and the amount",
+  bubble != nil and match?([%{text: ^summary}], bubble.body.contents) and
+    summary =~ "SMOKE 小美" and summary =~ "NT$3,200"
+)
+
 Smoke.check(
   "the model's reply records the card it sent",
-  List.last(teacher_messages).content =~ "[草稿 ##{draft.id} 待確認] 收款 SMOKE 小美 NT$3,200"
+  List.last(teacher_messages).content =~ "[草稿 ##{draft.id} 待確認] #{summary}"
 )
 
 Smoke.check("event marked processed", Repo.reload!(teacher_line_event).processed_at != nil)
@@ -379,13 +387,13 @@ outcome_texts = for {:reply, {_token, [message]}} <- LineMock.calls(), do: messa
 
 Smoke.check(
   "the teacher is told what was confirmed",
-  outcome_texts == ["已確認：收款 SMOKE 小美 NT$3,200"]
+  outcome_texts == [Line.Labels.t(:confirmed, "zh-TW", title: summary)]
 )
 
 Smoke.check(
   "the outcome is in the model's history",
   List.last(Assistant.list_messages(teacher_thread)).content ==
-    "[已確認] 草稿 ##{draft.id} 收款 SMOKE 小美 NT$3,200"
+    "[已確認] 草稿 ##{draft.id} #{summary}"
 )
 
 replay = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => postback_line_event.id}})

@@ -131,42 +131,6 @@ defmodule Ganesha.Assistant.Tasks.RecordPaymentTest do
     end
   end
 
-  describe "describe/2" do
-    @parsed %{
-      "student_id" => 7,
-      "student_name" => "Lulu",
-      "purchase_id" => 3,
-      "amount" => 1600,
-      "method" => "line_pay",
-      "paid_on" => "2026-10-02",
-      "reported_last5" => "12345",
-      "package_name" => "月課程",
-      "before_owed" => 1600
-    }
-
-    test "is built from parsed only and shows what is owed before → after" do
-      assert %{
-               title: "收款 Lulu NT$1,600",
-               lines: ["方案：月課程", "付款方式：Line Pay", "付款日：10月2日", "末五碼：12345"],
-               changes: [{"尚欠", "NT$1,600", "NT$0"}],
-               web_path: "/students/7"
-             } = RecordPayment.describe(@parsed, "zh-TW")
-    end
-
-    test "speaks English when the chat does" do
-      assert %{
-               title: "Payment Lulu NT$1,600",
-               lines: [
-                 "Package: 月課程",
-                 "Method: LINE Pay",
-                 "Paid on: 2026-10-02",
-                 "Last 5 digits: 12345"
-               ],
-               changes: [{"Owed", "NT$1,600", "NT$0"}]
-             } = RecordPayment.describe(@parsed, "en")
-    end
-  end
-
   describe "summary/2" do
     @summary_parsed %{
       "student_name" => "Amy",

@@ -7,7 +7,6 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Summary
   alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
@@ -116,29 +115,6 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
       else: "幫 #{name} 排 #{session} #{kind} #{owed}"
   end
 
-  @impl true
-  def describe(parsed, locale) do
-    date = parse_date(parsed["session_date"])
-
-    %{
-      title:
-        "#{kind_name(parsed["package_kind"], locale)} #{parsed["student_name"]} #{short_date(date)}",
-      lines:
-        Enum.reject(
-          [
-            session_line(parsed, date, locale),
-            package_line(parsed, locale),
-            note_line(parsed["note"], locale)
-          ],
-          &is_nil/1
-        ),
-      changes:
-        roster_change(parsed["before_count"], locale) ++
-          [{owed_label(locale), nil, Format.money(parsed["custom_amount"] || parsed["price"])}],
-      web_path: parsed["session_id"] && "/sessions/#{parsed["session_id"]}"
-    }
-  end
-
   defp fetch(what, id) when is_integer(id) do
     case get(what, id) do
       nil -> {:error, "no #{what} with id #{id}; use an id from the snapshot"}
@@ -202,54 +178,4 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
       do: {:error, "#{student.display_name} is already booked in that session"},
       else: :ok
   end
-
-  defp parse_date(nil), do: nil
-
-  defp parse_date(iso) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp short_date(nil), do: ""
-  defp short_date(date), do: Fmt.short_date(date)
-
-  defp kind_name("trial", "en"), do: "Trial"
-  defp kind_name(_kind, "en"), do: "Drop-in"
-  defp kind_name("trial", _locale), do: "體驗"
-  defp kind_name(_kind, _locale), do: "單堂"
-
-  defp session_line(_parsed, nil, _locale), do: nil
-
-  defp session_line(parsed, date, "en"),
-    do:
-      "Session: #{Calendar.strftime(date, "%a")} #{Fmt.short_date(date)} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
-
-  defp session_line(parsed, date, _locale),
-    do:
-      "課堂：#{Fmt.short_date(date)} #{Fmt.weekday(date)} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
-
-  defp package_line(parsed, "en"),
-    do: "Package: #{parsed["package_name"]} #{Format.money(parsed["price"])}"
-
-  defp package_line(parsed, _locale),
-    do: "方案：#{parsed["package_name"]} #{Format.money(parsed["price"])}"
-
-  defp note_line(note, _locale) when note in [nil, ""], do: nil
-  defp note_line(note, "en"), do: "Note: #{note}"
-  defp note_line(note, _locale), do: "備註：#{note}"
-
-  defp roster_change(count, "en") when is_integer(count),
-    do: [{"Roster", "#{count}", "#{count + 1}"}]
-
-  defp roster_change(count, _locale) when is_integer(count),
-    do: [{"名單", "#{count} 人", "#{count + 1} 人"}]
-
-  defp roster_change(_count, _locale), do: []
-
-  defp owed_label("en"), do: "Owed"
-  defp owed_label(_locale), do: "應付"
 end

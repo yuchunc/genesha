@@ -88,29 +88,6 @@ defmodule Ganesha.Assistant.Tasks.SetNoShow do
     end
   end
 
-  @impl true
-  def describe(parsed, locale) do
-    date = parse_date(parsed["session_date"])
-
-    %{
-      title:
-        "#{title(parsed["state"], locale)} #{parsed["student_name"]} #{short_date(date, locale)}",
-      lines:
-        Enum.reject(
-          [
-            session_line(parsed, date, locale),
-            kind_line(parsed, locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [
-        {label(:attendance, locale), state_name(parsed["before_state"], locale),
-         state_name(parsed["state"], locale)}
-      ],
-      web_path: parsed["session_id"] && "/sessions/#{parsed["session_id"]}"
-    }
-  end
-
   defp fetch_attendance(id) when is_integer(id) do
     case Roster.get_attendance(id) do
       nil -> {:error, "no attendance with id #{id}"}
@@ -143,44 +120,4 @@ defmodule Ganesha.Assistant.Tasks.SetNoShow do
 
   defp apply_state(attendance, "no_show"), do: Roster.mark_no_show(attendance)
   defp apply_state(attendance, "expected"), do: Roster.mark_expected(attendance)
-
-  defp parse_date(nil), do: nil
-
-  defp parse_date(iso) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp short_date(nil, _locale), do: ""
-  defp short_date(date, _locale), do: Fmt.short_date(date)
-
-  defp title("no_show", "en"), do: "No-show"
-  defp title("expected", "en"), do: "Undo no-show"
-  defp title("no_show", _), do: "缺席"
-  defp title("expected", _), do: "取消缺席"
-
-  defp session_line(_parsed, nil, _locale), do: nil
-
-  defp session_line(parsed, date, "en"),
-    do:
-      "Session: #{Calendar.strftime(date, "%a")} #{Fmt.short_date(date)} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
-
-  defp session_line(parsed, date, _locale),
-    do:
-      "課堂：#{Fmt.short_date(date)} #{Fmt.weekday(date)} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
-
-  defp kind_line(_parsed, _locale), do: nil
-
-  defp label(:attendance, "en"), do: "Attendance"
-  defp label(:attendance, _), do: "出席"
-
-  defp state_name("expected", "en"), do: "Expected"
-  defp state_name("no_show", "en"), do: "No-show"
-  defp state_name("expected", _), do: "預期出席"
-  defp state_name("no_show", _), do: "缺席"
-  defp state_name(other, _), do: other
 end

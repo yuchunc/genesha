@@ -10,7 +10,6 @@ defmodule Ganesha.Assistant.Tasks.PendingDrafts do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.Assistant
-  alias Ganesha.Line.Cards
 
   @impl true
   def name, do: "pending_drafts"
@@ -40,7 +39,7 @@ defmodule Ganesha.Assistant.Tasks.PendingDrafts do
   defp data([], _locale), do: "No Drafts are pending."
 
   defp data(drafts, locale) do
-    lines = Enum.map(drafts, &Cards.history_line({:draft, &1}, locale))
+    lines = Enum.map(drafts, &"##{&1.id} #{Assistant.draft_summary(&1, locale)}")
     Enum.join(["#{length(drafts)} pending, shown to the teacher as cards:" | lines], "\n")
   end
 end

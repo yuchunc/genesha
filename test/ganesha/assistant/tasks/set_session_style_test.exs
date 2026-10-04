@@ -2,9 +2,7 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyleTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.SetSessionStyle
-  alias GaneshaWeb.Fmt
 
   setup do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
@@ -111,35 +109,6 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyleTest do
 
       assert {:error, :not_found} =
                SetSessionStyle.apply(%{parsed | "session_id" => -1}, "line:teacher")
-    end
-  end
-
-  describe "describe/2" do
-    test "shows the session and the style before and after", c do
-      parsed = propose!(c)
-      date = ~D[2026-10-07]
-
-      for locale <- ["zh-TW", "en"] do
-        %{title: title, lines: [session_line], changes: changes, web_path: path} =
-          SetSessionStyle.describe(parsed, locale)
-
-        assert title =~ Fmt.short_date(date)
-        assert title =~ "基礎"
-        assert session_line =~ Format.session_day(date, locale)
-        assert session_line =~ Fmt.session_time_range(c.session)
-        assert [{_label, "Hatha", "流動"}] = changes
-        assert path == "/sessions/#{c.session.id}"
-      end
-    end
-
-    test "shows the stored values, not the current database", c do
-      parsed = propose!(c)
-      {:ok, _} = Studio.set_style(c.session, "其他")
-
-      %{changes: [{_label, before, after_value}]} =
-        SetSessionStyle.describe(%{parsed | "style" => "陰瑜珈"}, "zh-TW")
-
-      assert {before, after_value} == {"Hatha", "陰瑜珈"}
     end
   end
 

@@ -191,7 +191,7 @@ defmodule Ganesha.Assistant.Conversation do
   end
 
   defp describe_outcome({status, draft}, locale) do
-    title = Assistant.describe_draft(draft, locale).title
+    title = Assistant.draft_summary(draft, locale)
     {outcome_text(status, draft, title, locale), history_line(status, draft, title, locale)}
   end
 
@@ -202,7 +202,11 @@ defmodule Ganesha.Assistant.Conversation do
     do: Labels.t(:discarded, locale, title: title)
 
   defp outcome_text(:failed, draft, title, locale),
-    do: Labels.t(:failed, locale, title: title, reason: draft.failure_reason)
+    do:
+      Labels.t(:failed, locale,
+        title: title,
+        reason: Labels.failure_reason(draft.failure_reason, locale)
+      )
 
   defp outcome_text(:already_handled, _draft, _title, locale),
     do: Labels.t(:already_handled, locale)

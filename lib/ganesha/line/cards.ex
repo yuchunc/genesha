@@ -16,22 +16,38 @@ defmodule Ganesha.Line.Cards do
   @max_rows 10
   @max_attendees 20
 
-  @spec render(Ganesha.Assistant.Task.card(), String.t()) :: map()
-  def render({:draft, %Draft{} = draft}, locale) do
-    description = Assistant.describe_draft(draft, locale)
-
+  @doc "A Draft as one sentence with 確認 / 捨棄 (chat-first replies spec §2)."
+  @spec draft_bubble(Draft.t(), String.t()) :: map()
+  def draft_bubble(%Draft{} = draft, locale) do
     %{
       type: "bubble",
-      header: %{
+      size: "kilo",
+      body: %{
         type: "box",
         layout: "vertical",
-        contents: [%{type: "text", text: description.title, weight: "bold", wrap: true}]
+        contents: [%{type: "text", text: Assistant.draft_summary(draft, locale), wrap: true}]
       },
-      footer: footer(draft, description.web_path, locale)
+      footer: %{
+        type: "box",
+        layout: "horizontal",
+        spacing: "sm",
+        contents: [
+          button("primary", %{
+            type: "postback",
+            label: Labels.t(:confirm, locale),
+            data: "action=confirm&draft_id=#{draft.id}"
+          }),
+          button("secondary", %{
+            type: "postback",
+            label: Labels.t(:discard, locale),
+            data: "action=discard&draft_id=#{draft.id}"
+          })
+        ]
+      }
     }
-    |> put_body(description.lines ++ Enum.map(description.changes, &change_line/1))
   end
 
+  @spec render(Ganesha.Assistant.Task.card(), String.t()) :: map()
   def render({:session, payload}, locale) when is_map(payload) do
     lookup_bubble(
       present(payload["title"]) || Labels.t(:card_session, locale),
@@ -68,8 +84,7 @@ defmodule Ganesha.Line.Cards do
 
   @spec history_line(Ganesha.Assistant.Task.card(), String.t()) :: String.t()
   def history_line({:draft, %Draft{} = draft}, locale) do
-    title = Assistant.describe_draft(draft, locale).title
-    "[#{Labels.t(:draft, locale)} ##{draft.id} #{Labels.t(:pending, locale)}] #{title}"
+    "[#{Labels.t(:draft, locale)} ##{draft.id} #{Labels.t(:pending, locale)}] #{Assistant.draft_summary(draft, locale)}"
   end
 
   def history_line({:session, payload}, locale) when is_map(payload) do
@@ -96,7 +111,7 @@ defmodule Ganesha.Line.Cards do
   def draft_carousel(drafts, locale) do
     %{
       type: "carousel",
-      contents: drafts |> Enum.take(@max_bubbles) |> Enum.map(&render({:draft, &1}, locale))
+      contents: drafts |> Enum.take(@max_bubbles) |> Enum.map(&draft_bubble(&1, locale))
     }
   end
 
@@ -371,43 +386,6 @@ defmodule Ganesha.Line.Cards do
   end
 
   defp text(line, weight), do: %{type: "text", text: line, size: "sm", wrap: true, weight: weight}
-
-  defp change_line({label, nil, after_value}), do: "#{label}: #{after_value}"
-  defp change_line({label, before, after_value}), do: "#{label}: #{before} → #{after_value}"
-
-  # A Draft card with nothing to list has no body (LINE rejects an empty box).
-  defp put_body(bubble, []), do: bubble
-  defp put_body(bubble, lines), do: Map.put(bubble, :body, body_box(lines))
-
-  defp footer(draft, web_path, locale) do
-    buttons =
-      [
-        button("primary", %{
-          type: "postback",
-          label: Labels.t(:confirm, locale),
-          data: "action=confirm&draft_id=#{draft.id}"
-        }),
-        button("secondary", %{
-          type: "postback",
-          label: Labels.t(:discard, locale),
-          data: "action=discard&draft_id=#{draft.id}"
-        })
-      ] ++ web_button(web_path, locale)
-
-    %{type: "box", layout: "vertical", spacing: "sm", contents: buttons}
-  end
-
-  defp web_button(nil, _locale), do: []
-
-  defp web_button(path, locale) do
-    [
-      button("link", %{
-        type: "uri",
-        label: Labels.t(:open_web, locale),
-        uri: GaneshaWeb.Endpoint.url() <> path
-      })
-    ]
-  end
 
   defp button(style, action), do: %{type: "button", style: style, height: "sm", action: action}
 end

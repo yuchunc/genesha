@@ -8,7 +8,6 @@ defmodule Ganesha.Assistant.Tasks.Enroll do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Summary
   alias GaneshaWeb.Fmt
 
@@ -125,41 +124,6 @@ defmodule Ganesha.Assistant.Tasks.Enroll do
     if locale == "en",
       do: "Enroll #{name} in #{class} for #{month}: #{count} classes, #{owed}",
       else: "幫 #{name} 報名#{month} #{class}，#{count} 堂 #{owed}"
-  end
-
-  @impl true
-  def describe(parsed, locale) do
-    dates = Enum.flat_map(parsed["session_dates"] || [], &parse_date/1)
-    month = parse_month_text(parsed["month"])
-
-    %{
-      title:
-        Enum.join(
-          [
-            title(locale),
-            parsed["student_name"],
-            month_text(month, locale),
-            weekday_text(parsed["slot_weekday"], locale),
-            parsed["slot_label"]
-          ]
-          |> Enum.reject(&(&1 in [nil, ""])),
-          " "
-        ),
-      lines:
-        Enum.reject(
-          [
-            slot_line(parsed, locale),
-            sessions_line(dates, locale),
-            package_line(parsed, locale),
-            note_line(parsed["note"], locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [
-        {owed_label(locale), nil, Format.money(parsed["custom_amount"] || parsed["price"])}
-      ],
-      web_path: web_path(parsed["slot_id"], month)
-    }
   end
 
   defp fetch(what, id) when is_integer(id) do
@@ -282,75 +246,4 @@ defmodule Ganesha.Assistant.Tasks.Enroll do
            "; pass session_ids without those sessions, or ask the teacher"}
     end
   end
-
-  defp parse_date(iso) when is_binary(iso) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> [date]
-      {:error, _} -> []
-    end
-  end
-
-  defp parse_date(_iso), do: []
-
-  defp parse_month_text(text) when is_binary(text) do
-    case Date.from_iso8601(text <> "-01") do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp parse_month_text(_text), do: nil
-
-  defp title("en"), do: "Enroll"
-  defp title(_locale), do: "報名"
-
-  defp month_text(nil, _locale), do: nil
-  defp month_text(month, "en"), do: Calendar.strftime(month, "%b")
-  defp month_text(month, _locale), do: "#{month.month}月"
-
-  defp weekday_text(day, "en") when day in 1..7,
-    do: Enum.at(~w(Mon Tue Wed Thu Fri Sat Sun), day - 1)
-
-  defp weekday_text(day, _locale) when day in 1..7, do: Fmt.weekday(day)
-  defp weekday_text(_day, _locale), do: nil
-
-  defp slot_line(parsed, "en"),
-    do:
-      "Class: #{weekday_text(parsed["slot_weekday"], "en")} #{parsed["slot_time"]} " <>
-        "#{parsed["slot_label"]}"
-
-  defp slot_line(parsed, _locale),
-    do:
-      "固定班：#{weekday_text(parsed["slot_weekday"], "zh-TW")} #{parsed["slot_time"]} " <>
-        "#{parsed["slot_label"]}"
-
-  defp sessions_line([], _locale), do: nil
-
-  defp sessions_line(dates, "en"),
-    do: "Sessions: #{Enum.map_join(dates, ", ", &Fmt.short_date/1)} (#{length(dates)})"
-
-  defp sessions_line(dates, _locale),
-    do: "課堂：#{Enum.map_join(dates, "、", &Fmt.short_date/1)}（#{length(dates)} 堂）"
-
-  defp package_line(parsed, "en"),
-    do:
-      "Package: #{parsed["package_name"]} #{Format.money(parsed["price_per_class"])}/class, " <>
-        "list #{Format.money(parsed["price"])}"
-
-  defp package_line(parsed, _locale),
-    do:
-      "方案：#{parsed["package_name"]} #{Format.money(parsed["price_per_class"])}／堂，" <>
-        "原價 #{Format.money(parsed["price"])}"
-
-  defp note_line(note, _locale) when note in [nil, ""], do: nil
-  defp note_line(note, "en"), do: "Note: #{note}"
-  defp note_line(note, _locale), do: "備註：#{note}"
-
-  defp owed_label("en"), do: "Owed"
-  defp owed_label(_locale), do: "應付"
-
-  defp web_path(slot_id, %Date{} = month) when is_integer(slot_id),
-    do: "/enroll/#{slot_id}/#{month.year}/#{month.month}"
-
-  defp web_path(_slot_id, _month), do: nil
 end

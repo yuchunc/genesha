@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Assistant, Catalog}
-  alias Ganesha.Assistant.{Format, Summary}
+  alias Ganesha.Assistant.Summary
   alias Ganesha.Catalog.Package
 
   @create_keys ~w(name kind price_per_class included_makeups active grandfather_strategy)
@@ -59,14 +59,6 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
       "create" -> apply_create(parsed)
       "update" -> apply_update(parsed)
       _other -> {:error, :invalid_mode}
-    end
-  end
-
-  @impl true
-  def describe(parsed, locale) do
-    case parsed["mode"] do
-      "create" -> describe_create(parsed, locale)
-      "update" -> describe_update(parsed, locale)
     end
   end
 
@@ -202,53 +194,6 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
     end
   end
 
-  defp describe_create(parsed, locale) do
-    %{
-      title: "#{label(:create, locale)} #{parsed["name"]}",
-      lines:
-        Enum.reject(
-          [
-            line(:kind, kind_name(parsed["kind"], locale), locale),
-            line(:price, Format.money(parsed["price_per_class"]), locale),
-            line(:makeups, "#{parsed["included_makeups"]}", locale),
-            line(:active, bool_name(parsed["active"], locale), locale),
-            line(:grandfather, grandfather_name(parsed["grandfather_strategy"], locale), locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [],
-      web_path: "/settings"
-    }
-  end
-
-  defp describe_update(parsed, locale) do
-    %{
-      title: "#{label(:edit, locale)} #{parsed["name"]}",
-      lines: [line(:kind, kind_name(parsed["kind"], locale), locale)],
-      changes:
-        Enum.reject(
-          [
-            change(:price, parsed["before_price_per_class"], parsed["price_per_class"], locale),
-            change(
-              :makeups,
-              parsed["before_included_makeups"],
-              parsed["included_makeups"],
-              locale
-            ),
-            change(:active, parsed["before_active"], parsed["active"], locale),
-            change(
-              :grandfather,
-              parsed["before_grandfather_strategy"],
-              parsed["grandfather_strategy"],
-              locale
-            )
-          ],
-          &is_nil/1
-        ),
-      web_path: "/settings"
-    }
-  end
-
   defp fetch_package(id) do
     case Catalog.get_package(id) do
       nil -> {:error, "no package with id #{id}"}
@@ -353,42 +298,6 @@ defmodule Ganesha.Assistant.Tasks.SavePackage do
        do: :ok,
        else: {:error, :package_changed}
   end
-
-  defp label(:create, "en"), do: "New package"
-  defp label(:create, _), do: "新增方案"
-  defp label(:edit, "en"), do: "Edit package"
-  defp label(:edit, _), do: "編輯方案"
-  defp label(:kind, "en"), do: "Kind"
-  defp label(:kind, _), do: "類型"
-  defp label(:price, "en"), do: "Per class"
-  defp label(:price, _), do: "每堂"
-  defp label(:makeups, "en"), do: "Makeups included"
-  defp label(:makeups, _), do: "補課次數"
-  defp label(:active, "en"), do: "Open to new students"
-  defp label(:active, _), do: "開放新學生"
-  defp label(:grandfather, "en"), do: "When inactive"
-  defp label(:grandfather, _), do: "停用後"
-
-  defp line(_key, value, _locale) when value in [nil, ""], do: nil
-  defp line(key, value, "en"), do: "#{label(key, "en")}: #{value}"
-  defp line(key, value, locale), do: "#{label(key, locale)}：#{value}"
-
-  defp change(:price, before, after_value, locale)
-       when before != after_value,
-       do: {label(:price, locale), Format.money(before), Format.money(after_value)}
-
-  defp change(:makeups, before, after_value, locale) when before != after_value,
-    do: {label(:makeups, locale), "#{before}", "#{after_value}"}
-
-  defp change(:active, before, after_value, locale) when before != after_value,
-    do: {label(:active, locale), bool_name(before, locale), bool_name(after_value, locale)}
-
-  defp change(:grandfather, before, after_value, locale) when before != after_value,
-    do:
-      {label(:grandfather, locale), grandfather_name(before, locale),
-       grandfather_name(after_value, locale)}
-
-  defp change(_field, _before, _after, _locale), do: nil
 
   defp kind_name("monthly", "en"), do: "Monthly"
   defp kind_name("drop_in", "en"), do: "Drop-in"

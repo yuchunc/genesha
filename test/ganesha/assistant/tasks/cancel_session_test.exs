@@ -2,9 +2,7 @@ defmodule Ganesha.Assistant.Tasks.CancelSessionTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Catalog, People, Roster, Sales, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.CancelSession
-  alias GaneshaWeb.Fmt
 
   setup do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
@@ -143,39 +141,6 @@ defmodule Ganesha.Assistant.Tasks.CancelSessionTest do
 
       assert {:error, :not_found} =
                CancelSession.apply(%{parsed | "session_id" => -1}, "line:teacher")
-    end
-  end
-
-  describe "describe/2" do
-    test "shows the session, the reason and the credit count", c do
-      parsed = propose!(c)
-      date = ~D[2026-10-07]
-
-      for locale <- ["zh-TW", "en"] do
-        %{title: title, lines: [session_line, reason_line], changes: changes, web_path: path} =
-          CancelSession.describe(parsed, locale)
-
-        assert title =~ Fmt.short_date(date)
-        assert title =~ "基礎"
-        assert session_line =~ Format.session_day(date, locale)
-        assert session_line =~ Fmt.session_time_range(c.session)
-        assert reason_line =~ "颱風假"
-        assert [{_state, scheduled, cancelled}, {_credits, nil, issued}] = changes
-        assert scheduled != cancelled
-        assert issued =~ "1"
-        assert path == "/sessions/#{c.session.id}"
-      end
-    end
-
-    test "shows the stored values, not the current database", c do
-      parsed = propose!(c, "老師生病")
-      {:ok, _} = Studio.cancel_session(c.session, "already")
-
-      %{lines: [_session, reason_line], changes: [_state, {_credits, nil, issued}]} =
-        CancelSession.describe(%{parsed | "credit_count" => 7}, "zh-TW")
-
-      assert reason_line =~ "老師生病"
-      assert issued =~ "7"
     end
   end
 

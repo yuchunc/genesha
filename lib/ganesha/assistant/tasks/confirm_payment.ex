@@ -7,7 +7,7 @@ defmodule Ganesha.Assistant.Tasks.ConfirmPayment do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{People, Sales}
-  alias Ganesha.Assistant.{Format, Summary}
+  alias Ganesha.Assistant.Summary
   alias GaneshaWeb.Fmt
 
   @apply_keys ~w(payment_id)
@@ -71,28 +71,6 @@ defmodule Ganesha.Assistant.Tasks.ConfirmPayment do
   end
 
   @impl true
-  def describe(parsed, locale) do
-    %{
-      title:
-        "#{label(:title, locale)} #{parsed["student_name"]} #{Format.money(parsed["amount"])}",
-      lines:
-        Enum.reject(
-          [
-            line(:package, parsed["package_name"], locale),
-            line(:method, method_name(parsed["method"], locale), locale),
-            line(:paid_on, date_text(parsed["paid_on"], locale), locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [
-        {label(:state, locale), state_name(parsed["before_state"], locale),
-         state_name("confirmed", locale)}
-      ],
-      web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
-    }
-  end
-
-  @impl true
   def summary(parsed, locale) do
     name = parsed["student_name"] || "?"
     amount = Summary.money(parsed["amount"])
@@ -137,45 +115,4 @@ defmodule Ganesha.Assistant.Tasks.ConfirmPayment do
 
   defp still_claimed(%{state: "claimed"}), do: :ok
   defp still_claimed(_payment), do: {:error, :payment_not_claimed}
-
-  defp label(:title, "en"), do: "Confirm payment"
-  defp label(:title, _), do: "確認收款"
-  defp label(:package, "en"), do: "Package"
-  defp label(:package, _), do: "方案"
-  defp label(:method, "en"), do: "Method"
-  defp label(:method, _), do: "付款方式"
-  defp label(:paid_on, "en"), do: "Paid on"
-  defp label(:paid_on, _), do: "付款日"
-  defp label(:state, "en"), do: "State"
-  defp label(:state, _), do: "狀態"
-
-  defp line(_key, value, _locale) when value in [nil, ""], do: nil
-  defp line(key, value, "en"), do: "#{label(key, "en")}: #{value}"
-  defp line(key, value, locale), do: "#{label(key, locale)}：#{value}"
-
-  defp method_name(nil, _locale), do: nil
-  defp method_name("line_pay", "en"), do: "LINE Pay"
-  defp method_name("line_bank", "en"), do: "LINE Bank"
-  defp method_name("cash", "en"), do: "Cash"
-  defp method_name("other", "en"), do: "Other"
-  defp method_name(method, "en"), do: method
-  defp method_name(method, _locale), do: Fmt.method(method)
-
-  defp date_text(nil, _locale), do: nil
-  defp date_text(iso, "en"), do: iso
-
-  defp date_text(iso, _locale) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> Fmt.date(date)
-      {:error, _} -> iso
-    end
-  end
-
-  defp state_name("claimed", "en"), do: "Claimed"
-  defp state_name("confirmed", "en"), do: "Confirmed"
-  defp state_name("disputed", "en"), do: "Disputed"
-  defp state_name("claimed", _), do: "待確認"
-  defp state_name("confirmed", _), do: "已確認"
-  defp state_name("disputed", _), do: "有疑義"
-  defp state_name(other, _), do: other
 end

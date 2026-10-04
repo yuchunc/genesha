@@ -97,28 +97,6 @@ defmodule Ganesha.Assistant.Tasks.RecordPayment do
   end
 
   @impl true
-  def describe(parsed, locale) do
-    amount = parsed["amount"]
-
-    %{
-      title: "#{label(:title, locale)} #{parsed["student_name"] || "?"} #{Format.money(amount)}",
-      lines:
-        Enum.reject(
-          [
-            line(:package, parsed["package_name"], locale),
-            line(:method, method_name(parsed["method"], locale), locale),
-            line(:paid_on, date_text(parsed["paid_on"], locale), locale),
-            line(:last5, parsed["reported_last5"], locale),
-            line(:note, parsed["note"], locale)
-          ],
-          &is_nil/1
-        ),
-      changes: owed_change(parsed["before_owed"], amount, locale),
-      web_path: parsed["student_id"] && "/students/#{parsed["student_id"]}"
-    }
-  end
-
-  @impl true
   def summary(parsed, locale) do
     name = parsed["student_name"] || "?"
     amount = parsed["amount"]
@@ -226,46 +204,4 @@ defmodule Ganesha.Assistant.Tasks.RecordPayment do
 
   defp require_purchase(%{"purchase_id" => id}) when is_integer(id), do: :ok
   defp require_purchase(_attrs), do: {:error, :missing_purchase_id}
-
-  defp label(:title, "en"), do: "Payment"
-  defp label(:title, _), do: "收款"
-  defp label(:package, "en"), do: "Package"
-  defp label(:package, _), do: "方案"
-  defp label(:method, "en"), do: "Method"
-  defp label(:method, _), do: "付款方式"
-  defp label(:paid_on, "en"), do: "Paid on"
-  defp label(:paid_on, _), do: "付款日"
-  defp label(:last5, "en"), do: "Last 5 digits"
-  defp label(:last5, _), do: "末五碼"
-  defp label(:note, "en"), do: "Note"
-  defp label(:note, _), do: "備註"
-  defp label(:owed, "en"), do: "Owed"
-  defp label(:owed, _), do: "尚欠"
-
-  defp line(_key, value, _locale) when value in [nil, ""], do: nil
-  defp line(key, value, "en"), do: "#{label(key, "en")}: #{value}"
-  defp line(key, value, locale), do: "#{label(key, locale)}：#{value}"
-
-  defp method_name(nil, _locale), do: nil
-  defp method_name("line_pay", "en"), do: "LINE Pay"
-  defp method_name("line_bank", "en"), do: "LINE Bank"
-  defp method_name("cash", "en"), do: "Cash"
-  defp method_name("other", "en"), do: "Other"
-  defp method_name(method, "en"), do: method
-  defp method_name(method, _locale), do: Fmt.method(method)
-
-  defp date_text(nil, _locale), do: nil
-  defp date_text(iso, "en"), do: iso
-
-  defp date_text(iso, _locale) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> Fmt.date(date)
-      {:error, _} -> iso
-    end
-  end
-
-  defp owed_change(before, amount, locale) when is_integer(before) and is_integer(amount),
-    do: [{label(:owed, locale), Format.money(before), Format.money(before - amount)}]
-
-  defp owed_change(_before, _amount, _locale), do: []
 end

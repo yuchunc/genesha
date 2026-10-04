@@ -2,9 +2,7 @@ defmodule Ganesha.Assistant.Tasks.AddSlotTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.AddSlot
-  alias GaneshaWeb.Fmt
 
   # August 2026 has five Mondays: 3, 10, 17, 24, 31.
   @input %{
@@ -142,46 +140,6 @@ defmodule Ganesha.Assistant.Tasks.AddSlotTest do
       assert {:error, :slot_taken} = AddSlot.apply(parsed, "line:teacher")
       assert Enum.map(Studio.list_slots(), & &1.id) == [slot.id]
       assert Studio.sessions_in_month(~D[2026-08-01]) == []
-    end
-  end
-
-  describe "describe/2" do
-    test "shows the weekday, time, month, style and session count", %{ctx: ctx} do
-      parsed = propose!(ctx)
-
-      for {locale, weekday} <- [{"zh-TW", Fmt.weekday(1)}, {"en", "Mon"}] do
-        %{
-          title: title,
-          lines: [weekday_line, time_line, month_line, style_line],
-          changes: [{_label, nil, count}],
-          web_path: path
-        } = AddSlot.describe(parsed, locale)
-
-        assert title =~ "早晨練習｜週一 基礎瑜伽"
-        assert weekday_line =~ weekday
-        assert time_line =~ Fmt.time_range(~T[09:30:00], ~T[10:45:00])
-        assert month_line =~ Format.month_title(~D[2026-08-01], locale)
-        assert style_line =~ "基礎"
-        assert count =~ "5"
-        assert path == "/class/2026/8"
-      end
-    end
-
-    test "shows the stored values, not the current database", %{ctx: ctx} do
-      parsed = %{
-        propose!(ctx)
-        | "month" => "2026-11-01",
-          "session_count" => 7,
-          "label" => "週末班"
-      }
-
-      %{title: title, lines: [_, _, month_line, _], changes: [{_, nil, count}], web_path: path} =
-        AddSlot.describe(parsed, "zh-TW")
-
-      assert title =~ "週末班"
-      assert month_line =~ Format.month_title(~D[2026-11-01], "zh-TW")
-      assert count =~ "7"
-      assert path == "/class/2026/11"
     end
   end
 

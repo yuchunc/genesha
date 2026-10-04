@@ -7,10 +7,8 @@ defmodule Ganesha.Assistant.Tasks.AddSession do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Assistant, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Summary
   alias Ganesha.Studio.Session
-  alias GaneshaWeb.Fmt
 
   @impl true
   def name, do: "add_session"
@@ -76,26 +74,6 @@ defmodule Ganesha.Assistant.Tasks.AddSession do
 
     style = Summary.paren([parsed["style"]], locale)
     if locale == "en", do: "Add a class: #{session}" <> style, else: "加開 #{session}" <> style
-  end
-
-  @impl true
-  def describe(parsed, locale) do
-    date = parse_date(parsed["date"])
-
-    %{
-      title: "#{title(locale)} #{parsed["label"]}",
-      lines:
-        Enum.reject(
-          [
-            date_line(date, locale),
-            time_line(parse_time(parsed["start_time"]), parse_time(parsed["end_time"]), locale),
-            style_line(parsed["style"], locale)
-          ],
-          &is_nil/1
-        ),
-      changes: [{session_label(locale), nil, parsed["label"]}],
-      web_path: month_path(date)
-    }
   end
 
   defp build_attrs(input) do
@@ -184,15 +162,6 @@ defmodule Ganesha.Assistant.Tasks.AddSession do
       else: {:error, "end_time must be after start_time"}
   end
 
-  defp parse_date(iso) when is_binary(iso) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp parse_date(_iso), do: nil
-
   # Accepts "HH:MM" too: the model often drops the seconds.
   defp parse_time(text) when is_binary(text) do
     case Time.from_iso8601(normalize_time(text)) do
@@ -205,25 +174,4 @@ defmodule Ganesha.Assistant.Tasks.AddSession do
 
   defp normalize_time(hm) when byte_size(hm) == 5, do: hm <> ":00"
   defp normalize_time(other), do: other
-
-  defp month_path(nil), do: nil
-  defp month_path(%Date{} = date), do: "/class/#{date.year}/#{date.month}"
-
-  defp title("en"), do: "Add session"
-  defp title(_locale), do: "排課"
-
-  defp session_label("en"), do: "Session"
-  defp session_label(_locale), do: "課堂"
-
-  defp date_line(nil, _locale), do: nil
-  defp date_line(date, "en"), do: "Date: #{Format.session_day(date, "en")}"
-  defp date_line(date, locale), do: "日期：#{Format.session_day(date, locale)}"
-
-  defp time_line(start, stop, _locale) when is_nil(start) or is_nil(stop), do: nil
-  defp time_line(start, stop, "en"), do: "Time: #{Fmt.time_range(start, stop)}"
-  defp time_line(start, stop, _locale), do: "時間：#{Fmt.time_range(start, stop)}"
-
-  defp style_line(style, _locale) when style in [nil, ""], do: nil
-  defp style_line(style, "en"), do: "Style: #{style}"
-  defp style_line(style, _locale), do: "課型：#{style}"
 end

@@ -2,7 +2,6 @@ defmodule Ganesha.Assistant.Tasks.CopyMonthTest do
   use Ganesha.DataCase
 
   alias Ganesha.{Assistant, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.CopyMonth
 
   # September 2026 has four Mondays (7, 14, 21, 28) and five Wednesdays (2, 9, 16, 23, 30).
@@ -119,21 +118,6 @@ defmodule Ganesha.Assistant.Tasks.CopyMonthTest do
 
       assert {:error, :schedule_changed} = CopyMonth.apply(parsed, "line:teacher")
       assert length(september()) == 4
-    end
-  end
-
-  describe "describe/2" do
-    test "shows the target month and the stored session count" do
-      parsed = %{"month" => "2026-11-01", "session_count" => 9}
-
-      for locale <- ["zh-TW", "en"] do
-        %{title: title, lines: [], changes: [{_label, nil, count}], web_path: path} =
-          CopyMonth.describe(parsed, locale)
-
-        assert title =~ Format.month_title(~D[2026-11-01], locale)
-        assert count =~ "9"
-        assert path == "/class/2026/11"
-      end
     end
   end
 

@@ -6,7 +6,6 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyle do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.Studio
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Summary
   alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
@@ -82,18 +81,6 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyle do
       else: "#{session} 改上 #{parsed["style"]}（原本 #{parsed["before_style"]}）"
   end
 
-  @impl true
-  def describe(parsed, locale) do
-    date = parse_date(parsed["session_date"])
-
-    %{
-      title: "#{title(locale)} #{short_date(date)} #{parsed["session_label"]}",
-      lines: Enum.reject([session_line(parsed, date, locale)], &is_nil/1),
-      changes: [{style_label(locale), parsed["before_style"], parsed["style"]}],
-      web_path: parsed["session_id"] && "/sessions/#{parsed["session_id"]}"
-    }
-  end
-
   defp check_scheduled(%{state: "scheduled"}), do: :ok
 
   defp check_scheduled(session),
@@ -118,34 +105,4 @@ defmodule Ganesha.Assistant.Tasks.SetSessionStyle do
   end
 
   defp same_style(_session, _before), do: {:error, :style_changed}
-
-  defp parse_date(iso) when is_binary(iso) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp parse_date(_iso), do: nil
-
-  defp short_date(nil), do: ""
-  defp short_date(date), do: Fmt.short_date(date)
-
-  defp title("en"), do: "Style"
-  defp title(_locale), do: "課型"
-
-  defp style_label("en"), do: "Style"
-  defp style_label(_locale), do: "課型"
-
-  defp session_line(_parsed, nil, _locale), do: nil
-
-  defp session_line(parsed, date, "en"),
-    do:
-      "Session: #{Format.session_day(date, "en")} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
-
-  defp session_line(parsed, date, locale),
-    do:
-      "課堂：#{Format.session_day(date, locale)} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
 end

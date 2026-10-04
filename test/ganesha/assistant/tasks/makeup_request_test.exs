@@ -44,16 +44,6 @@ defmodule Ganesha.Assistant.Tasks.MakeupRequestTest do
     assert {:ok, {nil, nil}} = MakeupRequest.apply(%{"note" => "8/17"}, "line:teacher")
   end
 
-  test "describes the request from parsed only" do
-    parsed = %{"note" => "想補 8/17", "student_id" => 4, "student_name" => "蘭子"}
-
-    assert %{title: "補課需求 蘭子", lines: ["想補 8/17"], changes: [], web_path: "/students/4"} =
-             MakeupRequest.describe(parsed, "zh-TW")
-
-    assert %{title: "Makeup request", web_path: nil} =
-             MakeupRequest.describe(%{"note" => "8/17"}, "en")
-  end
-
   test "summary says who asked and what they asked for" do
     zh = MakeupRequest.summary(%{"student_name" => "蘭子", "note" => "想補 8/17"}, "zh-TW")
 

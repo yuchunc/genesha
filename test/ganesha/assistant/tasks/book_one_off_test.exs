@@ -129,8 +129,7 @@ defmodule Ganesha.Assistant.Tasks.BookOneOffTest do
       input = Map.put(input(c.student, c.session, c.drop_in), "custom_amount", 0)
       {:ok, %{parsed: parsed}} = BookOneOff.propose(input, c.ctx)
 
-      assert {_label, nil, owed} = List.last(BookOneOff.describe(parsed, "zh-TW").changes)
-      assert owed == Format.money(0)
+      assert BookOneOff.summary(parsed, "zh-TW") =~ Format.money(0)
 
       assert {:ok, {"Ganesha.Sales.Purchase", purchase_id}} =
                BookOneOff.apply(parsed, "line:teacher")
@@ -146,31 +145,6 @@ defmodule Ganesha.Assistant.Tasks.BookOneOffTest do
 
       assert {:error, %Ecto.Changeset{}} = BookOneOff.apply(parsed, "line:teacher")
       assert length(Sales.list_purchases_for_student(c.student.id)) == 1
-    end
-  end
-
-  describe "describe/2" do
-    test "shows the session and the roster before → after", c do
-      {:ok, %{parsed: parsed}} = BookOneOff.propose(input(c.student, c.session, c.drop_in), c.ctx)
-
-      assert %{
-               title: "單堂 Lulu 10/7",
-               lines: ["課堂：10/7 週三 基礎 19:00–20:15", "方案：單堂 NT$400"],
-               changes: [{"名單", "0 人", "1 人"}, {"應付", nil, "NT$400"}],
-               web_path: web_path
-             } = BookOneOff.describe(parsed, "zh-TW")
-
-      assert web_path == "/sessions/#{c.session.id}"
-    end
-
-    test "speaks English when the chat does", c do
-      {:ok, %{parsed: parsed}} = BookOneOff.propose(input(c.student, c.session, c.trial), c.ctx)
-
-      assert %{
-               title: "Trial Lulu 10/7",
-               lines: ["Session: Wed 10/7 基礎 19:00–20:15", "Package: 體驗 NT$300"],
-               changes: [{"Roster", "0", "1"}, {"Owed", nil, "NT$300"}]
-             } = BookOneOff.describe(parsed, "en")
     end
   end
 

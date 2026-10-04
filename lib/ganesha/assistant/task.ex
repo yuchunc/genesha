@@ -3,7 +3,7 @@ defmodule Ganesha.Assistant.Task do
   The behaviour every LINE assistant task and control tool implements
   (docs/superpowers/specs/2026-10-02-line-teacher-assistant-design.md §4.2).
 
-  `:change` tasks implement `propose/2`, `apply/2` and `describe/2`;
+  `:change` tasks implement `propose/2`, `apply/2` and `summary/2`;
   `:lookup` and `:control` tasks implement `answer/2`.
 
   - A `:lookup` answer may name pending Drafts in `draft_ids`; the agent adds
@@ -15,7 +15,7 @@ defmodule Ganesha.Assistant.Task do
   - `apply/2` runs inside the transaction opened by
     `Ganesha.Assistant.confirm_draft/2` and only calls domain functions. It
     must not trust `parsed` beyond the keys its own `propose/2` wrote.
-  - `describe/2` reads only `parsed`; it never queries current data.
+  - `summary/2` reads only `parsed`; it never queries current data.
 
   Never `alias` this module as `Task`: it would shadow Elixir's `Task`.
   """
@@ -34,14 +34,6 @@ defmodule Ganesha.Assistant.Task do
   @callback apply(parsed :: map(), confirmed_by :: String.t()) ::
               {:ok, {record_type :: String.t() | nil, record_id :: integer() | nil}}
               | {:error, term()}
-  @callback describe(parsed :: map(), locale :: String.t()) :: %{
-              title: String.t(),
-              lines: [String.t()],
-              changes: [
-                {label :: String.t(), before :: String.t() | nil, after_value :: String.t()}
-              ],
-              web_path: String.t() | nil
-            }
 
   # The Draft in one chat sentence, built from `parsed` only (chat-first replies spec §1).
   @callback summary(parsed :: map(), locale :: String.t()) :: String.t()
@@ -57,5 +49,5 @@ defmodule Ganesha.Assistant.Task do
                }}
               | {:error, String.t()}
 
-  @optional_callbacks propose: 2, apply: 2, describe: 2, summary: 2, answer: 2
+  @optional_callbacks propose: 2, apply: 2, summary: 2, answer: 2
 end

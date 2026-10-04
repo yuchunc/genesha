@@ -2,7 +2,6 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
   use Ganesha.DataCase, async: false
 
   alias Ganesha.{Assistant, Catalog, Enrolling, People, Roster, Sales, Studio}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.Enroll
 
   setup do
@@ -185,31 +184,6 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
       assert failed.state == "failed"
       assert [_one_off] = Sales.list_purchases_for_student(c.student.id)
       assert Roster.list_for_session(hd(c.sessions)) == []
-    end
-  end
-
-  describe "describe/2" do
-    test "shows the slot, the sessions, the package and what is owed", c do
-      {:ok, %{parsed: parsed}} = Enroll.propose(input(c), c.ctx)
-
-      for locale <- ["zh-TW", "en"] do
-        description = Enroll.describe(parsed, locale)
-
-        assert description.title =~ "Lulu"
-        assert description.title =~ "基礎"
-        assert Enum.any?(description.lines, &(&1 =~ "10/6" and &1 =~ "10/27" and &1 =~ "4"))
-        assert Enum.any?(description.lines, &(&1 =~ "月課程" and &1 =~ Format.money(400)))
-        assert [{_label, nil, owed}] = description.changes
-        assert owed == Format.money(1600)
-        assert description.web_path == "/enroll/#{c.slot.id}/2026/10"
-      end
-    end
-
-    test "shows the custom amount as what is owed", c do
-      {:ok, %{parsed: parsed}} = Enroll.propose(input(c, %{"custom_amount" => 1500}), c.ctx)
-
-      assert [{_label, nil, owed}] = Enroll.describe(parsed, "zh-TW").changes
-      assert owed == Format.money(1500)
     end
   end
 

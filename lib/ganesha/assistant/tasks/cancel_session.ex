@@ -8,7 +8,6 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Roster, Scheduling}
-  alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Summary
   alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
@@ -95,22 +94,6 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
   defp credits_text(n, "en"), do: ", #{n} students each get a makeup credit"
   defp credits_text(n, _locale), do: "，#{n} 人各得一張補課券"
 
-  @impl true
-  def describe(parsed, locale) do
-    date = parse_date(parsed["session_date"])
-
-    %{
-      title: "#{title(locale)} #{short_date(date)} #{parsed["session_label"]}",
-      lines:
-        Enum.reject(
-          [session_line(parsed, date, locale), reason_line(parsed["reason"], locale)],
-          &is_nil/1
-        ),
-      changes: [state_change(locale) | credit_change(parsed["credit_count"], locale)],
-      web_path: parsed["session_id"] && "/sessions/#{parsed["session_id"]}"
-    }
-  end
-
   defp check_scheduled(%{state: "scheduled"}), do: :ok
 
   defp check_scheduled(session),
@@ -141,46 +124,4 @@ defmodule Ganesha.Assistant.Tasks.CancelSession do
       do: :ok,
       else: {:error, :roster_changed}
   end
-
-  defp parse_date(iso) when is_binary(iso) do
-    case Date.from_iso8601(iso) do
-      {:ok, date} -> date
-      {:error, _} -> nil
-    end
-  end
-
-  defp parse_date(_iso), do: nil
-
-  defp short_date(nil), do: ""
-  defp short_date(date), do: Fmt.short_date(date)
-
-  defp title("en"), do: "Cancel"
-  defp title(_locale), do: "停課"
-
-  defp session_line(_parsed, nil, _locale), do: nil
-
-  defp session_line(parsed, date, "en"),
-    do:
-      "Session: #{Format.session_day(date, "en")} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
-
-  defp session_line(parsed, date, locale),
-    do:
-      "課堂：#{Format.session_day(date, locale)} " <>
-        "#{parsed["session_label"]} #{parsed["session_time"]}"
-
-  defp reason_line(reason, _locale) when reason in [nil, ""], do: nil
-  defp reason_line(reason, "en"), do: "Reason: #{reason}"
-  defp reason_line(reason, _locale), do: "原因：#{reason}"
-
-  defp state_change("en"), do: {"Status", "Scheduled", "Cancelled"}
-  defp state_change(_locale), do: {"狀態", "上課", "停課"}
-
-  defp credit_change(count, "en") when is_integer(count),
-    do: [{"Makeup credits", nil, "#{count} issued"}]
-
-  defp credit_change(count, _locale) when is_integer(count),
-    do: [{"補課券", nil, "發出 #{count} 張"}]
-
-  defp credit_change(_count, _locale), do: []
 end

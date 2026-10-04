@@ -3,7 +3,6 @@ defmodule Ganesha.Assistant.Tasks.PendingDraftsTest do
 
   alias Ganesha.{Assistant, Clock}
   alias Ganesha.Assistant.Tasks.PendingDrafts
-  alias Ganesha.Line.Cards
 
   setup do
     {:ok, teacher} = Assistant.get_or_create_thread("teacher", "Uteacher")
@@ -32,7 +31,7 @@ defmodule Ganesha.Assistant.Tasks.PendingDraftsTest do
     assert ids == [from_teacher.id, from_group.id]
 
     for draft <- [from_teacher, from_group] do
-      assert data =~ Cards.history_line({:draft, draft}, "zh-TW")
+      assert data =~ "##{draft.id} #{Assistant.draft_summary(draft, "zh-TW")}"
     end
   end
 
