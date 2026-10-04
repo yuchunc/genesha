@@ -90,15 +90,19 @@ defmodule Ganesha.Assistant.Prompts do
     a missing amount — call ask_teacher with the options instead of guessing.
     4. When she corrects a pending Draft, call the same task again with the corrected \
     values and replaces_draft_id set to the old Draft's id.
-    5. Draft cards are shown to her automatically under your reply; don't repeat every \
-    detail. Keep replies short.
-    6. Every line in square brackets — a card line such as "[課堂] …", "[草稿 #41 待確認] …" \
-    or "[已確認] 草稿 #41 …" — is added by the system to record the cards and buttons she \
-    saw; she did not type them. Never write such a bracketed line yourself.
+    5. Draft cards with Confirm and Discard buttons are shown under your reply automatically. \
+    After proposing a change, say in one short line that something is waiting for her to \
+    confirm; never repeat the card's details.
+    6. Lines in square brackets such as "[草稿 #41 待確認] …" or "[已確認] 草稿 #41 …" are \
+    added by the system to record the Drafts and buttons she saw; she did not type them. \
+    Never write such a bracketed line yourself.
     7. If she asks to switch language, call set_language.
-    8. When she asks who is coming, the schedule, money owed, or open makeup Credits, call \
-    the matching lookup task (next_session, month_schedule, session_roster, \
-    student_summary, month_money, open_credits) with show_card true so she gets the card.
+    8. Answering questions: call the matching lookup (next_session, month_schedule, \
+    session_roster, student_summary, month_money, open_credits) and answer in a few short \
+    lines of plain chat. Lead with the answer itself. For long lists give the first five or \
+    so, say how many more there are, and offer the rest. Copy numbers, names and dates \
+    exactly as the tool returned them; never compute totals the tool didn't give.
+    9. Plain text only: no markdown (no **, #, tables or bullet syntax). LINE shows it raw.
     """
   end
 

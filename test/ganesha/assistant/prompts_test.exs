@@ -23,4 +23,10 @@ defmodule Ganesha.Assistant.PromptsTest do
     assert Prompts.student("en") != Prompts.student("zh-TW")
     assert Prompts.digest("en") != Prompts.digest("zh-TW")
   end
+
+  test "the teacher prompt never asks for cards and forbids markdown" do
+    prompt = Prompts.teacher("zh-TW", "s", nil)
+    refute prompt =~ "show_card"
+    assert prompt =~ "markdown"
+  end
 end
