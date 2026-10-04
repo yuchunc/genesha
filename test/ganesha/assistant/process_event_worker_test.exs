@@ -3,7 +3,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
 
   alias Ganesha.{Assistant, Catalog, Line, People, Sales}
-  alias Ganesha.Assistant.{Digest, ProcessEventWorker}
+  alias Ganesha.Assistant.{Digest, GroupDraftNotifier, ProcessEventWorker}
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Line.Client.Mock, as: LineMock
   alias Ganesha.Line.Labels
@@ -192,6 +192,17 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       assert [%Assistant.Draft{state: "pending", kind: "record_payment"}] =
                Repo.all(Assistant.Draft)
+
+      assert_enqueued(worker: GroupDraftNotifier, args: %{"group_id" => "Cabc"})
+    end
+
+    test "does not enqueue a notifier when the group turn creates no Drafts" do
+      Mock.stub(fn _messages, _tools, _opts ->
+        {:ok, %{text: "logged internally", tool_calls: []}}
+      end)
+
+      assert {:ok, _} = deliver(group_text("Ustudent1", "just chatting"))
+      refute_enqueued(worker: GroupDraftNotifier)
     end
 
     @tag :capture_log

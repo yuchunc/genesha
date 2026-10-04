@@ -17,7 +17,17 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   require Logger
 
   alias Ganesha.{Assistant, Clock, Line, Repo}
-  alias Ganesha.Assistant.{Agent, Conversation, Memory, Prompts, Snapshot, Tasks}
+
+  alias Ganesha.Assistant.{
+    Agent,
+    Conversation,
+    GroupDraftNotifier,
+    Memory,
+    Prompts,
+    Snapshot,
+    Tasks,
+    Turn
+  }
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"line_event_id" => line_event_id}}) do
@@ -106,7 +116,9 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
 
-    thread |> run_group_agent() |> log_failure(thread, "group message")
+    result = run_group_agent(thread)
+    log_failure(result, thread, "group message")
+    maybe_schedule_group_notifier(result, group_id)
   end
 
   defp handle_group_message(_event, _group_id), do: :ok
@@ -150,8 +162,22 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
             else: Conversation.run_turn(thread)
 
         log_failure(result, thread, "messageEdited")
+
+        if thread.source_type == "group" do
+          maybe_schedule_group_notifier(result, thread.source_id)
+        else
+          :ok
+        end
     end
   end
+
+  defp maybe_schedule_group_notifier({:ok, %Turn{draft_ids: ids}}, group_id)
+       when ids != [] do
+    {:ok, _} = GroupDraftNotifier.schedule(group_id)
+    :ok
+  end
+
+  defp maybe_schedule_group_notifier(_result, _group_id), do: :ok
 
   defp log_failure({:ok, _turn}, _thread, _what), do: :ok
 
