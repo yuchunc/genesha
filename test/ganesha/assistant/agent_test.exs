@@ -17,8 +17,7 @@ defmodule Ganesha.Assistant.AgentTest do
         input_schema: %{type: "object", properties: %{text: %{type: "string"}}}
       }
 
-    def answer(%{"text" => text}, _ctx),
-      do: {:ok, %{data: "echoed: #{text}", card: {:echo, text}}}
+    def answer(%{"text" => text}, _ctx), do: {:ok, %{data: "echoed: #{text}"}}
   end
 
   defmodule Pick do
@@ -74,7 +73,7 @@ defmodule Ganesha.Assistant.AgentTest do
   } do
     script([[call("t1", "echo", %{"text" => "hi"})]])
 
-    assert {:ok, %Turn{text: "done", draft_ids: [], cards: [], choices: [], reply_message_id: id}} =
+    assert {:ok, %Turn{text: "done", draft_ids: [], choices: [], reply_message_id: id}} =
              Agent.run(thread, [Echo], "system", history)
 
     assert [_user, _calls, _results, %{id: ^id, role: "assistant", content: "done"}] =
@@ -188,18 +187,6 @@ defmodule Ganesha.Assistant.AgentTest do
              Agent.run(thread, [PendingDrafts], "system", history)
 
     assert id == draft.id
-  end
-
-  test "a lookup's card is kept only when show_card is true", %{thread: thread, history: history} do
-    script([
-      [
-        call("t1", "echo", %{"text" => "a", "show_card" => true}),
-        call("t2", "echo", %{"text" => "b"})
-      ]
-    ])
-
-    assert {:ok, %Turn{cards: [{:echo, "a"}]}} = Agent.run(thread, [Echo], "system", history)
-    assert tool_results() == ["echoed: a", "echoed: b"]
   end
 
   test "a control task's choices become the Turn's choices", %{thread: thread, history: history} do

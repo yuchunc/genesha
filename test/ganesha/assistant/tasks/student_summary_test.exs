@@ -81,30 +81,25 @@ defmodule Ganesha.Assistant.Tasks.StudentSummaryTest do
   end
 
   test "sums what she owes, her purchases, upcoming sessions and open credits", c do
-    assert {:ok, %{data: data, card: {:student, payload}}} =
+    assert {:ok, %{data: data} = answer} =
              StudentSummary.answer(%{"student_id" => c.lulu.id}, c.ctx)
 
-    assert payload == %{
-             "name" => "Lulu",
-             "owed" => Format.money(1200),
-             "purchases" => [
-               %{
-                 "package" => "月課程",
-                 "paid" => Format.money(400),
-                 "payable" => Format.money(1600)
-               }
-             ],
-             "upcoming" => [
-               %{"day" => Format.session_day(~D[2026-10-07], "zh-TW"), "label" => "基礎"},
-               %{"day" => Format.session_day(~D[2026-10-14], "zh-TW"), "label" => "基礎"}
-             ],
-             "credits" => 1
-           }
+    refute Map.has_key?(answer, :card)
 
-    assert data =~ ~r/student #{c.lulu.id}\b/
-    assert data =~ Format.money(1200)
-    assert data =~ ~r/Session #{c.oct7.id}\b/
-    assert data =~ ~r/Session #{c.oct14.id}\b/
+    assert String.starts_with?(
+             data,
+             "Lulu (student #{c.lulu.id}): owes #{Format.money(1200)}, 1 open credit(s)"
+           )
+
+    assert data =~
+             "1 purchase(s): 月課程 paid #{Format.money(400)} of #{Format.money(1600)}"
+
+    assert data =~
+             ~r/Session #{c.oct7.id} #{Regex.escape(Format.session_day(~D[2026-10-07], "zh-TW"))} 基礎/
+
+    assert data =~
+             ~r/Session #{c.oct14.id} #{Regex.escape(Format.session_day(~D[2026-10-14], "zh-TW"))} 基礎/
+
     refute data =~ ~r/Session #{c.september.id}\b/
     refute data =~ ~r/Session #{c.oct21.id}\b/
   end
@@ -112,19 +107,10 @@ defmodule Ganesha.Assistant.Tasks.StudentSummaryTest do
   test "answers a student with nothing on file", c do
     {:ok, amy} = People.create_student(%{display_name: "Amy"})
 
-    assert {:ok, %{data: data, card: {:student, payload}}} =
-             StudentSummary.answer(%{"student_id" => amy.id}, c.ctx)
+    assert {:ok, %{data: data}} = StudentSummary.answer(%{"student_id" => amy.id}, c.ctx)
 
-    assert payload == %{
-             "name" => "Amy",
-             "owed" => Format.money(0),
-             "purchases" => [],
-             "upcoming" => [],
-             "credits" => 0
-           }
-
-    assert data =~ ~r/student #{amy.id}\b/
-    refute data =~ "Session"
+    assert data ==
+             "Amy (student #{amy.id}): owes #{Format.money(0)}, 0 open credit(s); 0 purchase(s)"
   end
 
   test "rejects an unknown, non-integer or missing student_id", c do

@@ -460,7 +460,7 @@ Smoke.check(
 )
 
 # ---------------------------------------------------------------- Step 7
-Smoke.step(7, "teacher question: next_session with show_card replies with the session card")
+Smoke.step(7, "teacher question: next_session is answered in text only")
 
 today = Clock.today()
 weekday = Date.day_of_week(today)
@@ -507,11 +507,7 @@ ProviderMock.stub(fn messages, _tools, _opts ->
       {:ok, %{text: "今天有一堂，SMOKE 小美會來。", tool_calls: []}}
 
     _ ->
-      {:ok,
-       %{
-         text: nil,
-         tool_calls: [%{id: "smoke-call-2", name: "next_session", input: %{"show_card" => true}}]
-       }}
+      {:ok, %{text: nil, tool_calls: [%{id: "smoke-call-2", name: "next_session", input: %{}}]}}
   end
 end)
 
@@ -521,32 +517,29 @@ Process.delete(:line_client_mock_calls)
 question_replies = for {:reply, {"smoke-reply-4", messages}} <- LineMock.calls(), do: messages
 Smoke.check("exactly one LINE reply sent to the question", length(question_replies) == 1)
 
-session_card =
-  question_replies
-  |> List.first([])
-  |> Enum.find(&(&1[:type] == "flex" and &1.contents.type == "bubble"))
+Smoke.check(
+  "the answer to a question is text only",
+  question_replies |> List.first([]) |> Enum.all?(&(&1.type == "text"))
+)
 
-card_title =
-  case session_card do
-    %{contents: %{header: %{contents: [%{text: title}]}}} -> title
-    _ -> nil
-  end
+next_session_result =
+  teacher_thread
+  |> Assistant.list_messages()
+  |> Enum.filter(&(&1.role == "tool"))
+  |> List.last()
+  |> Map.fetch!(:tool_calls)
+  |> hd()
+  |> Map.fetch!("content")
 
 Smoke.check(
-  "the reply carries a Flex bubble for the SMOKE session",
-  is_binary(card_title) and card_title =~ Assistant.Format.session_day(today, "zh-TW") and
-    card_title =~ "SMOKE 基礎"
+  "the model is told the SMOKE session and who is coming",
+  next_session_result =~ Assistant.Format.session_day(today, "zh-TW") and
+    next_session_result =~ "SMOKE 基礎" and next_session_result =~ "SMOKE 小美"
 )
 
 Smoke.check(
-  "the card lists who is coming",
-  session_card != nil and Enum.any?(session_card.contents.body.contents, &(&1.text =~ "SMOKE 小美"))
-)
-
-Smoke.check(
-  "the model's reply records the session card it sent",
-  List.last(Assistant.list_messages(teacher_thread)).content ==
-    "今天有一堂，SMOKE 小美會來。\n[#{Line.Labels.t(:card_session, "zh-TW")}] #{card_title}"
+  "the model's reply is recorded as sent, with no card lines",
+  List.last(Assistant.list_messages(teacher_thread)).content == "今天有一堂，SMOKE 小美會來。"
 )
 
 Smoke.check(
@@ -809,7 +802,8 @@ enroll_purchase =
 enroll_attendance_count =
   Repo.aggregate(
     from(a in Roster.Attendance,
-      where: a.student_id == ^enroll_student.id and a.session_id in ^Enum.map(enroll_sessions, & &1.id)
+      where:
+        a.student_id == ^enroll_student.id and a.session_id in ^Enum.map(enroll_sessions, & &1.id)
     ),
     :count
   )

@@ -31,22 +31,21 @@ defmodule Ganesha.Assistant.Tasks.OpenCreditsTest do
     dan = credit("Dan", "package", ~D[2026-10-02])
     cat = credit("Cat", "package", ~D[2026-10-01])
 
-    assert {:ok, %{data: data, card: {:credits, payload}}} = OpenCredits.answer(%{}, c.ctx)
+    assert {:ok, %{data: data} = answer} = OpenCredits.answer(%{}, c.ctx)
 
-    assert payload == %{
-             "count" => 4,
-             "expiring_count" => 2,
-             "rows" => [
-               %{"student" => "Dan", "source" => "package", "expires" => day(~D[2026-10-02])},
-               %{"student" => "Lulu", "source" => "package", "expires" => day(~D[2026-10-31])},
-               %{"student" => "Bob", "source" => "package", "expires" => day(~D[2026-11-30])},
-               %{"student" => "Amy", "source" => "cancellation", "expires" => nil}
-             ]
-           }
+    refute Map.has_key?(answer, :card)
 
-    for student <- [amy, bob, lulu, dan] do
-      assert data =~ ~r/student #{student.id}\b/
-    end
+    assert data ==
+             "4 open credit(s), 2 expiring this month: " <>
+               Enum.join(
+                 [
+                   "Dan (student #{dan.id}) package, expires #{day(~D[2026-10-02])}",
+                   "Lulu (student #{lulu.id}) package, expires #{day(~D[2026-10-31])}",
+                   "Bob (student #{bob.id}) package, expires #{day(~D[2026-11-30])}",
+                   "Amy (student #{amy.id}) cancellation, no expiry"
+                 ],
+                 "; "
+               )
 
     refute data =~ ~r/student #{cat.id}\b/
   end
@@ -54,9 +53,6 @@ defmodule Ganesha.Assistant.Tasks.OpenCreditsTest do
   test "answers a studio with no open credits", c do
     credit("Cat", "package", ~D[2026-09-30])
 
-    assert {:ok, %{data: data, card: {:credits, payload}}} = OpenCredits.answer(%{}, c.ctx)
-
-    assert payload == %{"count" => 0, "expiring_count" => 0, "rows" => []}
-    refute data =~ "student"
+    assert {:ok, %{data: "0 open credit(s)"}} = OpenCredits.answer(%{}, c.ctx)
   end
 end

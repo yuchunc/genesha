@@ -36,45 +36,40 @@ defmodule Ganesha.Assistant.Tasks.SessionRosterTest do
     attendance
   end
 
-  test "lists everyone booked and flags a no-show", c do
-    book(c.session, c.package, "Lulu")
+  test "lists everyone booked with their kind and flags a no-show", c do
+    lulu = book(c.session, c.package, "Lulu")
     amy = book(c.session, c.package, "Amy")
     {:ok, _} = Roster.mark_no_show(amy)
 
-    assert {:ok, %{data: data, card: {:session, payload}}} =
+    assert {:ok, %{data: data} = answer} =
              SessionRoster.answer(%{"session_id" => c.session.id}, c.ctx)
 
+    refute Map.has_key?(answer, :card)
     assert data =~ ~r/Session #{c.session.id}\b/
-    assert data =~ "Lulu"
-    assert data =~ "Amy"
-    assert payload["count"] == 2
-    assert payload["style"] == "Hatha"
-    assert payload["cancelled"] == false
-
-    assert payload["attendees"] == [
-             %{"name" => "Lulu", "kind" => "drop_in", "no_show" => false},
-             %{"name" => "Amy", "kind" => "drop_in", "no_show" => true}
-           ]
+    assert data =~ "(Hatha)"
+    assert data =~ "2 booked"
+    refute data =~ "cancelled"
+    assert data =~ "Lulu (attendance #{lulu.id}, drop_in, expected)"
+    assert data =~ "Amy (attendance #{amy.id}, drop_in, no_show)"
   end
 
   test "flags a cancelled session", c do
     book(c.session, c.package, "Lulu")
     {:ok, _} = Studio.cancel_session(c.session, "颱風")
 
-    assert {:ok, %{card: {:session, payload}}} =
+    assert {:ok, %{data: data}} =
              SessionRoster.answer(%{"session_id" => c.session.id}, c.ctx)
 
-    assert payload["cancelled"] == true
-    assert payload["count"] == 1
+    assert data =~ "1 booked (cancelled)"
   end
 
   test "answers an empty roster", c do
-    assert {:ok, %{data: data, card: {:session, payload}}} =
+    assert {:ok, %{data: data}} =
              SessionRoster.answer(%{"session_id" => c.session.id}, c.ctx)
 
     assert data =~ ~r/Session #{c.session.id}\b/
-    assert payload["count"] == 0
-    assert payload["attendees"] == []
+    assert data =~ "0 booked"
+    refute data =~ "attendance"
   end
 
   test "rejects an unknown, non-integer or missing session_id", c do

@@ -23,8 +23,8 @@ defmodule Ganesha.Assistant.Tasks.PendingDrafts do
       description: """
       List every Draft still waiting for the teacher to confirm or discard, from this \
       chat and from the group. Their Draft cards are always shown under your reply, \
-      oldest first; show_card is not needed. Use it when she asks what is waiting \
-      (待確認草稿) or needs a pending Draft's id.\
+      oldest first. Use it when she asks what is waiting (待確認草稿) or needs a \
+      pending Draft's id.\
       """,
       input_schema: %{type: "object", properties: %{}}
     }

@@ -8,9 +8,9 @@
 #
 # Seeds a small SMOKE studio (a Slot, two Sessions, two students, purchases, a
 # payment and a makeup Credit), asks the six questions in one Teacher chat and
-# prints, per turn, which tasks the model called, whether it set show_card, and
-# the LINE messages Reply.build/3 packs. Every row it creates is removed again,
-# whether the run succeeds or fails.
+# prints, per turn, which tasks the model called, the reply text, and the LINE
+# messages Reply.build/3 packs. Every row it creates is removed again, whether
+# the run succeeds or fails.
 
 import Ecto.Query
 
@@ -168,39 +168,46 @@ ask = fn thread, text, expected ->
       history = Reply.history_text(turn, drafts, "zh-TW")
 
       # What Conversation.handle_message/3 does after replying, so later
-      # questions see which cards she was shown.
+      # questions see which Draft cards she was shown.
       if history, do: {:ok, _} = Assistant.append_to_message(turn.reply_message_id, history)
 
       for {name, input} <- calls do
         IO.puts("call: #{name} #{Jason.encode!(input)}")
       end
 
-      IO.puts("model: #{turn.text}")
-      IO.puts("cards: #{inspect(Enum.map(turn.cards, &elem(&1, 0)))}, drafts: #{length(drafts)}")
+      IO.puts("drafts: #{length(drafts)}")
 
       turn
       |> Reply.build(drafts, "zh-TW")
-      |> Enum.each(&IO.puts("message: " <> message_kind.(&1)))
+      |> Enum.each(fn
+        %{type: "text", text: reply} -> IO.puts("reply text:\n" <> reply)
+        message -> IO.puts("message: " <> message_kind.(message))
+      end)
 
-      IO.puts("history: " <> (history || "(no card history)"))
+      IO.puts("history: " <> (history || "(no Draft history)"))
 
-      shown? = Enum.any?(calls, fn {name, input} -> name == expected and input["show_card"] end)
+      called? = Enum.any?(calls, fn {name, _input} -> name == expected end)
+      reply = turn.text || ""
 
       # Card lines are the system's (prompt rule 6); the model must not write its own.
-      fabricated =
-        (turn.text || "") |> String.split("\n") |> Enum.filter(&(&1 =~ ~r/^\[[^\]]+\] /))
+      fabricated = reply |> String.split("\n") |> Enum.filter(&(&1 =~ ~r/^\[[^\]]+\] /))
+      markdown? = reply =~ "**" or reply =~ ~r/^\s*#/m
 
       cond do
-        not shown? ->
-          IO.puts("=> MISS #{expected} (no call with show_card)")
+        not called? ->
+          IO.puts("=> MISS #{expected} (not called)")
           {:miss, text}
 
         fabricated != [] ->
           IO.puts("=> MISS #{expected}: model wrote card lines #{inspect(fabricated)}")
           {:fabricated, text}
 
+        markdown? ->
+          IO.puts("=> MISS #{expected}: the reply uses markdown")
+          {:markdown, text}
+
         true ->
-          IO.puts("=> OK #{expected} with show_card, no card lines in the text")
+          IO.puts("=> OK #{expected}, plain text with no card lines")
           :ok
       end
 
@@ -234,7 +241,7 @@ results =
 case Enum.reject(results, &(&1 == :ok)) do
   [] ->
     IO.puts(
-      "\nAll six questions called their lookup with show_card and wrote no card lines. " <>
+      "\nAll six questions called their lookup and answered in plain text. " <>
         "SMOKE rows removed."
     )
 

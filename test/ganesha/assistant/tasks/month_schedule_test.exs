@@ -56,42 +56,41 @@ defmodule Ganesha.Assistant.Tasks.MonthScheduleTest do
 
   defp names_session?(data, session), do: data =~ ~r/Session #{session.id}\b/
 
-  defp row(date, label, time, count) do
-    %{
-      "day" => Format.session_day(date, "zh-TW"),
-      "label" => label,
-      "time" => time,
-      "count" => count
-    }
+  # One session's entry in the data: "Session <id>: <day> <label> <time range>, <n> booked".
+  defp entry?(data, session, label, time, count) do
+    head =
+      Regex.escape(
+        "Session #{session.id}: #{Format.session_day(session.date, "zh-TW")} #{label} #{time}"
+      )
+
+    data =~ ~r/#{head}[^;]*, #{count} booked/
   end
 
   test "defaults to today's month and counts who is booked in each session", c do
-    assert {:ok, %{data: data, card: {:month, payload}}} = MonthSchedule.answer(%{}, c.ctx)
+    assert {:ok, %{data: data} = answer} = MonthSchedule.answer(%{}, c.ctx)
+    refute Map.has_key?(answer, :card)
 
-    assert payload["month"] == Format.month_title(~D[2026-10-01], "zh-TW")
-    assert payload["session_count"] == 3
+    assert String.starts_with?(
+             data,
+             Format.month_title(~D[2026-10-01], "zh-TW") <> ": 3 session(s)"
+           )
 
-    assert payload["rows"] == [
-             row(~D[2026-10-07], "基礎", "19:00", 2),
-             row(~D[2026-10-14], "基礎", "19:00", 0),
-             row(~D[2026-10-24], "工作坊", "14:00", 0)
-           ]
-
-    assert names_session?(data, c.oct7)
-    assert names_session?(data, c.oct14)
-    assert names_session?(data, c.workshop)
+    assert entry?(data, c.oct7, "基礎", "19:00", 2)
+    assert entry?(data, c.oct14, "基礎", "19:00", 0)
+    assert entry?(data, c.workshop, "工作坊", "14:00", 0)
     refute names_session?(data, c.september)
     refute names_session?(data, c.november)
   end
 
   test "a date inside another month lands on that month", c do
-    assert {:ok, %{data: data, card: {:month, payload}}} =
-             MonthSchedule.answer(%{"month" => "2026-11-20"}, c.ctx)
+    assert {:ok, %{data: data}} = MonthSchedule.answer(%{"month" => "2026-11-20"}, c.ctx)
 
-    assert payload["month"] == Format.month_title(~D[2026-11-01], "zh-TW")
-    assert payload["session_count"] == 1
-    assert payload["rows"] == [row(~D[2026-11-04], "基礎", "19:00", 1)]
-    assert names_session?(data, c.november)
+    assert String.starts_with?(
+             data,
+             Format.month_title(~D[2026-11-01], "zh-TW") <> ": 1 session(s)"
+           )
+
+    assert entry?(data, c.november, "基礎", "19:00", 1)
     refute names_session?(data, c.oct7)
   end
 
@@ -105,13 +104,9 @@ defmodule Ganesha.Assistant.Tasks.MonthScheduleTest do
   end
 
   test "answers a month with no sessions", c do
-    assert {:ok, %{data: data, card: {:month, payload}}} =
-             MonthSchedule.answer(%{"month" => "2026-12-01"}, c.ctx)
+    assert {:ok, %{data: data}} = MonthSchedule.answer(%{"month" => "2026-12-01"}, c.ctx)
 
-    assert payload["month"] == Format.month_title(~D[2026-12-01], "zh-TW")
-    assert payload["session_count"] == 0
-    assert payload["rows"] == []
-    refute data =~ "Session"
+    assert data == Format.month_title(~D[2026-12-01], "zh-TW") <> ": 0 session(s)"
   end
 
   test "rejects a month that is not an ISO 8601 date", c do

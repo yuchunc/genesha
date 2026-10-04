@@ -1,17 +1,20 @@
 defmodule Mix.Tasks.Line.ValidateCards do
-  @shortdoc "Validate every LINE card shape against the Messaging API (spec §8)"
+  @shortdoc "Validate the LINE Draft card and choice chips against the Messaging API"
 
   @moduledoc """
-  Builds one of every card type from in-memory sample data (`Ganesha.Line.Cards.samples/1`)
-  and POSTs each to LINE's `/v2/bot/message/validate/reply` with the configured
-  channel token. Nothing is sent to users. Prints PASS or FAIL per sample and
-  exits non-zero when any card fails.
+  Validates the Draft card and choice chips against the Messaging API: builds a
+  Draft carousel per locale from an unsaved sample Draft and POSTs each to
+  LINE's `/v2/bot/message/validate/reply` with the configured channel token.
+  Nothing is sent to users. Prints PASS or FAIL per check and exits non-zero
+  when any fails.
 
       set -a && source .env.dev && set +a && mix line.validate_cards
   """
 
   use Mix.Task
 
+  alias Ganesha.Assistant
+  alias Ganesha.Assistant.Draft
   alias Ganesha.Line.{Cards, Client}
 
   @locales ["zh-TW", "en"]
@@ -38,26 +41,19 @@ defmodule Mix.Tasks.Line.ValidateCards do
     end
   end
 
-  # Samples list each lookup card filled, then again with nothing to list.
   defp locale_checks(locale) do
-    locale
-    |> Cards.samples()
-    |> Enum.map_reduce(MapSet.new(), fn {type, _} = card, seen ->
-      label = if type in seen, do: "#{locale} #{type} (empty)", else: "#{locale} #{type}"
-      {check(card, label, locale), MapSet.put(seen, type)}
-    end)
-    |> elem(0)
-  end
+    draft = %Draft{
+      id: 1,
+      kind: "makeup_request",
+      parsed: %{"student_name" => "Amy", "note" => "8/17"}
+    }
 
-  defp check({:draft, draft} = card, _label, locale) do
-    alt = Cards.history_line(card, locale)
+    alt = Assistant.draft_summary(draft, locale)
 
-    {"#{locale} draft carousel",
-     [Client.flex_message(alt, Cards.draft_carousel([draft], locale))]}
-  end
-
-  defp check(card, label, locale) do
-    {label, [Client.flex_message(Cards.history_line(card, locale), Cards.render(card, locale))]}
+    [
+      {"#{locale} draft carousel",
+       [Client.flex_message(alt, Cards.draft_carousel([draft], locale))]}
+    ]
   end
 
   defp choices_message do

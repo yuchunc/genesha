@@ -21,7 +21,6 @@ defmodule Ganesha.Assistant.Task do
   """
 
   @type ctx :: %{thread: Ganesha.Assistant.Thread.t(), locale: String.t(), today: Date.t()}
-  @type card :: {atom(), term()}
 
   @callback name() :: String.t()
   @callback kind() :: :lookup | :change | :control
@@ -43,7 +42,6 @@ defmodule Ganesha.Assistant.Task do
               {:ok,
                %{
                  required(:data) => String.t(),
-                 optional(:card) => card(),
                  optional(:choices) => [String.t()],
                  optional(:draft_ids) => [integer()]
                }}

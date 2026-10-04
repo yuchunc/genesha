@@ -7,7 +7,6 @@ defmodule Ganesha.Assistant.Tasks.MonthSchedule do
   alias Ganesha.{Roster, Studio}
   alias Ganesha.Assistant.Format
   alias Ganesha.Assistant.Tasks.Lookup
-  alias GaneshaWeb.Fmt
 
   @impl true
   def name, do: "month_schedule"
@@ -20,7 +19,7 @@ defmodule Ganesha.Assistant.Tasks.MonthSchedule do
     %{
       description: """
       List every Session in a calendar month with how many students are booked. \
-      Omit month to use the month of today (Taipei). Use show_card for the schedule card.\
+      Omit month to use the month of today (Taipei).\
       """,
       input_schema: %{
         type: "object",
@@ -47,22 +46,6 @@ defmodule Ganesha.Assistant.Tasks.MonthSchedule do
     count = &Map.get(counts, &1.id, 0)
     month_label = Format.month_title(month, ctx.locale)
 
-    rows =
-      Enum.map(sessions, fn session ->
-        %{
-          "day" => Format.session_day(session.date, ctx.locale),
-          "label" => Fmt.session_label(session),
-          "time" => start_time(session),
-          "count" => count.(session)
-        }
-      end)
-
-    payload = %{
-      "month" => month_label,
-      "session_count" => length(sessions),
-      "rows" => rows
-    }
-
     lines =
       Enum.map(sessions, fn session ->
         "Session #{session.id}: #{Lookup.session_title(session, ctx.locale)}, " <>
@@ -72,10 +55,6 @@ defmodule Ganesha.Assistant.Tasks.MonthSchedule do
 
     data = Enum.join(["#{month_label}: #{length(sessions)} session(s)" | lines], "; ")
 
-    {:ok, %{data: data, card: {:month, payload}}}
+    {:ok, %{data: data}}
   end
-
-  # A recurring session starts at its slot's time, a standalone one at its own.
-  defp start_time(%{slot: %{start_time: time}}), do: Fmt.time(time)
-  defp start_time(%{start_time: time}), do: Fmt.time(time)
 end

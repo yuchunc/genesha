@@ -156,8 +156,14 @@ defmodule Ganesha.Assistant.TasksTest do
     assert ask.input_schema == AskTeacher.tool().input_schema
 
     assert lookup.name == "lookup_thing"
-    assert lookup.description == "looks up"
-    assert lookup.input_schema.properties.show_card.type == "boolean"
-    refute Map.has_key?(lookup.input_schema.properties, :replaces_draft_id)
+    assert lookup.input_schema == Lookup.tool().input_schema
+    refute Map.has_key?(lookup.input_schema.properties, :show_card)
+  end
+
+  test "no lookup offers show_card" do
+    for task <- Tasks.for_chat(:teacher), task.kind() == :lookup do
+      [schema] = Tasks.tool_schemas([task])
+      refute Map.has_key?(schema.input_schema.properties, :show_card)
+    end
   end
 end

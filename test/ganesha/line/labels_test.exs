@@ -7,13 +7,8 @@ defmodule Ganesha.Line.LabelsTest do
            failed reason_changed reason_not_found reason_other already_handled replaced
            not_found exception tag_confirmed tag_discarded
            tag_failed tag_already_handled tag_replaced tag_exception apology unknown_action
-           welcome card_session card_month card_money card_student card_credits more_rows
-           cancelled roster_count no_one_booked no_show kind_enrolled kind_makeup kind_drop_in
-           kind_trial schedule_title sessions_count booked_count no_sessions money_title revenue
-           tax_threshold tax_warn owed_total nothing_owed owes paid_up purchases paid_of upcoming
-           credits_heading source_package source_cancellation expires_on no_expiry credits_title
-           credits_count no_credits group_drafts_push_intro pending_drafts_section
-           pending_drafts_empty pending_drafts_student_link)a
+           welcome group_drafts_push_intro pending_drafts_section pending_drafts_empty
+           pending_drafts_student_link)a
 
   test "every label speaks both languages, and they differ" do
     for key <- @keys do

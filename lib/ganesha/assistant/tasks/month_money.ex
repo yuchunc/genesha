@@ -19,8 +19,7 @@ defmodule Ganesha.Assistant.Tasks.MonthMoney do
     %{
       description: """
       Revenue collected in a month, every student who still owes money, and how close \
-      the month is to the tax registration threshold. Omit month for the current month. \
-      Use show_card for the money card.\
+      the month is to the tax registration threshold. Omit month for the current month.\
       """,
       input_schema: %{
         type: "object",
@@ -45,22 +44,11 @@ defmodule Ganesha.Assistant.Tasks.MonthMoney do
     owed_total = owing |> Enum.map(& &1.outstanding) |> Enum.sum()
     month_label = Format.month_title(month, ctx.locale)
 
-    payload = %{
-      "month" => month_label,
-      "revenue" => Format.money(revenue),
-      "tax_warn" => tax.warn?,
-      "owed_total" => Format.money(owed_total),
-      "debtors" =>
-        Enum.map(owing, fn %{student: student, outstanding: amount} ->
-          %{"name" => student.display_name, "amount" => Format.money(amount)}
-        end)
-    }
-
     data =
       "#{month_label}: revenue #{Format.money(revenue)}, #{tax_data(tax)}. " <>
         owing_data(owing, owed_total)
 
-    {:ok, %{data: data, card: {:money, payload}}}
+    {:ok, %{data: data}}
   end
 
   defp tax_data(tax) do

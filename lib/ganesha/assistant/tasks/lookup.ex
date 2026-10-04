@@ -4,26 +4,16 @@ defmodule Ganesha.Assistant.Tasks.Lookup do
   alias Ganesha.Assistant.Format
   alias GaneshaWeb.Fmt
 
-  def session_payload(session, roster, locale) do
-    %{
-      "title" => session_title(session, locale),
-      "style" => session.style,
-      "count" => length(roster),
-      "cancelled" => session.state == "cancelled",
-      "attendees" => Enum.map(roster, &attendee_payload/1)
-    }
-  end
-
   def session_data(session, roster, ctx) do
     title = session_title(session, ctx.locale)
     # Each attendee with the attendance id `set_no_show` needs.
     names =
       Enum.map_join(roster, ", ", fn a ->
-        "#{a.student.display_name} (attendance #{a.id}, #{a.state})"
+        "#{a.student.display_name} (attendance #{a.id}, #{a.kind}, #{a.state})"
       end)
 
     base =
-      "Session #{session.id}: #{title}, #{length(roster)} booked" <>
+      "Session #{session.id}: #{title} (#{session.style}), #{length(roster)} booked" <>
         if(session.state == "cancelled", do: " (cancelled)", else: "")
 
     if names == "", do: base, else: base <> ". #{names}"
@@ -34,14 +24,6 @@ defmodule Ganesha.Assistant.Tasks.Lookup do
     label = Fmt.session_label(session)
     time = Fmt.session_time_range(session)
     Enum.join([day, label, time], " ")
-  end
-
-  def attendee_payload(attendance) do
-    %{
-      "name" => attendance.student.display_name,
-      "kind" => attendance.kind,
-      "no_show" => attendance.state == "no_show"
-    }
   end
 
   def parse_month(nil, today), do: Date.beginning_of_month(today)

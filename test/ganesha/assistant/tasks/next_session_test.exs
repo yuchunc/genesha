@@ -46,26 +46,25 @@ defmodule Ganesha.Assistant.Tasks.NextSessionTest do
     session_on(c.slot, Date.add(c.today, -1))
     session_on(c.slot, Date.add(c.today, 9))
 
-    assert {:ok, %{data: data, card: {:session, payload}}} = NextSession.answer(%{}, c.ctx)
+    assert {:ok, %{data: data} = answer} = NextSession.answer(%{}, c.ctx)
 
+    refute Map.has_key?(answer, :card)
     assert data =~ ~r/Session #{c.session.id}\b/
-    assert data =~ "Lulu"
-    assert payload["title"] =~ Format.session_day(c.session.date, "zh-TW")
-    assert payload["count"] == 1
-    assert payload["cancelled"] == false
-    assert payload["attendees"] == [%{"name" => "Lulu", "kind" => "drop_in", "no_show" => false}]
+    assert data =~ Format.session_day(c.session.date, "zh-TW")
+    assert data =~ "(Hatha), 1 booked"
+    refute data =~ "cancelled"
+    assert data =~ ~r/Lulu \(attendance \d+, drop_in, expected\)/
   end
 
   test "skips a cancelled session for the next scheduled one, even with nobody booked", c do
     later = session_on(c.slot, Date.add(c.today, 9))
     {:ok, _} = Studio.cancel_session(c.session, "颱風")
 
-    assert {:ok, %{data: data, card: {:session, payload}}} = NextSession.answer(%{}, c.ctx)
+    assert {:ok, %{data: data}} = NextSession.answer(%{}, c.ctx)
 
     assert data =~ ~r/Session #{later.id}\b/
+    assert data =~ "0 booked"
     refute data =~ "Lulu"
-    assert payload["count"] == 0
-    assert payload["attendees"] == []
   end
 
   test "errors when nothing is scheduled from today onward", c do

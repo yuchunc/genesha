@@ -53,24 +53,18 @@ defmodule Ganesha.Assistant.Tasks.MonthMoneyTest do
     %{lulu: lulu, amy: amy, bea: bea}
   end
 
+  defp opens?(data, month, revenue),
+    do: String.starts_with?(data, "#{Format.month_title(month, "zh-TW")}: revenue #{revenue}, ")
+
   test "defaults to today's month: confirmed revenue and everyone who owes", c do
     s = ledger(c.package)
 
-    assert {:ok, %{data: data, card: {:money, payload}}} = MonthMoney.answer(%{}, c.ctx)
+    assert {:ok, %{data: data} = answer} = MonthMoney.answer(%{}, c.ctx)
 
-    assert payload == %{
-             "month" => Format.month_title(~D[2026-10-01], "zh-TW"),
-             "revenue" => Format.money(800),
-             "tax_warn" => false,
-             "owed_total" => Format.money(1600),
-             "debtors" => [
-               %{"name" => "Lulu", "amount" => Format.money(900)},
-               %{"name" => "Amy", "amount" => Format.money(700)}
-             ]
-           }
-
-    assert data =~ Format.money(800)
-    assert data =~ Format.money(1600)
+    refute Map.has_key?(answer, :card)
+    assert opens?(data, ~D[2026-10-01], Format.money(800))
+    refute data =~ "close to it"
+    assert data =~ "2 student(s) owe #{Format.money(1600)}"
     assert data =~ ~r/student #{s.lulu.id}\b[^;,]*#{Regex.escape(Format.money(900))}/
     assert data =~ ~r/student #{s.amy.id}\b[^;,]*#{Regex.escape(Format.money(700))}/
     refute data =~ ~r/student #{s.bea.id}\b/
@@ -79,23 +73,23 @@ defmodule Ganesha.Assistant.Tasks.MonthMoneyTest do
   test "a date inside another month reports that month's revenue", c do
     ledger(c.package)
 
-    assert {:ok, %{card: {:money, payload}}} =
-             MonthMoney.answer(%{"month" => "2026-09-20"}, c.ctx)
+    assert {:ok, %{data: data}} = MonthMoney.answer(%{"month" => "2026-09-20"}, c.ctx)
 
-    assert payload["month"] == Format.month_title(~D[2026-09-01], "zh-TW")
-    assert payload["revenue"] == Format.money(300)
+    assert opens?(data, ~D[2026-09-01], Format.money(300))
   end
 
   test "warns once the month nears the tax threshold and reports how far along it is", c do
     {_dan, dans} = purchase(c.package, "Dan", 45_000)
     pay(dans, 45_000, ~D[2026-10-02])
 
-    assert {:ok, %{data: data, card: {:money, payload}}} = MonthMoney.answer(%{}, c.ctx)
+    assert {:ok, %{data: data}} = MonthMoney.answer(%{}, c.ctx)
 
-    assert payload["revenue"] == Format.money(45_000)
-    assert payload["tax_warn"] == true
-    assert payload["debtors"] == []
-    assert data =~ ~r/\b90% of the #{Regex.escape(Format.money(50_000))} tax threshold/
+    assert opens?(data, ~D[2026-10-01], Format.money(45_000))
+
+    assert data =~
+             ~r/\b90% of the #{Regex.escape(Format.money(50_000))} tax threshold \(close to it\)/
+
+    assert data =~ "Nobody owes money"
   end
 
   test "reports tax progress below the warning line too", c do
@@ -108,16 +102,10 @@ defmodule Ganesha.Assistant.Tasks.MonthMoneyTest do
   end
 
   test "answers a month with no money and nobody owing", c do
-    assert {:ok, %{data: data, card: {:money, payload}}} = MonthMoney.answer(%{}, c.ctx)
+    assert {:ok, %{data: data}} = MonthMoney.answer(%{}, c.ctx)
 
-    assert payload == %{
-             "month" => Format.month_title(~D[2026-10-01], "zh-TW"),
-             "revenue" => Format.money(0),
-             "tax_warn" => false,
-             "owed_total" => Format.money(0),
-             "debtors" => []
-           }
-
+    assert opens?(data, ~D[2026-10-01], Format.money(0))
+    assert data =~ "Nobody owes money"
     refute data =~ "student"
   end
 

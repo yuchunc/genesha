@@ -16,10 +16,7 @@ defmodule Ganesha.Assistant.Tasks.NextSession do
   @impl true
   def tool do
     %{
-      description: """
-      Look up today's or the next scheduled Session and who is booked. Use show_card \
-      when she should see the roster as a card.\
-      """,
+      description: "Look up today's or the next scheduled Session and who is booked.",
       input_schema: %{type: "object", properties: %{}}
     }
   end
@@ -32,12 +29,7 @@ defmodule Ganesha.Assistant.Tasks.NextSession do
 
       session ->
         roster = Roster.list_for_session(session)
-
-        {:ok,
-         %{
-           data: Lookup.session_data(session, roster, ctx),
-           card: {:session, Lookup.session_payload(session, roster, ctx.locale)}
-         }}
+        {:ok, %{data: Lookup.session_data(session, roster, ctx)}}
     end
   end
 end

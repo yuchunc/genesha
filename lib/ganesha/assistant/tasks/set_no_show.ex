@@ -78,7 +78,9 @@ defmodule Ganesha.Assistant.Tasks.SetNoShow do
   @impl true
   def summary(parsed, locale) do
     name = parsed["student_name"] || "?"
-    session = Summary.words([Summary.day(parsed["session_date"], locale), parsed["session_label"]])
+
+    session =
+      Summary.words([Summary.day(parsed["session_date"], locale), parsed["session_label"]])
 
     case {parsed["state"], locale} do
       {"no_show", "en"} -> "Mark #{name} absent from #{session}"

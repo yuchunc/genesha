@@ -16,10 +16,7 @@ defmodule Ganesha.Assistant.Tasks.SessionRoster do
   @impl true
   def tool do
     %{
-      description: """
-      Look up who is booked in one Session. Pass session_id from the snapshot. \
-      Use show_card to show the roster card.\
-      """,
+      description: "Look up who is booked in one Session. Pass session_id from the snapshot.",
       input_schema: %{
         type: "object",
         properties: %{session_id: %{type: "integer"}},
@@ -32,12 +29,7 @@ defmodule Ganesha.Assistant.Tasks.SessionRoster do
   def answer(%{"session_id" => session_id}, ctx) do
     with {:ok, session} <- Lookup.fetch_session(session_id) do
       roster = Roster.list_for_session(session)
-
-      {:ok,
-       %{
-         data: Lookup.session_data(session, roster, ctx),
-         card: {:session, Lookup.session_payload(session, roster, ctx.locale)}
-       }}
+      {:ok, %{data: Lookup.session_data(session, roster, ctx)}}
     end
   end
 

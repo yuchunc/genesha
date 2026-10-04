@@ -16,10 +16,7 @@ defmodule Ganesha.Assistant.Tasks.OpenCredits do
   @impl true
   def tool do
     %{
-      description: """
-      Every unspent makeup Credit in the studio, soonest expiry first. Use show_card \
-      for the credits card.\
-      """,
+      description: "Every unspent makeup Credit in the studio, soonest expiry first.",
       input_schema: %{type: "object", properties: %{}}
     }
   end
@@ -34,25 +31,12 @@ defmodule Ganesha.Assistant.Tasks.OpenCredits do
     expiring =
       Enum.count(credits, &(&1.expires_on && Date.compare(&1.expires_on, month_end) != :gt))
 
-    payload = %{
-      "count" => length(credits),
-      "expiring_count" => expiring,
-      "rows" =>
-        Enum.map(credits, fn credit ->
-          %{
-            "student" => credit.student.display_name,
-            "source" => credit.source,
-            "expires" => credit.expires_on && Format.session_day(credit.expires_on, ctx.locale)
-          }
-        end)
-    }
-
     data =
       "#{length(credits)} open credit(s)" <>
         if(expiring > 0, do: ", #{expiring} expiring this month", else: "") <>
         credits_data(credits, ctx.locale)
 
-    {:ok, %{data: data, card: {:credits, payload}}}
+    {:ok, %{data: data}}
   end
 
   defp credits_data([], _locale), do: ""

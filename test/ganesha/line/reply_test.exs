@@ -1,6 +1,7 @@
 defmodule Ganesha.Line.ReplyTest do
   use ExUnit.Case, async: true
 
+  alias Ganesha.Assistant
   alias Ganesha.Assistant.{Draft, Turn}
   alias Ganesha.Line.{Cards, Labels, Reply}
 
@@ -17,9 +18,6 @@ defmodule Ganesha.Line.ReplyTest do
 
   defp line(draft), do: Cards.history_line({:draft, draft}, "zh-TW")
 
-  defp lookup(title),
-    do: {:session, %{"title" => title, "count" => 0, "cancelled" => false, "attendees" => []}}
-
   test "text alone is one text message" do
     assert [%{type: "text", text: "好的"}] = Reply.build(%Turn{text: "好的"}, [], "zh-TW")
   end
@@ -30,7 +28,7 @@ defmodule Ganesha.Line.ReplyTest do
              %{type: "flex", altText: alt, contents: %{type: "carousel", contents: [_, _]}}
            ] = Reply.build(%Turn{text: "已建立草稿。", draft_ids: [1, 2]}, drafts(2), "zh-TW")
 
-    assert alt =~ line(draft(1))
+    assert alt =~ Assistant.draft_summary(draft(1), "zh-TW")
   end
 
   test "more than 12 Drafts: the carousel shows 12 and the text says how many more" do
@@ -40,24 +38,18 @@ defmodule Ganesha.Line.ReplyTest do
     assert text.text =~ Labels.t(:more_drafts, "zh-TW", count: 2)
   end
 
-  test "never more than 5 messages: lookup cards past the limit are dropped" do
-    cards = Enum.map(1..6, &lookup("課堂#{&1}"))
-    messages = Reply.build(%Turn{text: "看看", cards: cards}, drafts(1), "zh-TW")
+  test "never more than text and one carousel, with choices on the carousel" do
+    messages =
+      Reply.build(%Turn{text: "看看", choices: ["A", "B"]}, drafts(14), "zh-TW")
 
-    assert [
-             %{type: "text"},
-             %{contents: %{type: "bubble"}},
-             %{contents: %{type: "bubble"}},
-             %{contents: %{type: "bubble"}},
-             %{contents: %{type: "carousel"}}
-           ] = messages
+    assert [%{type: "text"}, %{type: "flex", contents: %{type: "carousel"}} = carousel] =
+             messages
+
+    assert %{items: [_, _]} = carousel.quickReply
   end
 
   test "no Drafts means no carousel message, never an empty one" do
-    messages = Reply.build(%Turn{text: "看看", cards: [lookup("課堂")]}, [], "zh-TW")
-
-    assert [%{type: "text"}, %{type: "flex", contents: %{type: "bubble"}}] = messages
-    refute Enum.any?(messages, &match?(%{contents: %{type: "carousel"}}, &1))
+    assert [%{type: "text", text: "看看"}] = Reply.build(%Turn{text: "看看"}, [], "zh-TW")
   end
 
   test "every Flex message carries an altText of at most 400 characters" do
@@ -67,14 +59,9 @@ defmodule Ganesha.Line.ReplyTest do
       parsed: %{"note" => "x", "student_name" => String.duplicate("長", 500)}
     }
 
-    messages =
-      Reply.build(
-        %Turn{cards: [lookup(String.duplicate("長", 500))]},
-        List.duplicate(long, 3),
-        "zh-TW"
-      )
+    messages = Reply.build(%Turn{}, List.duplicate(long, 3), "zh-TW")
 
-    assert length(messages) == 2
+    assert length(messages) == 1
 
     for %{type: "flex"} = message <- messages do
       assert is_binary(message.altText)
@@ -131,17 +118,7 @@ defmodule Ganesha.Line.ReplyTest do
       assert String.split(history, "\n") == Enum.map(all, &line/1)
     end
 
-    test "names only the lookup cards that were sent" do
-      cards = Enum.map(1..6, &lookup("課堂#{&1}"))
-      history = Reply.history_text(%Turn{text: "看看", cards: cards}, drafts(1), "zh-TW")
-
-      # text + carousel leave room for three of the six lookup cards
-      assert String.split(history, "\n") ==
-               Enum.map(1..3, &Cards.history_line(lookup("課堂#{&1}"), "zh-TW")) ++
-                 [line(draft(1))]
-    end
-
-    test "is nil when the turn sent no cards" do
+    test "is nil when the turn sent no Drafts and no choices" do
       assert Reply.history_text(%Turn{text: "hi"}, [], "zh-TW") == nil
     end
   end

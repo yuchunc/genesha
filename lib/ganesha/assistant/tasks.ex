@@ -97,14 +97,7 @@ defmodule Ganesha.Assistant.Tasks do
     })
   end
 
-  defp add_shared_fields(schema, :lookup) do
-    put_property(schema, :show_card, %{
-      type: "boolean",
-      description: "true to also show the teacher this answer as a card."
-    })
-  end
-
-  defp add_shared_fields(schema, :control), do: schema
+  defp add_shared_fields(schema, _kind), do: schema
 
   defp put_property(schema, key, property) do
     Map.update(schema, :properties, %{key => property}, &Map.put(&1, key, property))
