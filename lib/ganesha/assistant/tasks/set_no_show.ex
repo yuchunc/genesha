@@ -7,6 +7,7 @@ defmodule Ganesha.Assistant.Tasks.SetNoShow do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{People, Roster, Studio}
+  alias Ganesha.Assistant.Summary
   alias GaneshaWeb.Fmt
 
   @apply_keys ~w(attendance_id state)
@@ -71,6 +72,19 @@ defmodule Ganesha.Assistant.Tasks.SetNoShow do
          :ok <- same_state(attendance, parsed["before_state"]),
          {:ok, updated} <- apply_state(attendance, attrs["state"]) do
       {:ok, {"Ganesha.Roster.Attendance", updated.id}}
+    end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    name = parsed["student_name"] || "?"
+    session = Summary.words([Summary.day(parsed["session_date"], locale), parsed["session_label"]])
+
+    case {parsed["state"], locale} do
+      {"no_show", "en"} -> "Mark #{name} absent from #{session}"
+      {"no_show", _} -> "把 #{name} #{session} 記為缺席"
+      {_, "en"} -> "Mark #{name} as coming to #{session} again"
+      {_, _} -> "#{name} #{session} 改回會來"
     end
   end
 

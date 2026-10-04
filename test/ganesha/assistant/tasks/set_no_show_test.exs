@@ -61,4 +61,21 @@ defmodule Ganesha.Assistant.Tasks.SetNoShowTest do
     {:ok, _} = Roster.mark_no_show(c.attendance)
     assert {:error, :attendance_changed} = SetNoShow.apply(parsed, "line:teacher")
   end
+
+  test "summary says which way the attendance goes" do
+    parsed = %{
+      "student_name" => "阿花",
+      "session_date" => "2026-10-02",
+      "session_label" => "晚課",
+      "state" => "no_show"
+    }
+
+    absent = SetNoShow.summary(parsed, "zh-TW")
+    back = SetNoShow.summary(%{parsed | "state" => "expected"}, "zh-TW")
+
+    for text <- [absent, back], fact <- ["阿花", "10/2", "晚課"], do: assert(text =~ fact)
+    assert absent =~ "缺席"
+    refute back =~ "記為缺席"
+    assert SetNoShow.summary(parsed, "en") =~ "absent"
+  end
 end

@@ -81,6 +81,20 @@ defmodule Ganesha.Assistant.Tasks.BookMakeupTest do
     assert Roster.list_for_session(c.session) == []
   end
 
+  test "summary names the student and the session" do
+    parsed = %{
+      "student_name" => "Lulu",
+      "session_date" => "2026-10-08",
+      "session_time" => "19:00–20:15",
+      "session_label" => "基礎"
+    }
+
+    for locale <- ["zh-TW", "en"] do
+      text = BookMakeup.summary(parsed, locale)
+      for fact <- ["Lulu", "10/8", "19:00–20:15", "基礎"], do: assert(text =~ fact)
+    end
+  end
+
   defp slot_id(session) do
     session = Studio.get_session!(session.id)
     session.slot_id

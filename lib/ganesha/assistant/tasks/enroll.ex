@@ -9,6 +9,7 @@ defmodule Ganesha.Assistant.Tasks.Enroll do
 
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Summary
   alias GaneshaWeb.Fmt
 
   @apply_keys ~w(student_id slot_id package_id session_ids custom_amount note)
@@ -110,6 +111,20 @@ defmodule Ganesha.Assistant.Tasks.Enroll do
            }) do
       {:ok, {"Ganesha.Sales.Purchase", purchase.id}}
     end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    name = parsed["student_name"] || "?"
+    month = Summary.month_name(parsed["month"], locale)
+    weekday = Summary.weekday(parsed["slot_weekday"], locale)
+    count = length(parsed["session_ids"] || [])
+    owed = Summary.money(parsed["custom_amount"] || parsed["price"])
+    class = Summary.words([weekday, parsed["slot_time"], parsed["slot_label"]])
+
+    if locale == "en",
+      do: "Enroll #{name} in #{class} for #{month}: #{count} classes, #{owed}",
+      else: "幫 #{name} 報名#{month} #{class}，#{count} 堂 #{owed}"
   end
 
   @impl true

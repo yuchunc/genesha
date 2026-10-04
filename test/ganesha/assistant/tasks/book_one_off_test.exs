@@ -173,4 +173,26 @@ defmodule Ganesha.Assistant.Tasks.BookOneOffTest do
              } = BookOneOff.describe(parsed, "en")
     end
   end
+
+  describe "summary/2" do
+    test "summary names the student, the session, the kind and what is owed" do
+      parsed = %{
+        "student_name" => "Lulu",
+        "session_date" => "2026-10-08",
+        "session_time" => "19:00–20:15",
+        "session_label" => "基礎",
+        "package_kind" => "drop_in",
+        "custom_amount" => nil,
+        "price" => 400
+      }
+
+      assert BookOneOff.summary(parsed, "zh-TW") =~ "單堂"
+      assert BookOneOff.summary(parsed, "en") =~ "drop-in"
+
+      for locale <- ["zh-TW", "en"] do
+        text = BookOneOff.summary(parsed, locale)
+        for fact <- ["Lulu", "10/8", "19:00–20:15", "基礎", "NT$400"], do: assert(text =~ fact)
+      end
+    end
+  end
 end

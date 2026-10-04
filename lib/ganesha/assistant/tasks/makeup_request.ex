@@ -55,6 +55,13 @@ defmodule Ganesha.Assistant.Tasks.MakeupRequest do
   def apply(_parsed, _confirmed_by), do: {:ok, {nil, nil}}
 
   @impl true
+  def summary(parsed, "en"),
+    do: "#{parsed["student_name"] || "Someone"} asked for a makeup: #{parsed["note"]}"
+
+  def summary(parsed, _locale),
+    do: "#{parsed["student_name"] || "有人"}想補課：#{parsed["note"]}"
+
+  @impl true
   def describe(parsed, locale) do
     %{
       title: Enum.join(Enum.reject([title(locale), parsed["student_name"]], &is_nil/1), " "),

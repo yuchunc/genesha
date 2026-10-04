@@ -8,6 +8,7 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
 
   alias Ganesha.{Catalog, Enrolling, People, Roster, Sales, Studio}
   alias Ganesha.Assistant.Format
+  alias Ganesha.Assistant.Summary
   alias Ganesha.Assistant.Tasks.Lookup
   alias GaneshaWeb.Fmt
 
@@ -94,6 +95,25 @@ defmodule Ganesha.Assistant.Tasks.BookOneOff do
            ) do
       {:ok, {"Ganesha.Sales.Purchase", purchase.id}}
     end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    name = parsed["student_name"] || "?"
+
+    session =
+      Summary.words([
+        Summary.day(parsed["session_date"], locale),
+        parsed["session_time"],
+        parsed["session_label"]
+      ])
+
+    kind = Summary.kind(parsed["package_kind"], locale)
+    owed = Summary.money(parsed["custom_amount"] || parsed["price"])
+
+    if locale == "en",
+      do: "Book #{name} into #{session} as a #{kind}, #{owed}",
+      else: "幫 #{name} 排 #{session} #{kind} #{owed}"
   end
 
   @impl true

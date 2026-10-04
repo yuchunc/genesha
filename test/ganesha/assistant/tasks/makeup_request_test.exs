@@ -53,4 +53,12 @@ defmodule Ganesha.Assistant.Tasks.MakeupRequestTest do
     assert %{title: "Makeup request", web_path: nil} =
              MakeupRequest.describe(%{"note" => "8/17"}, "en")
   end
+
+  test "summary says who asked and what they asked for" do
+    zh = MakeupRequest.summary(%{"student_name" => "蘭子", "note" => "想補 8/17"}, "zh-TW")
+
+    assert zh =~ "蘭子"
+    assert zh =~ "想補 8/17"
+    assert MakeupRequest.summary(%{"note" => "8/17"}, "en") =~ "8/17"
+  end
 end

@@ -7,6 +7,7 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{People, Roster, Studio}
+  alias Ganesha.Assistant.Summary
   alias GaneshaWeb.Fmt
 
   @apply_keys ~w(session_id student_id credit_id)
@@ -77,6 +78,22 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
          {:ok, attendance} <- Roster.book_makeup(session, student, credit) do
       {:ok, {"Ganesha.Roster.Attendance", attendance.id}}
     end
+  end
+
+  @impl true
+  def summary(parsed, locale) do
+    name = parsed["student_name"] || "?"
+
+    session =
+      Summary.words([
+        Summary.day(parsed["session_date"], locale),
+        parsed["session_time"],
+        parsed["session_label"]
+      ])
+
+    if locale == "en",
+      do: "Book #{name} a makeup in #{session} using a credit",
+      else: "用 #{name} 的補課券排 #{session} 補課"
   end
 
   @impl true

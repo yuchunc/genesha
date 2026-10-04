@@ -212,4 +212,28 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
       assert owed == Format.money(1500)
     end
   end
+
+  describe "summary/2" do
+    test "summary names the student, month, class, count and what is owed" do
+      parsed = %{
+        "student_name" => "Lulu",
+        "month" => "2026-10",
+        "slot_weekday" => 2,
+        "slot_time" => "19:00–20:15",
+        "slot_label" => "基礎",
+        "session_ids" => [1, 2, 3, 4],
+        "custom_amount" => nil,
+        "price" => 1600
+      }
+
+      for locale <- ["zh-TW", "en"] do
+        text = Enroll.summary(parsed, locale)
+        for fact <- ["Lulu", "基礎", "19:00–20:15", "4", "NT$1,600"], do: assert(text =~ fact)
+      end
+
+      assert Enroll.summary(parsed, "zh-TW") =~ "10月"
+      assert Enroll.summary(parsed, "en") =~ "October"
+      assert Enroll.summary(%{parsed | "custom_amount" => 1500}, "zh-TW") =~ "NT$1,500"
+    end
+  end
 end
