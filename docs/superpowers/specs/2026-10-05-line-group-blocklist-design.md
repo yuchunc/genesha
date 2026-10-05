@@ -43,8 +43,11 @@ Schema `Ganesha.Line.BlockedAccount`, managed by the `Ganesha.Line` context.
 | `kind` | string, required | `"group"` or `"sender"` |
 | `line_id` | string, required | groupId (`C…`) or userId (`U…`) |
 | `label` | string, required | group name or LINE display name, captured when the block is proposed |
-| `draft_id` | FK → `drafts`, nullable, `on_delete: :nilify_all` | the confirmed Draft that created the row |
 | `inserted_at` | utc_datetime | |
+
+The confirmed Draft already points at its row through `applied_record_type`
+and `applied_record_id`, so the table has no back-reference to `drafts`.
+(`apply/2` never receives the Draft, so a `draft_id` column could not be filled.)
 
 Unique index on `(kind, line_id)`. No `updated_at`: rows are inserted and
 deleted, never edited.
@@ -114,7 +117,8 @@ Input: `kind` (`"group"` | `"sender"`), `line_id`.
 - `kind == "group"`: `line_id` must be a group thread's `source_id`; `label`
   is the group summary name, or the id if that call fails.
 - `kind == "sender"`: `line_id` must appear as a `sender_id` on a stored group
-  message; `label` is its latest non-nil `sender_name`, or the id. In prod the
+  message; `label` is a stored non-nil `sender_name` for it (SQL `max`, so a
+  renamed sender may show either name), or the id. In prod the
   purge limits this to senders seen in the last 24h, which is accepted: the
   teacher blocks someone right after seeing their messages.
 - Rejects a teacher's userId, an already-blocked account, and an unknown id,
@@ -122,14 +126,14 @@ Input: `kind` (`"group"` | `"sender"`), `line_id`.
 - `parsed`: `kind`, `line_id`, `label`.
 
 `apply/2` calls `Line.block_account/1` and returns
-`{:ok, {"blocked_account", id}}`. A concurrent block returns
+`{:ok, {"Ganesha.Line.BlockedAccount", id}}`. A concurrent block returns
 `{:error, :already_blocked}`.
 
 `summary/2` examples:
 
-- sender, zh-TW: `封鎖 小美：之後所有群組中她的訊息都不再讀取`
+- sender, zh-TW: `封鎖 小美：之後所有群組中這個人的訊息都不再讀取`
 - group, zh-TW: `封鎖群組「瑜伽週三班」：之後不再讀取這個群組`
-- en: `Block 小美: her messages in every group will be ignored`,
+- en: `Block 小美: their messages in every group will be ignored`,
   `Block group "瑜伽週三班": stop reading this group`
 
 ### `unblock_account` (`:change`)
@@ -137,13 +141,17 @@ Input: `kind` (`"group"` | `"sender"`), `line_id`.
 Input: `kind`, `line_id`. `propose/2` requires an existing row and copies its
 `label` into `parsed`. `apply/2` calls `Line.unblock_account/2` and returns
 `{:ok, {nil, nil}}`, or `{:error, :not_blocked}` if the row is gone.
-`summary/2`: `解除封鎖 小美：之後會再讀取她在群組中的訊息` /
-`Unblock 小美: her group messages will be read again`.
+`summary/2`: `解除封鎖 小美：之後會再讀取這個人在群組中的訊息` /
+`Unblock 小美: their group messages will be read again`. For a group:
+`解除封鎖群組「瑜伽週三班」：之後會再讀取這個群組` /
+`Unblock group "瑜伽週三班": read this group again`.
 
 ### Supporting changes
 
-- `Draft` accepts kinds `block_account` and `unblock_account`.
-- `Labels` and `Summary` strings in zh-TW and en.
+- `Draft` accepts kinds `block_account` and `unblock_account` (registering the
+  tasks is enough: `Draft.validate_kind/1` looks them up in `Tasks`).
+- Summary sentences are written inline in each task's `summary/2` in zh-TW and
+  en, as the existing tasks do.
 - Teacher prompt: one line saying that when a name matches more than one
   account in `listening`, use `ask_teacher` rather than picking one.
 - `Line.ClientBehaviour` and `Line.Client.Mock` gain `get_group_summary/1`.
