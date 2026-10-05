@@ -18,6 +18,7 @@ defmodule Ganesha.Assistant.ConversationTest do
     def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
     def validate_reply(messages), do: LineMock.validate_reply(messages)
     def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
+    def get_group_summary(group_id), do: LineMock.get_group_summary(group_id)
   end
 
   defmodule RejectingLine do
@@ -31,6 +32,7 @@ defmodule Ganesha.Assistant.ConversationTest do
     def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
     def validate_reply(messages), do: LineMock.validate_reply(messages)
     def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
+    def get_group_summary(group_id), do: LineMock.get_group_summary(group_id)
   end
 
   # A Confirm postback that finishes while a turn is being delivered: its
@@ -50,6 +52,7 @@ defmodule Ganesha.Assistant.ConversationTest do
     def loading(chat_id, seconds), do: LineMock.loading(chat_id, seconds)
     def validate_reply(messages), do: LineMock.validate_reply(messages)
     def get_group_member(group_id, user_id), do: LineMock.get_group_member(group_id, user_id)
+    def get_group_summary(group_id), do: LineMock.get_group_summary(group_id)
   end
 
   setup do
