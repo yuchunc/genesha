@@ -11,6 +11,9 @@ defmodule Ganesha.Assistant.Message do
     field :content, :string
     field :tool_calls, {:array, :map}
     field :line_message_id, :string
+    # Group chat only (spec 2026-10-05 §1); purged with `content` in prod.
+    field :sender_id, :string
+    field :sender_name, :string
 
     belongs_to :thread, Thread
 
@@ -23,7 +26,7 @@ defmodule Ganesha.Assistant.Message do
 
   def changeset(message, attrs) do
     message
-    |> cast(attrs, [:thread_id, :role, :content, :tool_calls, :line_message_id])
+    |> cast(attrs, [:thread_id, :role, :content, :tool_calls, :line_message_id, :sender_id, :sender_name])
     |> validate_required([:thread_id, :role])
     |> validate_inclusion(:role, @roles)
     |> foreign_key_constraint(:thread_id)

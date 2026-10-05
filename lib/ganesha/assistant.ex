@@ -47,7 +47,9 @@ defmodule Ganesha.Assistant do
       role: role,
       content: content,
       tool_calls: tool_calls,
-      line_message_id: opts[:line_message_id]
+      line_message_id: opts[:line_message_id],
+      sender_id: opts[:sender_id],
+      sender_name: opts[:sender_name]
     })
     |> Repo.insert()
   end

@@ -275,6 +275,79 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert [%{role: "user"}] = Assistant.list_messages(thread)
       assert Line.get_event!(line_event.id).processed_at
     end
+
+    test "stores the sender's id and LINE display name with the message" do
+      Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "小美"}})
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "ok", tool_calls: []}} end)
+
+      {:ok, _} = deliver(group_text("Ustudent1", "大家好"))
+
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+
+      assert [%{role: "user", sender_id: "Ustudent1", sender_name: "小美"}, _] =
+               Assistant.list_messages(thread)
+    end
+
+    @tag :capture_log
+    test "a failed member lookup still runs the agent, with no sender name" do
+      Process.put(:line_client_mock_group_member, {:error, {404, %{}}})
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        Process.put(:agent_ran, true)
+        {:ok, %{text: "ok", tool_calls: []}}
+      end)
+
+      {:ok, _} = deliver(group_text("Ustudent1", "大家好"))
+
+      assert Process.get(:agent_ran)
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+
+      assert [%{sender_id: "Ustudent1", sender_name: nil}, _] =
+               Assistant.list_messages(thread)
+    end
+
+    test "a blocked group is dropped before anything is stored or looked up" do
+      {:ok, _} = Line.block_account(%{kind: "group", line_id: "Cabc", label: "測試群組"})
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        Process.put(:agent_ran, true)
+        {:ok, %{text: "ok", tool_calls: []}}
+      end)
+
+      assert {:ok, _} = deliver(group_text("Ustudent1", "2.Lulu （Line pay 1200元）"))
+
+      refute Process.get(:agent_ran)
+      assert LineMock.lookups() == []
+      assert LineMock.calls() == []
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      assert Assistant.list_messages(thread) == []
+    end
+
+    test "a blocked sender is dropped in every group" do
+      {:ok, _} = Line.block_account(%{kind: "sender", line_id: "Uspam", label: "廣告"})
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        Process.put(:agent_ran, true)
+        {:ok, %{text: "ok", tool_calls: []}}
+      end)
+
+      other_group = %{
+        "type" => "message",
+        "source" => %{"type" => "group", "groupId" => "Cother", "userId" => "Uspam"},
+        "message" => %{"id" => new_line_message_id(), "type" => "text", "text" => "買課送課"}
+      }
+
+      assert {:ok, _} = deliver(group_text("Uspam", "買課送課"))
+      assert {:ok, _} = deliver(other_group)
+
+      refute Process.get(:agent_ran)
+      assert LineMock.lookups() == []
+
+      for group_id <- ["Cabc", "Cother"] do
+        {:ok, thread} = Assistant.get_or_create_thread("group", group_id)
+        assert Assistant.list_messages(thread) == []
+      end
+    end
   end
 
   describe "unsend and messageEdited" do
@@ -325,6 +398,24 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       assert [%{parsed: %{"amount" => 1200}}] =
                Repo.all(from d in Assistant.Draft, where: d.state == "pending")
+
+      user_message = Assistant.list_messages(c.thread) |> Enum.find(&(&1.role == "user"))
+      assert user_message.content == "2.Lulu （Line pay 1200元）"
+    end
+
+    test "messageEdited in a blocked group updates the text without re-running the agent", c do
+      {:ok, _} = Line.block_account(%{kind: "group", line_id: "Cabc", label: "測試群組"})
+
+      assert {:ok, _} =
+               deliver(%{
+                 "type" => "messageEdited",
+                 "source" => group_source("Ustudent1"),
+                 "message" => %{"id" => "linemsg-1", "text" => "2.Lulu （Line pay 1200元）"}
+               })
+
+      assert Process.get(:round) == 2
+      assert Assistant.get_draft!(c.draft.id).state == "discarded"
+      assert Repo.all(from d in Assistant.Draft, where: d.state == "pending") == []
 
       user_message = Assistant.list_messages(c.thread) |> Enum.find(&(&1.role == "user"))
       assert user_message.content == "2.Lulu （Line pay 1200元）"

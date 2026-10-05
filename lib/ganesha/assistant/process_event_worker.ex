@@ -52,11 +52,17 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     Conversation.handle_postback(URI.decode_query(data), reply_token, source_id)
   end
 
-  # A teacher's own posts in the group are not student requests.
+  # Spec 2026-10-05 §2: a blocked group, a teacher's own post, or a blocked
+  # sender is dropped before anything is stored, looked up or sent to the model.
   defp route(%{source_type: "group", source_id: group_id, raw_type: "message"} = event) do
-    if Line.teacher?(get_in(event.payload, ["source", "userId"])),
-      do: :ok,
-      else: handle_group_message(event, group_id)
+    sender_id = get_in(event.payload, ["source", "userId"])
+
+    cond do
+      Line.blocked?("group", group_id) -> :ok
+      Line.teacher?(sender_id) -> :ok
+      Line.blocked?("sender", sender_id) -> :ok
+      true -> handle_group_message(event, group_id, sender_id)
+    end
   end
 
   defp route(%{raw_type: "unsend"} = event), do: handle_unsend(event)
@@ -99,18 +105,37 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   # targets anyway (spec 2026-10-05 §4): the Group chat never hears from the bot.
   defp handle_group_message(
          %{payload: %{"message" => %{"id" => line_message_id, "text" => text}}},
-         group_id
+         group_id,
+         sender_id
        ) do
     {:ok, thread} = Assistant.get_or_create_thread("group", group_id)
 
     {:ok, _} =
-      Assistant.append_message(thread, "user", text, nil, line_message_id: line_message_id)
+      Assistant.append_message(thread, "user", text, nil,
+        line_message_id: line_message_id,
+        sender_id: sender_id,
+        sender_name: sender_name(group_id, sender_id)
+      )
 
     thread |> run_group_agent() |> log_failure(thread, "group message")
     maybe_schedule_group_notifier(thread)
   end
 
-  defp handle_group_message(_event, _group_id), do: :ok
+  defp handle_group_message(_event, _group_id, _sender_id), do: :ok
+
+  # Read-only: the display name the teacher blocks by (spec 2026-10-05 §1).
+  defp sender_name(_group_id, nil), do: nil
+
+  defp sender_name(group_id, sender_id) do
+    case line_client().get_group_member(group_id, sender_id) do
+      {:ok, %{"displayName" => name}} ->
+        name
+
+      other ->
+        Logger.warning("LINE group member lookup failed for #{sender_id}: #{inspect(other)}")
+        nil
+    end
+  end
 
   # The Group chat's three tasks, the snapshot their ids come from, and its
   # full history; never summaries (ADR 0003).
@@ -145,15 +170,21 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         thread = Assistant.get_thread!(message.thread_id)
         forget_digests(thread, message)
 
-        result =
-          if thread.source_type == "group",
-            do: run_group_agent(thread),
-            else: Conversation.run_turn(thread)
-
-        log_failure(result, thread, "messageEdited")
-
-        if thread.source_type == "group", do: maybe_schedule_group_notifier(thread), else: :ok
+        rerun_after_edit(thread)
     end
+  end
+
+  defp rerun_after_edit(%{source_type: "group", source_id: group_id} = thread) do
+    if Line.blocked?("group", group_id) do
+      :ok
+    else
+      thread |> run_group_agent() |> log_failure(thread, "messageEdited")
+      maybe_schedule_group_notifier(thread)
+    end
+  end
+
+  defp rerun_after_edit(thread) do
+    thread |> Conversation.run_turn() |> log_failure(thread, "messageEdited")
   end
 
   # From the stored Drafts, not the Turn: a turn that fails after creating a
@@ -201,4 +232,6 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     Application.get_env(:ganesha, :line, [])
     |> Keyword.get(:simple_reply, false)
   end
+
+  defp line_client, do: Application.get_env(:ganesha, :line_client, Ganesha.Line.Client)
 end
