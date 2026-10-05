@@ -420,6 +420,27 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       user_message = Assistant.list_messages(c.thread) |> Enum.find(&(&1.role == "user"))
       assert user_message.content == "2.Lulu （Line pay 1200元）"
     end
+
+    test "messageEdited from a blocked sender updates the text without re-running the agent",
+         c do
+      {:ok, _} =
+        Line.block_account(%{kind: "sender", line_id: "Ustudent1", label: "測試學生"})
+
+      assert {:ok, _} =
+               deliver(%{
+                 "type" => "messageEdited",
+                 "source" => group_source("Ustudent1"),
+                 "message" => %{"id" => "linemsg-1", "text" => "2.Lulu （Line pay 1200元）"}
+               })
+
+      assert Process.get(:round) == 2
+      assert Assistant.get_draft!(c.draft.id).state == "discarded"
+      assert Repo.all(from d in Assistant.Draft, where: d.state == "pending") == []
+
+      user_message = Assistant.list_messages(c.thread) |> Enum.find(&(&1.role == "user"))
+      assert user_message.sender_id == "Ustudent1"
+      assert user_message.content == "2.Lulu （Line pay 1200元）"
+    end
   end
 
   describe "Teacher chat digests" do

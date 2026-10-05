@@ -170,12 +170,12 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         thread = Assistant.get_thread!(message.thread_id)
         forget_digests(thread, message)
 
-        rerun_after_edit(thread)
+        rerun_after_edit(thread, message)
     end
   end
 
-  defp rerun_after_edit(%{source_type: "group", source_id: group_id} = thread) do
-    if Line.blocked?("group", group_id) do
+  defp rerun_after_edit(%{source_type: "group", source_id: group_id} = thread, message) do
+    if Line.blocked?("group", group_id) or Line.blocked?("sender", message.sender_id) do
       :ok
     else
       thread |> run_group_agent() |> log_failure(thread, "messageEdited")
@@ -183,7 +183,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
-  defp rerun_after_edit(thread) do
+  defp rerun_after_edit(thread, _message) do
     thread |> Conversation.run_turn() |> log_failure(thread, "messageEdited")
   end
 

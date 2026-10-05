@@ -83,8 +83,9 @@ Checks 1 and 3 run before anything is appended. Blocked text never enters the
 group thread or reaches the model, and costs no `get_group_member` call.
 
 `messageEdited` on a group thread whose group is blocked updates the stored
-text but does not re-run the agent. An edit from a blocked sender finds no
-stored message and is already a no-op.
+text but does not re-run the agent. An edit from a blocked sender is handled
+the same way: their earlier messages were stored before the block, so the
+stored text is updated but the agent is not re-run.
 
 The webhook still persists every event to `line_events`, blocked or not. Its
 budget (verify → persist → 200) does not change.
