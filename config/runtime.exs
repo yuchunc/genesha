@@ -51,7 +51,10 @@ if config_env() == :dev do
     channel_secret: System.get_env("LINE_CHANNEL_SECRET", ""),
     channel_access_token: System.get_env("LINE_CHANNEL_ACCESS_TOKEN", ""),
     teacher_line_user_ids: teacher_ids.(System.get_env("TEACHER_LINE_USER_ID", "")),
-    simple_reply: System.get_env("LINE_SIMPLE_REPLY", "true") == "true"
+    simple_reply: System.get_env("LINE_SIMPLE_REPLY", "true") == "true",
+    # Dev keeps every raw LINE payload and group message for development;
+    # prod and test purge at 24h (spec 2026-10-05 §5).
+    purge_raw_text: false
 
   config :ganesha, Ganesha.Assistant.Provider.Anthropic,
     api_key: System.get_env("ANTHROPIC_API_KEY", ""),

@@ -233,6 +233,10 @@ is a config change, never a rewrite.
   a purge job for the teacher thread is a one-line change — flagged here in
   the same spirit as the original spec's own §8 UNVERIFIED items, not
   presented as settled law.
+- **Dev exception (2026-10-05).** The 24h purge applies to prod. Dev sets
+  `:line, :purge_raw_text` to `false` and keeps every raw payload and group
+  message, sender included, for development. Revisit before the prod cutover.
+  See `2026-10-05-line-group-blocklist-design.md` §5.
 
 ## 8. Safety guardrails (recap)
 
