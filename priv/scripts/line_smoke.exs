@@ -44,10 +44,18 @@ Logger.configure(level: :warning)
 Application.put_env(:ganesha, :assistant, provider: ProviderMock)
 Application.put_env(:ganesha, :line_client, LineMock)
 
-Application.put_env(:ganesha, :line,
-  channel_secret: secret,
-  channel_access_token: "smoke_token",
-  teacher_line_user_ids: [teacher_id]
+# Merged over the dev config so its other keys, purge_raw_text above all,
+# survive. simple_reply is pinned off: dev defaults it on, and it would skip the
+# agent turns this script exercises.
+Application.put_env(
+  :ganesha,
+  :line,
+  Keyword.merge(Application.get_env(:ganesha, :line, []),
+    channel_secret: secret,
+    channel_access_token: "smoke_token",
+    teacher_line_user_ids: [teacher_id],
+    simple_reply: false
+  )
 )
 
 # Jobs must not run in a background queue process: the mocks live in this
@@ -415,55 +423,66 @@ Smoke.check(
 # ---------------------------------------------------------------- Step 6
 Smoke.step(6, "24h retention sweep purges group raw text, keeps the teacher's")
 
-old = DateTime.utc_now() |> DateTime.add(-25 * 3600, :second) |> DateTime.truncate(:second)
+# The purge is unscoped: in dev, where raw text is kept on purpose, running it
+# would wipe every real group message older than 24h, not just the smoke rows.
+if Keyword.get(Application.fetch_env!(:ganesha, :line), :purge_raw_text, true) do
+  old = DateTime.utc_now() |> DateTime.add(-25 * 3600, :second) |> DateTime.truncate(:second)
 
-Repo.update_all(from(e in LineEvent, where: e.webhook_event_id == "smoke-group-1"),
-  set: [inserted_at: old]
-)
+  Repo.update_all(from(e in LineEvent, where: e.webhook_event_id == "smoke-group-1"),
+    set: [inserted_at: old]
+  )
 
-Repo.update_all(from(e in LineEvent, where: e.webhook_event_id == "smoke-teacher-1"),
-  set: [inserted_at: old]
-)
+  Repo.update_all(from(e in LineEvent, where: e.webhook_event_id == "smoke-teacher-1"),
+    set: [inserted_at: old]
+  )
 
-Repo.update_all(from(m in Message, where: m.thread_id == ^group_thread.id),
-  set: [inserted_at: old]
-)
+  Repo.update_all(from(m in Message, where: m.thread_id == ^group_thread.id),
+    set: [inserted_at: old]
+  )
 
-Repo.update_all(from(m in Message, where: m.thread_id == ^teacher_thread.id),
-  set: [inserted_at: old]
-)
+  Repo.update_all(from(m in Message, where: m.thread_id == ^teacher_thread.id),
+    set: [inserted_at: old]
+  )
 
-:ok = PurgeGroupRawTextWorker.perform(%Oban.Job{})
+  :ok = PurgeGroupRawTextWorker.perform(%Oban.Job{})
 
-Smoke.check(
-  "group event payload purged",
-  Repo.reload!(group_line_event).payload == %{"purged" => true}
-)
+  Smoke.check(
+    "group event payload purged",
+    Repo.reload!(group_line_event).payload == %{"purged" => true}
+  )
 
-Smoke.check(
-  "group message text nulled",
-  Repo.all(from m in Message, where: m.thread_id == ^group_thread.id, select: m.content)
-  |> Enum.all?(&is_nil/1)
-)
+  Smoke.check(
+    "group message text nulled",
+    Repo.all(from m in Message, where: m.thread_id == ^group_thread.id, select: m.content)
+    |> Enum.all?(&is_nil/1)
+  )
 
-Smoke.check(
-  "teacher event payload retained",
-  Repo.reload!(teacher_line_event).payload["webhookEventId"] == "smoke-teacher-1"
-)
+  Smoke.check(
+    "teacher event payload retained",
+    Repo.reload!(teacher_line_event).payload["webhookEventId"] == "smoke-teacher-1"
+  )
 
-Smoke.check(
-  "teacher thread text retained",
-  Repo.all(
-    from m in Message,
-      where: m.thread_id == ^teacher_thread.id and m.role == "user",
-      select: m.content
-  ) == ["小美轉了 3200"]
-)
+  Smoke.check(
+    "teacher thread text retained",
+    Repo.all(
+      from m in Message,
+        where: m.thread_id == ^teacher_thread.id and m.role == "user",
+        select: m.content
+    ) == ["小美轉了 3200"]
+  )
 
-Smoke.check(
-  "confirmed draft's parsed data retained",
-  Repo.reload!(draft).parsed["amount"] == 3200
-)
+  Smoke.check(
+    "confirmed draft's parsed data retained",
+    Repo.reload!(draft).parsed["amount"] == 3200
+  )
+else
+  IO.puts([
+    IO.ANSI.yellow(),
+    "  SKIP  ",
+    IO.ANSI.reset(),
+    "Step 6 skipped: dev keeps raw text (purge_raw_text: false)"
+  ])
+end
 
 # ---------------------------------------------------------------- Step 7
 Smoke.step(7, "teacher question: next_session is answered in text only")
