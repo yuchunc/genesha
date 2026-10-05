@@ -80,4 +80,16 @@ defmodule Ganesha.Line.ClientTest do
 
     refute_received {:called, _}
   end
+
+  test "get_group_summary/1 fetches the group's name" do
+    parent = self()
+
+    Req.Test.stub(Client, fn conn ->
+      send(parent, {:request, conn.method, conn.request_path})
+      Req.Test.json(conn, %{"groupId" => "Cabc", "groupName" => "瑜伽週三班"})
+    end)
+
+    assert {:ok, %{"groupName" => "瑜伽週三班"}} = Client.get_group_summary("Cabc")
+    assert_receive {:request, "GET", "/v2/bot/group/Cabc/summary"}
+  end
 end

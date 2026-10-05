@@ -41,8 +41,15 @@ defmodule Ganesha.Line.Client do
   end
 
   @impl true
-  def get_group_member(group_id, user_id) do
-    case Req.get(req(), url: "/v2/bot/group/#{group_id}/member/#{user_id}") do
+  def get_group_member(group_id, user_id),
+    do: get("/v2/bot/group/#{group_id}/member/#{user_id}")
+
+  @doc "The group's name and picture; read-only (spec 2026-10-05 §3)."
+  @impl true
+  def get_group_summary(group_id), do: get("/v2/bot/group/#{group_id}/summary")
+
+  defp get(path) do
+    case Req.get(req(), url: path) do
       {:ok, %Req.Response{status: 200, body: body}} -> {:ok, body}
       {:ok, %Req.Response{status: status, body: body}} -> {:error, {status, body}}
       {:error, reason} -> {:error, reason}

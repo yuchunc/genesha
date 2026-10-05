@@ -99,4 +99,15 @@ defmodule Ganesha.LineTest do
              "replyToken"
            ] == "rt"
   end
+
+  test "group_name/1 is the group's LINE name" do
+    Process.put(:line_client_mock_group_summary, {:ok, %{"groupName" => "瑜伽週三班"}})
+    assert Line.group_name("Cabc") == "瑜伽週三班"
+  end
+
+  @tag :capture_log
+  test "group_name/1 falls back to the id when LINE can't say" do
+    Process.put(:line_client_mock_group_summary, {:error, {404, %{}}})
+    assert Line.group_name("Cabc") == "Cabc"
+  end
 end

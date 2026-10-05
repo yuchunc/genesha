@@ -7,4 +7,5 @@ defmodule Ganesha.Line.ClientBehaviour do
   @callback validate_reply(messages :: [map()]) :: :ok | {:error, term()}
   @callback get_group_member(group_id :: String.t(), user_id :: String.t()) ::
               {:ok, map()} | {:error, term()}
+  @callback get_group_summary(group_id :: String.t()) :: {:ok, map()} | {:error, term()}
 end

@@ -127,6 +127,22 @@ defmodule Ganesha.Line do
     end
   end
 
+  @doc """
+  The group's LINE name, or its id when LINE can't say (spec 2026-10-05 §3).
+  Read-only.
+  """
+  @spec group_name(String.t()) :: String.t()
+  def group_name(group_id) when is_binary(group_id) do
+    case line_client().get_group_summary(group_id) do
+      {:ok, %{"groupName" => name}} when is_binary(name) and name != "" ->
+        name
+
+      other ->
+        Logger.warning("LINE group summary failed for #{group_id}: #{inspect(other)}")
+        group_id
+    end
+  end
+
   def get_event!(id), do: Repo.get!(LineEvent, id)
 
   def mark_processed(%LineEvent{} = event) do
@@ -134,4 +150,6 @@ defmodule Ganesha.Line do
     |> Ecto.Changeset.change(processed_at: DateTime.utc_now() |> DateTime.truncate(:second))
     |> Repo.update!()
   end
+
+  defp line_client, do: Application.get_env(:ganesha, :line_client, Ganesha.Line.Client)
 end

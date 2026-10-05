@@ -31,7 +31,19 @@ defmodule Ganesha.Line.Client.Mock do
   end
 
   @impl true
-  def get_group_member(_group_id, _user_id), do: {:ok, %{"displayName" => "測試學生"}}
+  def get_group_member(group_id, user_id) do
+    record_lookup({:group_member, group_id, user_id})
+    Process.get(:line_client_mock_group_member, {:ok, %{"displayName" => "測試學生"}})
+  end
+
+  @impl true
+  def get_group_summary(group_id) do
+    record_lookup({:group_summary, group_id})
+    Process.get(:line_client_mock_group_summary, {:ok, %{"groupName" => "測試群組"}})
+  end
+
+  @doc "Read-only lookups, kept out of `calls/0` so the never-sends assertions stay exact."
+  def lookups, do: Process.get(:line_client_mock_lookups, []) |> Enum.reverse()
 
   def calls, do: Process.get(:line_client_mock_calls, []) |> Enum.reverse()
 
@@ -39,5 +51,9 @@ defmodule Ganesha.Line.Client.Mock do
     Process.put(:line_client_mock_calls, [
       {kind, payload} | Process.get(:line_client_mock_calls, [])
     ])
+  end
+
+  defp record_lookup(lookup) do
+    Process.put(:line_client_mock_lookups, [lookup | Process.get(:line_client_mock_lookups, [])])
   end
 end
