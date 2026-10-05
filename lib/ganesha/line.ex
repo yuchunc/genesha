@@ -21,7 +21,7 @@ defmodule Ganesha.Line do
       source_type: get_in(event, ["source", "type"]),
       source_id: source_id(event),
       raw_type: event["type"],
-      payload: event
+      payload: without_group_reply_token(event)
     }
 
     case %LineEvent{} |> LineEvent.changeset(attrs) |> Repo.insert() do
@@ -58,6 +58,14 @@ defmodule Ganesha.Line do
   defp source_id(%{"source" => %{"type" => "room", "roomId" => room_id}}), do: room_id
   defp source_id(%{"source" => %{"type" => "user", "userId" => user_id}}), do: user_id
   defp source_id(_event), do: nil
+
+  # Spec 2026-10-05 §4: a group or room event is stored without its reply
+  # token, so no code path can ever answer into a group.
+  defp without_group_reply_token(%{"source" => %{"type" => type}} = event)
+       when type in ["group", "room"],
+       do: Map.delete(event, "replyToken")
+
+  defp without_group_reply_token(event), do: event
 
   defp unique_violation?(changeset) do
     Enum.any?(changeset.errors, fn

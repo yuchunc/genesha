@@ -7,6 +7,8 @@ defmodule Ganesha.Line.Client do
   """
   @behaviour Ganesha.Line.ClientBehaviour
 
+  require Logger
+
   @base_url "https://api.line.me"
 
   @impl true
@@ -16,13 +18,17 @@ defmodule Ganesha.Line.Client do
 
   @impl true
   def push(to, messages) when is_list(messages) do
-    post("/v2/bot/message/push", %{to: to, messages: messages})
+    with :ok <- refuse_group_target(to) do
+      post("/v2/bot/message/push", %{to: to, messages: messages})
+    end
   end
 
   @doc "Shows LINE's loading animation in a 1:1 chat while the assistant thinks (spec §6.1)."
   @impl true
   def loading(chat_id, seconds) when is_integer(seconds) and seconds > 0 do
-    post("/v2/bot/chat/loading/start", %{chatId: chat_id, loadingSeconds: seconds})
+    with :ok <- refuse_group_target(chat_id) do
+      post("/v2/bot/chat/loading/start", %{chatId: chat_id, loadingSeconds: seconds})
+    end
   end
 
   @doc """
@@ -41,6 +47,17 @@ defmodule Ganesha.Line.Client do
       {:ok, %Req.Response{status: status, body: body}} -> {:error, {status, body}}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # Spec 2026-10-05 §4: the bot never posts into a group (C…) or a room (R…),
+  # whichever caller asks.
+  defp refuse_group_target("C" <> _ = to), do: forbid(to)
+  defp refuse_group_target("R" <> _ = to), do: forbid(to)
+  defp refuse_group_target(_to), do: :ok
+
+  defp forbid(to) do
+    Logger.error("LINE send to #{to} refused: the bot never posts in groups or rooms")
+    {:error, :group_target_forbidden}
   end
 
   defp post(path, body) do

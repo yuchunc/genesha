@@ -95,8 +95,8 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
 
   defp handle_simple_reply(_event), do: :ok
 
-  # Nothing on this path calls LINE: that absence, not a runtime check,
-  # guarantees the Group chat never hears from the bot.
+  # Nothing on this path sends to LINE, and `Line.Client` refuses group
+  # targets anyway (spec 2026-10-05 §4): the Group chat never hears from the bot.
   defp handle_group_message(
          %{payload: %{"message" => %{"id" => line_message_id, "text" => text}}},
          group_id

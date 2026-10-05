@@ -63,4 +63,21 @@ defmodule Ganesha.Line.ClientTest do
     assert %{type: "flex", contents: %{type: "bubble"}} = message
     assert String.length(message.altText) == 400
   end
+
+  @tag :capture_log
+  test "push/2 and loading/2 refuse group and room targets without calling LINE" do
+    parent = self()
+
+    Req.Test.stub(Client, fn conn ->
+      send(parent, {:called, conn.request_path})
+      Req.Test.json(conn, %{})
+    end)
+
+    for to <- ["Cgroup", "Rroom"] do
+      assert {:error, :group_target_forbidden} = Client.push(to, [Client.text_message("嗨")])
+      assert {:error, :group_target_forbidden} = Client.loading(to, 20)
+    end
+
+    refute_received {:called, _}
+  end
 end

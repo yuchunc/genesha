@@ -76,4 +76,27 @@ defmodule Ganesha.LineTest do
     assert stored.source_type == "user"
     assert stored.source_id == "Uteacher"
   end
+
+  test "record_event/1 stores group and room events without their reply token" do
+    for {type, key, id} <- [{"group", "groupId", "Cg"}, {"room", "roomId", "Rr"}] do
+      e =
+        event(%{
+          "replyToken" => "rt",
+          "source" => %{"type" => type, key => id, "userId" => "Ustudent"}
+        })
+
+      :ok = Line.record_event(e)
+      stored = Repo.get_by!(Line.LineEvent, webhook_event_id: e["webhookEventId"])
+      refute Map.has_key?(stored.payload, "replyToken")
+    end
+  end
+
+  test "record_event/1 keeps a 1:1 event's reply token" do
+    e = event(%{"replyToken" => "rt"})
+    :ok = Line.record_event(e)
+
+    assert Repo.get_by!(Line.LineEvent, webhook_event_id: e["webhookEventId"]).payload[
+             "replyToken"
+           ] == "rt"
+  end
 end
