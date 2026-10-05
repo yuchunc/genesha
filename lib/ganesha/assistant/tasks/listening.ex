@@ -60,6 +60,7 @@ defmodule Ganesha.Assistant.Tasks.Listening do
   defp sender_line(sender, blocked_ids) do
     blocked = if {"sender", sender.sender_id} in blocked_ids, do: ", blocked", else: ""
     name = sender.sender_name || "(name unknown)"
+
     "- #{name} (id #{sender.sender_id}), last seen #{taipei_minute(sender.last_seen_at)}#{blocked}"
   end
 

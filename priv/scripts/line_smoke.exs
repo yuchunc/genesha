@@ -35,6 +35,7 @@ alias Ganesha.Line.{LineEvent, VerifySignaturePlug}
 
 teacher_id = "Usmoketeacher000000000000000"
 group_id = "Csmokegroup00000000000000000"
+blocked_sender_id = "Usmokeblocked0000000000000000"
 secret = "smoke_channel_secret"
 
 # Only the PASS/FAIL lines matter here; Ecto's debug SQL would bury them.
@@ -111,6 +112,11 @@ cleanup = fn ->
   Repo.delete_all(from(m in Message, where: m.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(t in Thread, where: t.source_id in ^[teacher_id, group_id]))
   Repo.delete_all(from(s in People.Student, where: like(s.display_name, "SMOKE%")))
+
+  Repo.delete_all(
+    from(b in Line.BlockedAccount, where: b.line_id in ^[group_id, blocked_sender_id])
+  )
+
   Repo.delete_all(from(e in LineEvent, where: like(e.webhook_event_id, "smoke-%")))
 
   # Only the jobs this script's own events enqueued.
@@ -929,6 +935,134 @@ Smoke.check(
   applied_group_payment != nil and applied_group_payment.state == "applied" and
     applied_group_payment.applied_record_type == "Ganesha.Sales.Payment"
 )
+
+# ---------------------------------------------------------------- Step 11
+Smoke.step(11, "teacher blocks a group sender; their next message is ignored")
+
+seen_event = %{
+  "webhookEventId" => "smoke-group-3",
+  "mode" => "active",
+  "type" => "message",
+  "replyToken" => "smoke-reply-11",
+  "source" => %{"type" => "group", "groupId" => group_id, "userId" => blocked_sender_id},
+  "message" => %{"id" => "smoke-msg-7", "type" => "text", "text" => "大家早安"}
+}
+
+:ok = Line.record_event(seen_event)
+seen_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-group-3")
+
+Smoke.check(
+  "group event stored without its reply token",
+  not Map.has_key?(seen_line_event.payload, "replyToken")
+)
+
+ProviderMock.stub(fn _messages, _tools, _opts ->
+  {:ok, %{text: "nothing to do", tool_calls: []}}
+end)
+
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => seen_line_event.id}})
+
+Smoke.check(
+  "group message stored with its sender",
+  Repo.exists?(
+    from m in Message,
+      where: m.line_message_id == "smoke-msg-7" and m.sender_id == ^blocked_sender_id
+  )
+)
+
+block_event = %{
+  "webhookEventId" => "smoke-teacher-5",
+  "mode" => "active",
+  "type" => "message",
+  "replyToken" => "smoke-reply-12",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "message" => %{"id" => "smoke-msg-8", "type" => "text", "text" => "封鎖 測試學生"}
+}
+
+:ok = Line.record_event(block_event)
+block_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-teacher-5")
+
+ProviderMock.stub(fn messages, _tools, _opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
+      {:ok, %{text: "封鎖草稿等你確認。", tool_calls: []}}
+
+    _ ->
+      {:ok,
+       %{
+         text: nil,
+         tool_calls: [
+           %{
+             id: "smoke-call-6",
+             name: "block_account",
+             input: %{"kind" => "sender", "line_id" => blocked_sender_id}
+           }
+         ]
+       }}
+  end
+end)
+
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => block_line_event.id}})
+
+block_draft =
+  Repo.one(
+    from d in Draft,
+      join: t in Thread,
+      on: d.thread_id == t.id,
+      where: t.source_id == ^teacher_id and d.kind == "block_account" and d.state == "pending"
+  )
+
+Smoke.check("Teacher chat proposes a block_account draft", block_draft != nil)
+
+block_confirm_event = %{
+  "webhookEventId" => "smoke-postback-5",
+  "mode" => "active",
+  "type" => "postback",
+  "replyToken" => "smoke-reply-13",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "postback" => %{"data" => "action=confirm&draft_id=#{block_draft && block_draft.id}"}
+}
+
+:ok = Line.record_event(block_confirm_event)
+block_confirm_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-postback-5")
+Process.delete(:line_client_mock_calls)
+
+:ok =
+  ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => block_confirm_line_event.id}})
+
+Smoke.check("Confirm blocks the sender", Line.blocked?("sender", blocked_sender_id))
+
+blocked_event = %{
+  "webhookEventId" => "smoke-group-4",
+  "mode" => "active",
+  "type" => "message",
+  "source" => %{"type" => "group", "groupId" => group_id, "userId" => blocked_sender_id},
+  "message" => %{"id" => "smoke-msg-9", "type" => "text", "text" => "2.SMOKE 小美 Line pay 3200"}
+}
+
+:ok = Line.record_event(blocked_event)
+blocked_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-group-4")
+
+ProviderMock.stub(fn _messages, _tools, _opts ->
+  Process.put(:smoke_blocked_agent_ran, true)
+  {:ok, %{text: "should not run", tool_calls: []}}
+end)
+
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => blocked_line_event.id}})
+
+Smoke.check(
+  "blocked sender's message never reaches the agent",
+  Process.get(:smoke_blocked_agent_ran) != true
+)
+
+Smoke.check(
+  "blocked sender's message is not stored in the group thread",
+  not Repo.exists?(from m in Message, where: m.line_message_id == "smoke-msg-9")
+)
+
+Smoke.check("NOTHING sent to LINE for the blocked message", LineMock.calls() == [])
 
 # ---------------------------------------------------------------- teardown
 cleanup.()

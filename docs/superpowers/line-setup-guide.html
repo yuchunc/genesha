@@ -339,13 +339,18 @@
   <section class="step" id="step-7">
     <div class="step-num">7</div>
     <div class="step-body">
-      <h2>Turn off LINE's own auto-responses</h2>
-      <p>Same Messaging API tab:</p>
+      <h2>Turn off LINE's own auto-responses; allow groups</h2>
+      <p>In <strong>LINE Official Account Manager</strong> → Settings:</p>
       <ul class="checks">
-        <li>Auto-reply messages — <strong>Disabled</strong></li>
+        <li>Response settings → Chat — <strong>Off</strong></li>
+        <li>Response settings → Auto-response — <strong>Off</strong></li>
+        <li>Response settings → Webhook — <strong>On</strong></li>
         <li>Greeting messages — <strong>Disabled</strong></li>
+        <li>Account settings → Allow account to join groups and multi-person chats — <strong>On</strong></li>
       </ul>
-      <p class="muted">Leaving these on makes LINE's canned replies race with the assistant's real reply.</p>
+      <p class="muted">LINE sends auto-responses itself, so the app's never-post-in-groups guards
+        (no group reply tokens stored; <code class="inline">Line.Client</code> refuses group ids)
+        can't stop them. Leaving them on would post canned replies into the student group.</p>
     </div>
   </section>
 

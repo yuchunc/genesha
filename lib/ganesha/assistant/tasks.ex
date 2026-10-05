@@ -60,7 +60,7 @@ defmodule Ganesha.Assistant.Tasks do
              [RecordPayment, BookOneOff, MakeupRequest] ++
              @students_money ++
              @schedule ++
-               [AskTeacher, SetLanguage, PendingDrafts, Listening, BlockAccount, UnblockAccount]
+             [AskTeacher, SetLanguage, PendingDrafts, Listening, BlockAccount, UnblockAccount]
   @group [RecordPayment, BookOneOff, MakeupRequest]
   @student [SetLanguage]
 

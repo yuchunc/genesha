@@ -11,7 +11,8 @@ defmodule Ganesha.Assistant.Tasks.BlockAccountTest do
     {:ok, group} = Assistant.get_or_create_thread("group", "Cabc")
 
     for {id, name} <- [{"Umei", "小美"}, {@teacher, "老師"}] do
-      {:ok, _} = Assistant.append_message(group, "user", "hi", nil, sender_id: id, sender_name: name)
+      {:ok, _} =
+        Assistant.append_message(group, "user", "hi", nil, sender_id: id, sender_name: name)
     end
 
     Process.put(:line_client_mock_group_summary, {:ok, %{"groupName" => "瑜伽週三班"}})
@@ -40,8 +41,12 @@ defmodule Ganesha.Assistant.Tasks.BlockAccountTest do
 
     assert teacher_error =~ "teacher"
 
-    assert {:error, _} = BlockAccount.propose(%{"kind" => "sender", "line_id" => "Unobody"}, c.ctx)
-    assert {:error, _} = BlockAccount.propose(%{"kind" => "group", "line_id" => "Cnowhere"}, c.ctx)
+    assert {:error, _} =
+             BlockAccount.propose(%{"kind" => "sender", "line_id" => "Unobody"}, c.ctx)
+
+    assert {:error, _} =
+             BlockAccount.propose(%{"kind" => "group", "line_id" => "Cnowhere"}, c.ctx)
+
     assert {:error, _} = BlockAccount.propose(%{"kind" => "room", "line_id" => "Rr"}, c.ctx)
 
     {:ok, _} = Line.block_account(%{kind: "sender", line_id: "Umei", label: "小美"})
@@ -61,7 +66,10 @@ defmodule Ganesha.Assistant.Tasks.BlockAccountTest do
     group = %{"kind" => "group", "line_id" => "Cabc", "label" => "瑜伽週三班"}
 
     assert BlockAccount.summary(sender, "zh-TW") == "封鎖 小美：之後所有群組中這個人的訊息都不再讀取"
-    assert BlockAccount.summary(sender, "en") == "Block 小美: their messages in every group will be ignored"
+
+    assert BlockAccount.summary(sender, "en") ==
+             "Block 小美: their messages in every group will be ignored"
+
     assert BlockAccount.summary(group, "zh-TW") == "封鎖群組「瑜伽週三班」：之後不再讀取這個群組"
     assert BlockAccount.summary(group, "en") == ~s(Block group "瑜伽週三班": stop reading this group)
   end

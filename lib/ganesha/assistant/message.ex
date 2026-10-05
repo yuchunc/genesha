@@ -26,7 +26,15 @@ defmodule Ganesha.Assistant.Message do
 
   def changeset(message, attrs) do
     message
-    |> cast(attrs, [:thread_id, :role, :content, :tool_calls, :line_message_id, :sender_id, :sender_name])
+    |> cast(attrs, [
+      :thread_id,
+      :role,
+      :content,
+      :tool_calls,
+      :line_message_id,
+      :sender_id,
+      :sender_name
+    ])
     |> validate_required([:thread_id, :role])
     |> validate_inclusion(:role, @roles)
     |> foreign_key_constraint(:thread_id)

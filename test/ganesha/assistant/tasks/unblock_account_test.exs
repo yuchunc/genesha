@@ -37,7 +37,10 @@ defmodule Ganesha.Assistant.Tasks.UnblockAccountTest do
     group = %{"kind" => "group", "line_id" => "Cabc", "label" => "瑜伽週三班"}
 
     assert UnblockAccount.summary(sender, "zh-TW") == "解除封鎖 小美：之後會再讀取這個人在群組中的訊息"
-    assert UnblockAccount.summary(sender, "en") == "Unblock 小美: their group messages will be read again"
+
+    assert UnblockAccount.summary(sender, "en") ==
+             "Unblock 小美: their group messages will be read again"
+
     assert UnblockAccount.summary(group, "zh-TW") == "解除封鎖群組「瑜伽週三班」：之後會再讀取這個群組"
     assert UnblockAccount.summary(group, "en") == ~s(Unblock group "瑜伽週三班": read this group again)
   end

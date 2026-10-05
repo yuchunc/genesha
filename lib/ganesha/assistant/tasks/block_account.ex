@@ -28,7 +28,10 @@ defmodule Ganesha.Assistant.Tasks.BlockAccount do
         type: "object",
         properties: %{
           kind: %{type: "string", enum: @kinds},
-          line_id: %{type: "string", description: "Group id (C…) or sender id (U…) from listening"}
+          line_id: %{
+            type: "string",
+            description: "Group id (C…) or sender id (U…) from listening"
+          }
         },
         required: ["kind", "line_id"]
       }
@@ -40,8 +43,7 @@ defmodule Ganesha.Assistant.Tasks.BlockAccount do
       when kind in @kinds and is_binary(line_id) do
     with {:ok, label} <- resolve(kind, line_id),
          :ok <- not_blocked(kind, line_id) do
-      {:ok,
-       %{student_id: nil, parsed: %{"kind" => kind, "line_id" => line_id, "label" => label}}}
+      {:ok, %{student_id: nil, parsed: %{"kind" => kind, "line_id" => line_id, "label" => label}}}
     end
   end
 
