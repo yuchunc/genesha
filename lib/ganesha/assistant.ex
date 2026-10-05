@@ -40,6 +40,37 @@ defmodule Ganesha.Assistant do
     Repo.all(from m in Message, where: m.thread_id == ^thread.id, order_by: m.id)
   end
 
+  @doc """
+  The senders of a group thread's messages that still carry one, most recently
+  seen first (spec 2026-10-05 §3). `sender_name` is a stored non-nil name.
+  """
+  def group_senders(%Thread{} = thread, limit) when is_integer(limit) do
+    Repo.all(
+      from m in Message,
+        where: m.thread_id == ^thread.id and not is_nil(m.sender_id),
+        group_by: m.sender_id,
+        order_by: [desc: max(m.inserted_at), desc: max(m.id)],
+        limit: ^limit,
+        select: %{
+          sender_id: m.sender_id,
+          sender_name: max(m.sender_name),
+          last_seen_at: type(max(m.inserted_at), :utc_datetime)
+        }
+    )
+  end
+
+  @doc "A sender seen in any group thread, or nil (spec 2026-10-05 §3)."
+  def find_group_sender(sender_id) when is_binary(sender_id) do
+    Repo.one(
+      from m in Message,
+        join: t in Thread,
+        on: t.id == m.thread_id,
+        where: t.source_type == "group" and m.sender_id == ^sender_id,
+        group_by: m.sender_id,
+        select: %{sender_id: m.sender_id, sender_name: max(m.sender_name)}
+    )
+  end
+
   def append_message(%Thread{} = thread, role, content, tool_calls, opts \\ []) do
     %Message{}
     |> Message.changeset(%{
