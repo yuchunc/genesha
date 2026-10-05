@@ -156,9 +156,9 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
-  defp handle_message_edited(%{
-         payload: %{"message" => %{"id" => line_message_id, "text" => new_text}}
-       }) do
+  defp handle_message_edited(
+         %{payload: %{"message" => %{"id" => line_message_id, "text" => new_text}}} = event
+       ) do
     case Repo.get_by(Assistant.Message, line_message_id: line_message_id) do
       nil ->
         :ok
@@ -170,12 +170,15 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         thread = Assistant.get_thread!(message.thread_id)
         forget_digests(thread, message)
 
-        rerun_after_edit(thread, message)
+        # The stored sender_id is nil on older or purged rows; the edit
+        # event's own sender is checked first.
+        sender_id = get_in(event.payload, ["source", "userId"]) || message.sender_id
+        rerun_after_edit(thread, sender_id)
     end
   end
 
-  defp rerun_after_edit(%{source_type: "group", source_id: group_id} = thread, message) do
-    if Line.blocked?("group", group_id) or Line.blocked?("sender", message.sender_id) do
+  defp rerun_after_edit(%{source_type: "group", source_id: group_id} = thread, sender_id) do
+    if Line.blocked?("group", group_id) or Line.blocked?("sender", sender_id) do
       :ok
     else
       thread |> run_group_agent() |> log_failure(thread, "messageEdited")
@@ -183,7 +186,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
-  defp rerun_after_edit(thread, _message) do
+  defp rerun_after_edit(thread, _sender_id) do
     thread |> Conversation.run_turn() |> log_failure(thread, "messageEdited")
   end
 

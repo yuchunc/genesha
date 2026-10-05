@@ -441,6 +441,28 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert user_message.sender_id == "Ustudent1"
       assert user_message.content == "2.Lulu （Line pay 1200元）"
     end
+
+    test "messageEdited from a blocked sender is checked by the event's sender, not the stored one",
+         c do
+      c.thread
+      |> Assistant.list_messages()
+      |> Enum.find(&(&1.role == "user"))
+      |> Ecto.Changeset.change(sender_id: nil)
+      |> Repo.update!()
+
+      {:ok, _} =
+        Line.block_account(%{kind: "sender", line_id: "Ustudent1", label: "測試學生"})
+
+      assert {:ok, _} =
+               deliver(%{
+                 "type" => "messageEdited",
+                 "source" => group_source("Ustudent1"),
+                 "message" => %{"id" => "linemsg-1", "text" => "2.Lulu （Line pay 1200元）"}
+               })
+
+      assert Process.get(:round) == 2
+      assert Repo.all(from d in Assistant.Draft, where: d.state == "pending") == []
+    end
   end
 
   describe "Teacher chat digests" do
