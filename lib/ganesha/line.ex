@@ -7,7 +7,9 @@ defmodule Ganesha.Line do
 
   require Logger
 
-  alias Ganesha.Line.LineEvent
+  import Ecto.Query, only: [from: 2]
+
+  alias Ganesha.Line.{BlockedAccount, LineEvent}
   alias Ganesha.Repo
 
   @doc """
@@ -33,7 +35,7 @@ defmodule Ganesha.Line do
         :ok
 
       {:error, changeset} ->
-        if unique_violation?(changeset), do: :ok, else: {:error, changeset}
+        if unique_violation?(changeset, :webhook_event_id), do: :ok, else: {:error, changeset}
     end
   end
 
@@ -67,9 +69,9 @@ defmodule Ganesha.Line do
 
   defp without_group_reply_token(event), do: event
 
-  defp unique_violation?(changeset) do
+  defp unique_violation?(changeset, field) do
     Enum.any?(changeset.errors, fn
-      {:webhook_event_id, {_, [constraint: :unique, constraint_name: _]}} -> true
+      {^field, {_, [constraint: :unique, constraint_name: _]}} -> true
       _ -> false
     end)
   end
@@ -83,6 +85,45 @@ defmodule Ganesha.Line do
 
       {:error, reason} ->
         Logger.error("failed to enqueue line_event #{id}: #{inspect(reason)}")
+    end
+  end
+
+  @doc "Whether a group (`\"group\"`) or a sender in every group (`\"sender\"`) is blocked."
+  @spec blocked?(String.t(), String.t() | nil) :: boolean()
+  def blocked?(_kind, nil), do: false
+
+  def blocked?(kind, line_id) do
+    Repo.exists?(from b in BlockedAccount, where: b.kind == ^kind and b.line_id == ^line_id)
+  end
+
+  def get_blocked_account(kind, line_id),
+    do: Repo.get_by(BlockedAccount, kind: kind, line_id: line_id)
+
+  @doc "Every blocked group and sender, newest first."
+  def list_blocked_accounts do
+    Repo.all(from b in BlockedAccount, order_by: [desc: b.inserted_at, desc: b.id])
+  end
+
+  @doc "Applied by a confirmed `block_account` Draft only (ADR 0001)."
+  def block_account(attrs) do
+    case %BlockedAccount{} |> BlockedAccount.changeset(attrs) |> Repo.insert() do
+      {:ok, blocked} ->
+        {:ok, blocked}
+
+      {:error, changeset} ->
+        if unique_violation?(changeset, :kind),
+          do: {:error, :already_blocked},
+          else: {:error, changeset}
+    end
+  end
+
+  @doc "Applied by a confirmed `unblock_account` Draft only (ADR 0001)."
+  def unblock_account(kind, line_id) do
+    case Repo.delete_all(
+           from b in BlockedAccount, where: b.kind == ^kind and b.line_id == ^line_id
+         ) do
+      {0, _} -> {:error, :not_blocked}
+      {_, _} -> :ok
     end
   end
 
