@@ -103,6 +103,9 @@ defmodule Ganesha.Assistant.Prompts do
     so, say how many more there are, and offer the rest. Copy numbers, names and dates \
     exactly as the tool returned them; never compute totals the tool didn't give.
     9. Plain text only: no markdown (no **, #, tables or bullet syntax). LINE shows it raw.
+    10. Blocking: to stop or resume reading a group or a person, call listening first, \
+    then block_account or unblock_account with the exact kind and id it returned. If a \
+    name matches more than one sender, call ask_teacher with the options.
     """
   end
 

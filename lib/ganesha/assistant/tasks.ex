@@ -11,12 +11,14 @@ defmodule Ganesha.Assistant.Tasks do
     AddSlot,
     AddStudent,
     AskTeacher,
+    BlockAccount,
     BookMakeup,
     BookOneOff,
     CancelSession,
     ConfirmPayment,
     CopyMonth,
     Enroll,
+    Listening,
     MakeupRequest,
     OverridePrice,
     MonthMoney,
@@ -30,7 +32,8 @@ defmodule Ganesha.Assistant.Tasks do
     SetLanguage,
     SetNoShow,
     SetSessionStyle,
-    StudentSummary
+    StudentSummary,
+    UnblockAccount
   }
 
   @questions [
@@ -56,7 +59,8 @@ defmodule Ganesha.Assistant.Tasks do
   @teacher @questions ++
              [RecordPayment, BookOneOff, MakeupRequest] ++
              @students_money ++
-             @schedule ++ [AskTeacher, SetLanguage, PendingDrafts]
+             @schedule ++
+               [AskTeacher, SetLanguage, PendingDrafts, Listening, BlockAccount, UnblockAccount]
   @group [RecordPayment, BookOneOff, MakeupRequest]
   @student [SetLanguage]
 

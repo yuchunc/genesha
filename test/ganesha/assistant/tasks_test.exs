@@ -8,12 +8,14 @@ defmodule Ganesha.Assistant.TasksTest do
     AddSlot,
     AddStudent,
     AskTeacher,
+    BlockAccount,
     BookMakeup,
     BookOneOff,
     CancelSession,
     ConfirmPayment,
     CopyMonth,
     Enroll,
+    Listening,
     MakeupRequest,
     OverridePrice,
     MonthMoney,
@@ -27,7 +29,8 @@ defmodule Ganesha.Assistant.TasksTest do
     SetLanguage,
     SetNoShow,
     SetSessionStyle,
-    StudentSummary
+    StudentSummary,
+    UnblockAccount
   }
 
   defmodule Lookup do
@@ -164,6 +167,14 @@ defmodule Ganesha.Assistant.TasksTest do
     for task <- Tasks.for_chat(:teacher), task.kind() == :lookup do
       [schema] = Tasks.tool_schemas([task])
       refute Map.has_key?(schema.input_schema.properties, :show_card)
+    end
+  end
+
+  test "listening, block_account and unblock_account are Teacher chat only" do
+    for task <- [Listening, BlockAccount, UnblockAccount] do
+      assert task in Tasks.for_chat(:teacher)
+      refute task in Tasks.for_chat(:group)
+      refute task in Tasks.for_chat(:student)
     end
   end
 end

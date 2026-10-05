@@ -22,6 +22,10 @@ defmodule Ganesha.Assistant do
 
   def get_thread!(id), do: Repo.get!(Thread, id)
 
+  @doc "The group thread for a LINE group id, or nil."
+  def get_group_thread(group_id) when is_binary(group_id),
+    do: Repo.get_by(Thread, source_type: "group", source_id: group_id)
+
   def list_threads(source_type) do
     Repo.all(from t in Thread, where: t.source_type == ^source_type, order_by: t.id)
   end
