@@ -54,6 +54,37 @@ defmodule Ganesha.Assistant.Tasks.SignupRequestTest do
     assert {:error, _} = SignupRequest.propose(%{}, ctx("Ublank"))
   end
 
+  test "rejects a note longer than 300 characters after trim" do
+    long = String.duplicate("課", 301)
+
+    assert {:error, message} = SignupRequest.propose(%{"note" => long}, ctx("Ulong"))
+    assert message =~ "300"
+    assert message =~ "shorten"
+  end
+
+  test "the teacher message quotes the student's words as theirs" do
+    student = %{
+      "new" => false,
+      "student_id" => 3,
+      "student_name" => "Amy",
+      "note" => "想報名週一晚上"
+    }
+
+    assert SignupRequest.teacher_message(1, student, "zh-TW") =~ "學生原話：「想報名週一晚上」"
+    assert SignupRequest.teacher_message(1, student, "en") =~ ~s|Their words: "想報名週一晚上"|
+
+    unlinked = %{
+      "new" => true,
+      "line_user_id" => "Ux",
+      "line_name" => "小美",
+      "note" => "想報名"
+    }
+
+    zh = SignupRequest.teacher_message(2, unlinked, "zh-TW")
+    assert zh =~ "學生原話：「想報名」"
+    refute zh =~ "想報名：想報名"
+  end
+
   test "confirming only acknowledges it" do
     assert {:ok, {nil, nil}} = SignupRequest.apply(%{"note" => "想報名"}, "line:teacher")
   end

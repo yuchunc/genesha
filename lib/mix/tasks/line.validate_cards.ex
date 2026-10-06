@@ -42,17 +42,31 @@ defmodule Mix.Tasks.Line.ValidateCards do
   end
 
   defp locale_checks(locale) do
-    draft = %Draft{
+    makeup = %Draft{
       id: 1,
       kind: "makeup_request",
       parsed: %{"student_name" => "Amy", "note" => "8/17"}
     }
 
-    alt = Assistant.draft_summary(draft, locale)
+    signup = %Draft{
+      id: 2,
+      kind: "signup_request",
+      parsed: %{
+        "note" => "想報名週一晚上",
+        "student_id" => nil,
+        "student_name" => nil,
+        "line_user_id" => "Usample0000000000000000000000",
+        "line_name" => "小美",
+        "new" => true
+      }
+    }
+
+    drafts = [makeup, signup]
+    alt = Enum.map_join(drafts, "\n", &Assistant.draft_summary(&1, locale))
 
     [
       {"#{locale} draft carousel",
-       [Client.flex_message(alt, Cards.draft_carousel([draft], locale))]}
+       [Client.flex_message(alt, Cards.draft_carousel(drafts, locale))]}
     ]
   end
 

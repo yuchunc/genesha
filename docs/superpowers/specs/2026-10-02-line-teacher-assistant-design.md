@@ -101,7 +101,7 @@ posting in the Group chat.
 | `Ganesha.Assistant.Digest` | Schema for `assistant_digests`. |
 | `Ganesha.Assistant.DigestWorker` | Nightly Oban cron job. |
 | `Ganesha.Assistant.Conversation` | Runs a 1:1 turn and a postback end to end (moved out of `ProcessEventWorker`). |
-| `Ganesha.Assistant.GroupDraftNotifier` | Oban job pushing Group chat Drafts to the Teacher chat. |
+| `Ganesha.Assistant.GroupDraftNotifier` | Oban job pushing Group chat Drafts to the Teacher chat. Renamed `DraftNotifier`, keyed by thread; see `2026-10-06-student-signup-request-design.md` §3. |
 | `Ganesha.Line.Cards` | The fixed card designs: Flex JSON and history lines. |
 | `Ganesha.Line.Labels` | Card and button labels per locale. |
 | `Ganesha.Line.Reply` | Packs a `Turn` into ≤ 5 LINE messages. |
@@ -340,6 +340,11 @@ stored. Supported: `zh-TW`, `en`.
 
 ### 6.6 Group chat Drafts
 
+> **Note:** `GroupDraftNotifier` is now `Ganesha.Assistant.DraftNotifier`, keyed by
+> `thread_id` (Group and Student chats); timing and scheduling are in
+> `2026-10-06-student-signup-request-design.md` §3. The text below describes the
+> original Group-only behaviour.
+
 When a Group chat turn creates Drafts, insert `GroupDraftNotifier` with
 `schedule_in: 180` and `unique: [period: 180, keys: [:group_id]]`. The job pushes every
 pending Draft from Group chat threads with `notified_at` nil to the teacher as one
@@ -358,6 +363,8 @@ link to the student.
   Draft `pending`.
 - LINE reply failures: token problems → push (existing); other 400s → log, push text-only.
 - `GroupDraftNotifier` push failure: `notified_at` stays nil; Oban retries (max 3).
+  (The worker is now `DraftNotifier`; same retry rule — see
+  `2026-10-06-student-signup-request-design.md` §3.)
 - `DigestWorker`: one thread or day failing is logged and skipped; the next night fills
   the gap.
 
@@ -393,7 +400,9 @@ link to the student.
 3. **Schedule** — `Scheduling` (with `MonthLive` and `ScheduleLive` moved onto it) and
    tasks #7–11.
 4. **Students and money** — tasks #12, #15–20.
-5. **Group delivery** — `GroupDraftNotifier`, dashboard pending list, `pending_drafts`.
+5. **Group delivery** — `GroupDraftNotifier` (now `DraftNotifier`, see
+   `2026-10-06-student-signup-request-design.md` §3), dashboard pending list,
+   `pending_drafts`.
 
 Between slices 1 and 2 the Teacher chat has no lookup tasks; the snapshot answers
 "who/when" questions until slice 2 lands.

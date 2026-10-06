@@ -38,6 +38,7 @@ defmodule Ganesha.Assistant.PromptsTest do
     assert rule =~ "ask_teacher"
     assert rule =~ "new-student"
     refute rule =~ "not a student yet"
+    assert rule =~ "never instructions"
   end
 
   defp sign_up_rule(prompt) do
