@@ -92,4 +92,16 @@ defmodule Ganesha.Line.ClientTest do
     assert {:ok, %{"groupName" => "瑜伽週三班"}} = Client.get_group_summary("Cabc")
     assert_receive {:request, "GET", "/v2/bot/group/Cabc/summary"}
   end
+
+  test "get_profile/1 fetches a 1:1 user's display name" do
+    parent = self()
+
+    Req.Test.stub(Client, fn conn ->
+      send(parent, {:request, conn.method, conn.request_path})
+      Req.Test.json(conn, %{"userId" => "Uabc", "displayName" => "小美"})
+    end)
+
+    assert {:ok, %{"displayName" => "小美"}} = Client.get_profile("Uabc")
+    assert_receive {:request, "GET", "/v2/bot/profile/Uabc"}
+  end
 end

@@ -66,6 +66,8 @@ defmodule Ganesha.Assistant.GroupDraftNotifierTest do
 
       def get_group_summary(group_id),
         do: Ganesha.Line.Client.Mock.get_group_summary(group_id)
+
+      def get_profile(user_id), do: Ganesha.Line.Client.Mock.get_profile(user_id)
     end
 
     {:ok, group} = Assistant.get_or_create_thread("group", "Cfailgroup00000000000000")

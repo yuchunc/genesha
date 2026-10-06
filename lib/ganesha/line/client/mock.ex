@@ -42,6 +42,12 @@ defmodule Ganesha.Line.Client.Mock do
     Process.get(:line_client_mock_group_summary, {:ok, %{"groupName" => "測試群組"}})
   end
 
+  @impl true
+  def get_profile(user_id) do
+    record_lookup({:profile, user_id})
+    Process.get(:line_client_mock_profile, {:ok, %{"displayName" => "測試新朋友"}})
+  end
+
   @doc "Read-only lookups, kept out of `calls/0` so the never-sends assertions stay exact."
   def lookups, do: Process.get(:line_client_mock_lookups, []) |> Enum.reverse()
 

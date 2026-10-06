@@ -8,4 +8,5 @@ defmodule Ganesha.Line.ClientBehaviour do
   @callback get_group_member(group_id :: String.t(), user_id :: String.t()) ::
               {:ok, map()} | {:error, term()}
   @callback get_group_summary(group_id :: String.t()) :: {:ok, map()} | {:error, term()}
+  @callback get_profile(user_id :: String.t()) :: {:ok, map()} | {:error, term()}
 end

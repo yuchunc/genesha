@@ -48,6 +48,10 @@ defmodule Ganesha.Line.Client do
   @impl true
   def get_group_summary(group_id), do: get("/v2/bot/group/#{group_id}/summary")
 
+  @doc "A 1:1 user's display name and picture; read-only (spec 2026-10-06 §4)."
+  @impl true
+  def get_profile(user_id), do: get("/v2/bot/profile/#{user_id}")
+
   defp get(path) do
     case Req.get(req(), url: path) do
       {:ok, %Req.Response{status: 200, body: body}} -> {:ok, body}
