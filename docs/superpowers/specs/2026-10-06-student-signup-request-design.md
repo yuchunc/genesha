@@ -112,10 +112,9 @@ group's next Draft. The window is 3 minutes, and production is off.
 | `"user"` | `schedule_in: 300` | `period: :infinity, keys: [:thread_id], states: [:available, :scheduled], replace: [scheduled: [:scheduled_at]]` | 5 minutes after the latest Draft; each new Draft moves the one waiting job |
 
   The `"user"` uniqueness covers only waiting jobs, so a Draft created while a
-  job is executing gets a new job rather than being lost. The plan's first
-  step proves `replace:` moves `scheduled_at` under `Oban.Engines.Lite`; if it
-  does not, the fallback is to cancel the waiting job and insert a new one in
-  `schedule/1`.
+  job is executing gets a new job rather than being lost. Checked on
+  2026-10-06 against Oban 2.24.1 with `Oban.Engines.Lite`: a second insert with
+  these options returns the same job id and moves its `scheduled_at`.
 - `max_attempts: 3`, queue `:default`, as now.
 
 ### Run
@@ -136,13 +135,21 @@ Intro labels (`Ganesha.Line.Labels`):
 - Student: new `:student_drafts_push_intro`: 「私訊有人想報名：」 / "Someone asked to
   sign up in a private chat:".
 
-### Scheduling (`ProcessEventWorker`)
+### Scheduling
 
-- After a group turn: as now, via the renamed worker.
-- After a Student-chat turn (`handle_user_message` when the thread's
-  `source_type` is `"user"`) and after a Student chat's `messageEdited` re-run:
-  if the thread has a pending Draft with `notified_at` nil, `DraftNotifier.schedule(thread)`.
-- Teacher chats are never scheduled: their cards arrive in the reply.
+`DraftNotifier.schedule_if_pending(thread)` schedules a run when the thread has
+a pending Draft with `notified_at` nil, and does nothing otherwise. It reads the
+stored Drafts, not the Turn, so a turn that fails after creating a Draft still
+notifies. It is called:
+
+- after a group turn and a group `messageEdited` re-run (`ProcessEventWorker`),
+  replacing `maybe_schedule_group_notifier/1`;
+- at the end of every Student-chat turn in `Conversation.handle_message/3`, which
+  covers both a plain message and the turn that runs once a newcomer picks a
+  language;
+- after a Student chat's `messageEdited` re-run (`ProcessEventWorker`).
+
+Teacher chats are never scheduled: their cards arrive in the reply.
 
 ## 4. LINE client: `get_profile/1`
 
@@ -176,13 +183,14 @@ Intro labels (`Ganesha.Line.Labels`):
 3. Confirm it (`Assistant.confirm_draft(draft, "line:teacher")`) and append the
    usual history line (「[已確認] 草稿 #N …」) to this teacher's Teacher chat, as
    `settle_postback` does.
-4. Append a `user` message to this teacher's Teacher chat, in her locale:
+4. Append a `user` message to this teacher's Teacher chat, in her locale, built
+   by `SignupRequest.teacher_message(draft_id, parsed, locale)`:
    - Known student: 「[報名申請 #N] 幫 {student_name}（學生 #{student_id}）報名：{note}」
-   - Newcomer: 「[報名申請 #N] 新朋友 {line_name}（LINE ID {line_user_id}，還不是學生）想報名：{note}。請先新增學生，確認後我再幫他報名。」
+   - Newcomer: 「[報名申請 #N] 新朋友 {line_name}（LINE ID {line_user_id}，還不是學生）想報名：{note}。請先新增這位學生並連結這個 LINE ID，我確認後再幫他報名。」
    - en: "[Sign-up request #N] Sign up {student_name} (student #{student_id}): {note}"
      and "[Sign-up request #N] Newcomer {line_name} (LINE ID {line_user_id}, not a
-     student yet) wants to sign up: {note}. Add the student first; enroll after
-     it is confirmed."
+     student yet) wants to sign up: {note}. Add the student first, linked to this
+     LINE ID; sign them up after I confirm."
    - A newcomer with no LINE name uses 新朋友 / "Newcomer" alone.
 5. Run `Conversation.handle_message(thread, reply_token, source_id)`: a normal
    Teacher-chat turn replying through the postback's reply token. The model
