@@ -30,9 +30,10 @@ teacher happens to read the chat.
 6. **The card has a 「幫他報名」 ("sign them up") button.** One tap marks the
    request handled and starts a normal teacher turn, which proposes `enroll`, or
    `add_student` first for a newcomer.
-7. **A newcomer takes two rounds.** `enroll` needs a student id that only exists
-   after `add_student` is confirmed, so the teacher says 「繼續」 ("continue") to
-   get the `enroll` card. No turn runs automatically after Confirm.
+7. **An unlinked LINE ID may still be an existing student.** `students.line_user_id`
+   is only set by `add_student`, so many askers look "new". The teacher checks the
+   snapshot for a name match before adding a duplicate; only when none fits does she
+   add a student and say 「繼續」 ("continue") for the `enroll` card.
 
 ## 1. The `signup_request` task
 
@@ -79,8 +80,8 @@ Errors returned to the model: a blank or missing `note`
 | case | zh-TW | en |
 |---|---|---|
 | known student | 「Amy 想報名：{note}」 | "Amy wants to sign up: {note}" |
-| newcomer with LINE name | 「新朋友（LINE：小美）想報名：{note}」 | "Newcomer (LINE: 小美) wants to sign up: {note}" |
-| newcomer, no name | 「新朋友想報名：{note}」 | "A newcomer wants to sign up: {note}" |
+| newcomer with LINE name | 「未連結的 LINE 用戶（LINE：小美）想報名：{note}」 | "Unlinked LINE user (LINE: 小美) wants to sign up: {note}" |
+| newcomer, no name | 「未連結的 LINE 用戶想報名：{note}」 | "An unlinked LINE user wants to sign up: {note}" |
 
 ## 2. Student chat
 
@@ -191,12 +192,12 @@ Teacher chats are never scheduled: their cards arrive in the reply.
 4. Append a `user` message to this teacher's Teacher chat, in her locale, built
    by `SignupRequest.teacher_message(draft_id, parsed, locale)`:
    - Known student: 「[報名申請 #N] 幫 {student_name}（學生 #{student_id}）報名：{note}」
-   - Newcomer: 「[報名申請 #N] 新朋友 {line_name}（LINE ID {line_user_id}，還不是學生）想報名：{note}。請先新增這位學生並連結這個 LINE ID，我確認後再幫他報名。」
+   - Unlinked LINE ID: 「[報名申請 #N] LINE 顯示名稱 {line_name}、LINE ID {line_user_id}；這個 LINE ID 還沒連結任何學生，想報名：{note}。請先在名冊中查看…」 (see `SignupRequest.teacher_message/3`)
    - en: "[Sign-up request #N] Sign up {student_name} (student #{student_id}): {note}"
-     and "[Sign-up request #N] Newcomer {line_name} (LINE ID {line_user_id}, not a
-     student yet) wants to sign up: {note}. Add the student first, linked to this
-     LINE ID; sign them up after I confirm."
-   - A newcomer with no LINE name uses 新朋友 / "Newcomer" alone.
+     and a message stating the LINE display name (when known), LINE ID, that this
+     LINE ID isn't linked to a student, and to check the snapshot before adding.
+   - When there is no LINE display name, the message omits that label and gives
+     the LINE ID only.
 5. Run `Conversation.handle_message(thread, reply_token, source_id)`: a normal
    Teacher-chat turn replying through the postback's reply token. The model
    proposes `enroll` for a known student, asks with `ask_teacher` when the class
@@ -205,8 +206,8 @@ Teacher chats are never scheduled: their cards arrive in the reply.
 
 The teacher prompt (`Prompts.teacher/3`, both locales) adds one rule: a message
 starting 「[報名申請 #N]」 / "[Sign-up request #N]" is a sign-up the teacher
-asked to act on; propose `enroll` from the snapshot, or `add_student` with the
-given LINE ID first when the person is not a student yet.
+asked to act on; propose `enroll` from the snapshot, or when the LINE ID is not
+linked check the snapshot and use `ask_teacher` before `add_student`.
 
 ### Edge cases
 
@@ -265,5 +266,7 @@ with that LINE ID.
 - Showing students the timetable, prices or availability.
 - Other student requests (makeup, cancel, payment) from Student chats.
 - Running the next turn automatically after `add_student` is confirmed.
+- A task to link an existing student to a LINE ID without `add_student` (use
+  `add_student` with a new record, or enroll after matching in the snapshot).
 - Changing group timing to a quiet period.
 - Routing a request to one teacher.

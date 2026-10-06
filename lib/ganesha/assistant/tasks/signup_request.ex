@@ -59,14 +59,14 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
     do: "#{parsed["student_name"]} 想報名：#{parsed["note"]}"
 
   def summary(%{"line_name" => name} = parsed, "en") when is_binary(name),
-    do: "Newcomer (LINE: #{name}) wants to sign up: #{parsed["note"]}"
+    do: "Unlinked LINE user (LINE: #{name}) wants to sign up: #{parsed["note"]}"
 
-  def summary(parsed, "en"), do: "A newcomer wants to sign up: #{parsed["note"]}"
+  def summary(parsed, "en"), do: "An unlinked LINE user wants to sign up: #{parsed["note"]}"
 
   def summary(%{"line_name" => name} = parsed, _locale) when is_binary(name),
-    do: "新朋友（LINE：#{name}）想報名：#{parsed["note"]}"
+    do: "未連結的 LINE 用戶（LINE：#{name}）想報名：#{parsed["note"]}"
 
-  def summary(parsed, _locale), do: "新朋友想報名：#{parsed["note"]}"
+  def summary(parsed, _locale), do: "未連結的 LINE 用戶想報名：#{parsed["note"]}"
 
   @doc """
   What 「幫他報名」 adds to the Teacher chat as her message (spec 2026-10-06
@@ -83,22 +83,30 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
       "[報名申請 ##{id}] 幫 #{parsed["student_name"]}（學生 ##{parsed["student_id"]}）" <>
         "報名：#{parsed["note"]}"
 
-  def teacher_message(id, parsed, "en"),
-    do:
-      "[Sign-up request ##{id}] #{newcomer(parsed, "en")} (LINE ID #{parsed["line_user_id"]}, " <>
-        "not a student yet) wants to sign up: #{parsed["note"]}. Add the student first, " <>
-        "linked to this LINE ID; sign them up after I confirm."
+  def teacher_message(id, parsed, "en") do
+    line = line_label(parsed, "en")
 
-  def teacher_message(id, parsed, locale),
-    do:
-      "[報名申請 ##{id}] #{newcomer(parsed, locale)}（LINE ID #{parsed["line_user_id"]}，" <>
-        "還不是學生）想報名：#{parsed["note"]}。請先新增這位學生並連結這個 LINE ID，" <>
-        "我確認後再幫他報名。"
+    "[Sign-up request ##{id}] #{line}This LINE ID isn't linked to a student. " <>
+      "They want to sign up: #{parsed["note"]}. Check the snapshot for a student " <>
+      "matching the LINE display name or their words; if none, add a student with " <>
+      "this LINE user id, then ask her to say 「繼續」 after confirming."
+  end
 
-  defp newcomer(%{"line_name" => name}, "en") when is_binary(name), do: "Newcomer #{name}"
-  defp newcomer(_parsed, "en"), do: "Newcomer"
-  defp newcomer(%{"line_name" => name}, _locale) when is_binary(name), do: "新朋友 #{name}"
-  defp newcomer(_parsed, _locale), do: "新朋友"
+  def teacher_message(id, parsed, locale) do
+    line = line_label(parsed, locale)
+
+    "[報名申請 ##{id}] #{line}這個 LINE ID 還沒連結任何學生，想報名：#{parsed["note"]}。" <>
+      "請先在名冊中查看 LINE 顯示名稱或報名內容是否有相符的學生；" <>
+      "若沒有，再新增學生並連結此 LINE ID，確認後跟我說「繼續」。"
+  end
+
+  defp line_label(%{"line_name" => name} = parsed, _locale) when is_binary(name),
+    do: "LINE display name #{name}; LINE ID #{line_id(parsed)}. "
+
+  defp line_label(parsed, "en"), do: "LINE ID #{line_id(parsed)}. "
+  defp line_label(parsed, _locale), do: "LINE ID #{line_id(parsed)}，"
+
+  defp line_id(%{"line_user_id" => id}), do: id
 
   defp asker(line_user_id, note) do
     case People.find_by_line_user_id(line_user_id) do

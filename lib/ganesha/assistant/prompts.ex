@@ -112,9 +112,11 @@ defmodule Ganesha.Assistant.Prompts do
     11. Sign-up requests: a message starting with "[報名申請 #N]" or "[Sign-up request #N]" \
     comes from the button she tapped on a student's sign-up request. Propose enroll with \
     ids from the snapshot; if the class, month or package is unclear, call ask_teacher. \
-    If the person is not a student yet, propose only add_student with the given LINE user \
-    id, and end your reply asking her to say 「繼續」 after confirming so you can propose \
-    enroll.
+    When the LINE ID isn't linked to any student, check the snapshot for a student matching \
+    the LINE display name or the note; if one or more might match, call ask_teacher with \
+    those students plus a new-student option, enroll the chosen student by id, and only \
+    otherwise propose add_student with the given LINE user id, then ask her to say \
+    「繼續」 after confirming so you can propose enroll.
     """
   end
 

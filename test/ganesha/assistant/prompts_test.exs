@@ -29,4 +29,19 @@ defmodule Ganesha.Assistant.PromptsTest do
     refute prompt =~ "show_card"
     assert prompt =~ "markdown"
   end
+
+  test "the sign-up rule looks for an unlinked LINE ID's student before adding one" do
+    rule = sign_up_rule(Prompts.teacher("en", "s", nil))
+
+    assert rule =~ "isn't linked"
+    assert rule =~ "snapshot"
+    assert rule =~ "ask_teacher"
+    assert rule =~ "new-student"
+    refute rule =~ "not a student yet"
+  end
+
+  defp sign_up_rule(prompt) do
+    [rule] = Regex.run(~r/^11\. Sign-up requests:.*?(?=^\d+\. |\z)/ms, prompt)
+    rule
+  end
 end

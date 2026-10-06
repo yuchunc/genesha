@@ -69,4 +69,36 @@ defmodule Ganesha.Assistant.Tasks.SignupRequestTest do
       assert SignupRequest.summary(unnamed, locale) =~ "週一晚上"
     end
   end
+
+  test "an unlinked asker's card says their LINE ID is unlinked, not that they are new" do
+    named = %{"new" => true, "line_name" => "小美", "note" => "週一晚上"}
+    unnamed = %{"new" => true, "line_name" => nil, "note" => "週一晚上"}
+
+    assert SignupRequest.summary(named, "zh-TW") == "未連結的 LINE 用戶（LINE：小美）想報名：週一晚上"
+    assert SignupRequest.summary(unnamed, "zh-TW") == "未連結的 LINE 用戶想報名：週一晚上"
+
+    assert SignupRequest.summary(named, "en") ==
+             "Unlinked LINE user (LINE: 小美) wants to sign up: 週一晚上"
+
+    assert SignupRequest.summary(unnamed, "en") == "An unlinked LINE user wants to sign up: 週一晚上"
+  end
+
+  test "an unlinked asker's request message says the LINE ID isn't linked to any student" do
+    parsed = %{
+      "new" => true,
+      "line_user_id" => "Unewcomer",
+      "line_name" => "小美",
+      "note" => "想報名週一晚上"
+    }
+
+    zh = SignupRequest.teacher_message(7, parsed, "zh-TW")
+    assert zh =~ "這個 LINE ID 還沒連結任何學生"
+    assert zh =~ "Unewcomer"
+    refute zh =~ "還不是學生"
+
+    en = SignupRequest.teacher_message(7, parsed, "en")
+    assert en =~ "LINE ID isn't linked to a student"
+    assert en =~ "Unewcomer"
+    refute en =~ "not a student"
+  end
 end

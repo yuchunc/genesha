@@ -567,18 +567,20 @@ defmodule Ganesha.Assistant.ConversationTest do
                LineMock.calls()
     end
 
-    test "a newcomer's request hands the model their LINE ID to add them first", %{
+    test "an unlinked asker's request hands the model their LINE ID, not 'not a student'", %{
       thread: thread
     } do
       Process.put(:line_client_mock_profile, {:ok, %{"displayName" => "小美"}})
       draft = signup_draft("Unewcomer")
-      model([], "先新增小美，確認後跟我說「繼續」。")
+      model([], "名冊裡有小美嗎？")
 
       :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-e", @teacher)
 
       request = thread |> Assistant.list_messages() |> Enum.find(&(&1.role == "user"))
       assert request.content =~ "Unewcomer"
       assert request.content =~ "小美"
+      assert request.content =~ "還沒連結任何學生"
+      refute request.content =~ "還不是學生"
     end
 
     test "a request already handled says so and runs no turn", %{thread: thread} do
