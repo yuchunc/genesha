@@ -45,6 +45,15 @@ defmodule Ganesha.Assistant.DraftNotifierTest do
     draft
   end
 
+  defp backdate!(draft, seconds) do
+    at = DateTime.utc_now() |> DateTime.add(-seconds) |> DateTime.truncate(:second)
+    Repo.update_all(from(d in Draft, where: d.id == ^draft.id), set: [inserted_at: at])
+    Repo.reload!(draft)
+  end
+
+  defp scheduled_at(job),
+    do: Repo.get!(Oban.Job, job.id).scheduled_at |> DateTime.truncate(:second)
+
   defp intros do
     for {:push, {to, [%{text: text} | _]}} <- LineMock.calls(), into: %{}, do: {to, text}
   end
@@ -125,25 +134,32 @@ defmodule Ganesha.Assistant.DraftNotifierTest do
     assert_in_delta DateTime.diff(stored, job1.scheduled_at), 0, 1
   end
 
-  test "a Student chat's next draft moves its waiting job to five minutes from now", %{
+  test "a Student chat's job waits five minutes from its latest unnotified draft", %{
     student_chat: student_chat
   } do
-    assert {:ok, job1} = DraftNotifier.schedule(student_chat)
+    # The first draft came four minutes ago.
+    first = student_chat |> signup_draft!() |> backdate!(240)
+    assert :ok = DraftNotifier.schedule_if_pending(student_chat)
+    [job] = all_enqueued(worker: DraftNotifier)
+    assert scheduled_at(job) == DateTime.add(first.inserted_at, 300)
 
-    # Pretend the first draft came four minutes ago.
-    soon = DateTime.add(DateTime.utc_now(), 60, :second)
-    Repo.update_all(from(j in Oban.Job, where: j.id == ^job1.id), set: [scheduled_at: soon])
+    # A turn without a new draft does not move it.
+    assert :ok = DraftNotifier.schedule_if_pending(student_chat)
+    assert [%{id: same_id}] = all_enqueued(worker: DraftNotifier)
+    assert same_id == job.id
+    assert scheduled_at(job) == DateTime.add(first.inserted_at, 300)
 
-    assert {:ok, job2} = DraftNotifier.schedule(student_chat)
-
-    assert job2.id == job1.id
-    moved = Repo.get!(Oban.Job, job1.id).scheduled_at
-    assert_in_delta DateTime.diff(moved, DateTime.utc_now()), 300, 5
+    # A newer draft moves it to five minutes after that draft.
+    newer = signup_draft!(student_chat)
+    assert :ok = DraftNotifier.schedule_if_pending(student_chat)
+    assert [%{id: ^same_id}] = all_enqueued(worker: DraftNotifier)
+    assert scheduled_at(job) == DateTime.add(newer.inserted_at, 300)
   end
 
   test "a Student chat gets a new job once the waiting one has started", %{
     student_chat: student_chat
   } do
+    signup_draft!(student_chat)
     assert {:ok, job1} = DraftNotifier.schedule(student_chat)
     Repo.update_all(from(j in Oban.Job, where: j.id == ^job1.id), set: [state: "executing"])
 

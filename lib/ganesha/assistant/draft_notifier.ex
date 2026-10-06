@@ -6,12 +6,12 @@ defmodule Ganesha.Assistant.DraftNotifier do
   cards.
 
   A Group chat's run is 3 minutes after its first Draft, and later Drafts
-  join it. A Student chat's run is 5 minutes after its latest Draft: each new
-  Draft moves the waiting job. Each run pushes one intro text plus one Draft
-  carousel (≤ 12 bubbles) in each teacher's own language; the rest wait for
-  the next job. The Drafts count as notified once any teacher's push
-  succeeds; when every push fails, `notified_at` stays nil so Oban retries
-  (max 3).
+  join it. A Student chat's run is 5 minutes after its latest unnotified
+  Draft: a new Draft moves the waiting job, a turn without one does not. Each
+  run pushes one intro text plus one Draft carousel (≤ 12 bubbles) in each
+  teacher's own language; the rest wait for the next job. The Drafts count as
+  notified once any teacher's push succeeds; when every push fails,
+  `notified_at` stays nil so Oban retries (max 3).
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
@@ -49,7 +49,10 @@ defmodule Ganesha.Assistant.DraftNotifier do
     :ok
   end
 
-  @doc "Enqueues a run with the thread's chat timing (see the moduledoc)."
+  @doc """
+  Enqueues a run with the thread's chat timing (see the moduledoc). A Student
+  chat with no unnotified pending Draft gets `{:error, :no_pending_draft}`.
+  """
   @spec schedule(Thread.t()) :: {:ok, Oban.Job.t()} | {:error, term()}
   def schedule(%Thread{source_type: "group", id: id}) do
     %{thread_id: id}
@@ -57,14 +60,24 @@ defmodule Ganesha.Assistant.DraftNotifier do
     |> Oban.insert()
   end
 
-  def schedule(%Thread{source_type: "user", id: id}) do
-    %{thread_id: id}
-    |> new(
-      schedule_in: @student_delay,
-      unique: [period: :infinity, keys: [:thread_id], states: [:available, :scheduled]],
-      replace: [scheduled: [:scheduled_at]]
-    )
-    |> Oban.insert()
+  def schedule(%Thread{source_type: "user", id: id} = thread) do
+    case latest_unnotified_at(thread) do
+      nil ->
+        {:error, :no_pending_draft}
+
+      inserted_at ->
+        %{thread_id: id}
+        |> new(
+          scheduled_at: DateTime.add(inserted_at, @student_delay),
+          unique: [period: :infinity, keys: [:thread_id], states: [:available, :scheduled]],
+          replace: [scheduled: [:scheduled_at]]
+        )
+        |> Oban.insert()
+    end
+  end
+
+  defp latest_unnotified_at(thread) do
+    Repo.one(from d in unnotified(thread), select: max(d.inserted_at))
   end
 
   defp unnotified(thread) do

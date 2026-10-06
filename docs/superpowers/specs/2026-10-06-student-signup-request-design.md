@@ -22,7 +22,8 @@ teacher happens to read the chat.
    the text stays the generic 「老師會親自回覆你」. The teacher follows up with the
    student directly.
 4. **Every teacher gets the card in their 1:1 chat, 5 minutes after the
-   student's latest draft.** Each new or replacing draft pushes the send back.
+   student's latest draft.** Each new or replacing draft pushes the send back;
+   a message that creates no draft does not.
 5. **One notifier for every chat that pushes cards.** `GroupDraftNotifier`
    becomes `DraftNotifier`, keyed by thread. Group threads keep their current
    timing (3 minutes from the first draft).
@@ -109,12 +110,14 @@ group's next Draft. The window is 3 minutes, and production is off.
 | thread | delay | unique | effect |
 |---|---|---|---|
 | `"group"` | `schedule_in: 180` | `period: 180, keys: [:thread_id]` | 3 minutes from the first Draft; later Drafts join that job (current behaviour) |
-| `"user"` | `schedule_in: 300` | `period: :infinity, keys: [:thread_id], states: [:available, :scheduled], replace: [scheduled: [:scheduled_at]]` | 5 minutes after the latest Draft; each new Draft moves the one waiting job |
+| `"user"` | `scheduled_at:` the latest unnotified pending Draft's `inserted_at` + 300 s | `period: :infinity, keys: [:thread_id], states: [:available, :scheduled], replace: [scheduled: [:scheduled_at]]` | 5 minutes after the latest Draft; each new Draft moves the one waiting job, a turn without a new Draft re-inserts the same time |
 
   The `"user"` uniqueness covers only waiting jobs, so a Draft created while a
   job is executing gets a new job rather than being lost. Checked on
   2026-10-06 against Oban 2.24.1 with `Oban.Engines.Lite`: a second insert with
-  these options returns the same job id and moves its `scheduled_at`.
+  these options returns the same job id and moves its `scheduled_at`. A
+  `"user"` thread with no unnotified pending Draft is not scheduled
+  (`{:error, :no_pending_draft}`).
 - `max_attempts: 3`, queue `:default`, as now.
 
 ### Run
@@ -140,7 +143,9 @@ Intro labels (`Ganesha.Line.Labels`):
 `DraftNotifier.schedule_if_pending(thread)` schedules a run when the thread has
 a pending Draft with `notified_at` nil, and does nothing otherwise. It reads the
 stored Drafts, not the Turn, so a turn that fails after creating a Draft still
-notifies. It is called:
+notifies. For a Student chat the time comes from the latest unnotified Draft's
+`inserted_at` + 300 s, never from the turn: a student who keeps writing without
+a new Draft (「還在嗎？」) does not push the card back. It is called:
 
 - after a group turn and a group `messageEdited` re-run (`ProcessEventWorker`),
   replacing `maybe_schedule_group_notifier/1`;
@@ -222,13 +227,16 @@ Permanent tests (ExUnit, existing conventions):
 - Student chat: a turn that calls `signup_request` replies with a text message
   only; `Tasks.for_chat(:student)` is exactly `set_language` and `signup_request`.
 - `DraftNotifier`: a student thread pushes the student intro to every teacher; a
-  second student Draft moves the waiting job instead of adding one; group timing
-  and uniqueness are unchanged; the existing cases (partial failure, the
-  12-card limit with a follow-up job, already-notified Drafts skipped) are
-  carried over from `group_draft_notifier_test.exs`.
+  second student Draft moves the waiting job to its own `inserted_at` + 300 s
+  instead of adding one, and scheduling again without a new Draft leaves the
+  job where it was; group timing and uniqueness are unchanged; the existing
+  cases (partial failure, the 12-card limit with a follow-up job,
+  already-notified Drafts skipped) are carried over from
+  `group_draft_notifier_test.exs`.
 - `ProcessEventWorker`: a Student-chat turn that creates a Draft enqueues
-  `DraftNotifier` for that thread; one that creates none does not; group
-  assertions use the renamed worker.
+  `DraftNotifier` for that thread; one that creates none does not, and does
+  not move a job already waiting for an earlier Draft; group assertions use
+  the renamed worker.
 - Postback: a non-teacher gets `:unknown_action`; handled, replaced and missing
   requests get the matching outcome text; a known student's tap applies the
   request, appends both messages to that teacher's history and replies through

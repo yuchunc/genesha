@@ -211,6 +211,32 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       refute_enqueued(worker: DraftNotifier)
     end
+
+    test "a Student chat turn without a new Draft leaves the waiting notifier where it was" do
+      {:ok, thread} = Assistant.get_or_create_thread("user", "Ustudent11")
+      {:ok, thread} = Assistant.set_locale(thread, "zh-TW")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{
+          kind: "signup_request",
+          parsed: %{"note" => "想報名週一晚上", "line_user_id" => "Ustudent11", "new" => true}
+        })
+
+      # The draft came four minutes ago.
+      four_minutes_ago = DateTime.utc_now() |> DateTime.add(-240) |> DateTime.truncate(:second)
+
+      Repo.update_all(from(d in Assistant.Draft, where: d.id == ^draft.id),
+        set: [inserted_at: four_minutes_ago]
+      )
+
+      :ok = DraftNotifier.schedule_if_pending(thread)
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "在喔！", tool_calls: []}} end)
+
+      assert {:ok, _} = deliver(text_from("Ustudent11", "還在嗎？"))
+
+      assert [job] = all_enqueued(worker: DraftNotifier, args: %{"thread_id" => thread.id})
+      assert DateTime.diff(job.scheduled_at, four_minutes_ago) == 300
+    end
   end
 
   describe "Group chat" do
