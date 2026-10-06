@@ -22,7 +22,7 @@ alias Ganesha.Assistant
 alias Ganesha.Assistant.{
   Digest,
   Draft,
-  GroupDraftNotifier,
+  DraftNotifier,
   Message,
   ProcessEventWorker,
   PurgeGroupRawTextWorker,
@@ -37,6 +37,7 @@ teacher_id = "Usmoketeacher000000000000000"
 group_id = "Csmokegroup00000000000000000"
 blocked_sender_id = "Usmokeblocked0000000000000000"
 secret = "smoke_channel_secret"
+smoke_sources = [teacher_id, group_id]
 
 # Only the PASS/FAIL lines matter here; Ecto's debug SQL would bury them.
 Logger.configure(level: :warning)
@@ -80,6 +81,9 @@ defmodule Smoke do
 end
 
 cleanup = fn ->
+  smoke_thread_ids =
+    Repo.all(from t in Thread, where: t.source_id in ^smoke_sources, select: t.id)
+
   student_ids = from(s in People.Student, where: like(s.display_name, "SMOKE%"), select: s.id)
 
   purchase_ids =
@@ -114,11 +118,11 @@ cleanup = fn ->
   Repo.delete_all(from(s in Studio.Slot, where: like(s.label, "SMOKE%")))
   Repo.delete_all(from(p in Catalog.Package, where: like(p.name, "SMOKE%")))
 
-  thread_ids = from(t in Thread, where: t.source_id in ^[teacher_id, group_id], select: t.id)
+  thread_ids = from(t in Thread, where: t.source_id in ^smoke_sources, select: t.id)
   Repo.delete_all(from(d in Digest, where: d.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(d in Draft, where: d.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(m in Message, where: m.thread_id in subquery(thread_ids)))
-  Repo.delete_all(from(t in Thread, where: t.source_id in ^[teacher_id, group_id]))
+  Repo.delete_all(from(t in Thread, where: t.source_id in ^smoke_sources))
   Repo.delete_all(from(s in People.Student, where: like(s.display_name, "SMOKE%")))
 
   Repo.delete_all(
@@ -137,8 +141,8 @@ cleanup = fn ->
 
   Repo.delete_all(
     from(j in Oban.Job,
-      where: j.worker == "Ganesha.Assistant.GroupDraftNotifier",
-      where: json_extract_path(j.args, ["group_id"]) == ^group_id
+      where: j.worker == "Ganesha.Assistant.DraftNotifier",
+      where: fragment("json_extract(?, '$.thread_id')", j.args) in ^smoke_thread_ids
     )
   )
 end
@@ -902,20 +906,22 @@ group_payment_draft =
       where: t.source_id == ^group_id and d.kind == "record_payment" and d.state == "pending"
   )
 
+group_thread = Assistant.get_group_thread(group_id)
+
 notifier_jobs =
   Repo.aggregate(
     from(j in Oban.Job,
-      where: j.worker == "Ganesha.Assistant.GroupDraftNotifier",
-      where: fragment("json_extract(?, '$.group_id')", j.args) == ^group_id
+      where: j.worker == "Ganesha.Assistant.DraftNotifier",
+      where: fragment("json_extract(?, '$.thread_id')", j.args) == ^group_thread.id
     ),
     :count
   )
 
 Smoke.check("group payment creates a pending draft", group_payment_draft != nil)
-Smoke.check("GroupDraftNotifier job enqueued for the group", notifier_jobs == 1)
+Smoke.check("DraftNotifier job enqueued for the group", notifier_jobs == 1)
 
 Process.delete(:line_client_mock_calls)
-:ok = GroupDraftNotifier.perform(%Oban.Job{args: %{"group_id" => group_id}})
+:ok = DraftNotifier.perform(%Oban.Job{args: %{"thread_id" => group_thread.id}})
 
 notified_draft = group_payment_draft && Repo.reload!(group_payment_draft)
 

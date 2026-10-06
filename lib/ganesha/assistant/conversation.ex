@@ -14,7 +14,7 @@ defmodule Ganesha.Assistant.Conversation do
   require Logger
 
   alias Ganesha.{Assistant, Clock}
-  alias Ganesha.Assistant.{Agent, Memory, Prompts, Snapshot, Tasks, Thread, Turn}
+  alias Ganesha.Assistant.{Agent, DraftNotifier, Memory, Prompts, Snapshot, Tasks, Thread, Turn}
   alias Ganesha.Line.{Cards, Client, Labels, Reply}
 
   @loading_seconds 20
@@ -44,6 +44,9 @@ defmodule Ganesha.Assistant.Conversation do
         deliver(reply_token, source_id, [Client.text_message(Labels.t(:apology, locale))], nil)
     end
 
+    # Spec 2026-10-06 §3: covers a plain message and the turn that runs once a
+    # newcomer picks a language.
+    if thread.source_type == "user", do: DraftNotifier.schedule_if_pending(thread)
     :ok
   end
 

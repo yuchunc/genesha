@@ -244,7 +244,7 @@ defmodule Ganesha.Assistant do
 
   @doc """
   Sets `notified_at` on the listed pending Drafts (spec §6.6). Used after a
-  successful `GroupDraftNotifier` push. Returns `{:error, :not_all_marked}`
+  successful `DraftNotifier` push. Returns `{:error, :not_all_marked}`
   when any id is missing or no longer pending, so a partial push can retry.
   """
   def mark_drafts_notified(ids) when is_list(ids) do

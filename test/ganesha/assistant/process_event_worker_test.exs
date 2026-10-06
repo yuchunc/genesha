@@ -3,7 +3,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
 
   alias Ganesha.{Assistant, Catalog, Line, People, Sales}
-  alias Ganesha.Assistant.{Digest, GroupDraftNotifier, ProcessEventWorker}
+  alias Ganesha.Assistant.{Digest, DraftNotifier, ProcessEventWorker}
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Line.Client.Mock, as: LineMock
   alias Ganesha.Line.Labels
@@ -175,6 +175,42 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert {:ok, _} = deliver(postback_from("Ustranger", "action=confirm&draft_id=#{draft.id}"))
       assert Assistant.get_draft!(draft.id).state == "pending"
     end
+
+    test "a Student chat's sign-up request schedules the teachers' notifier" do
+      {:ok, thread} = Assistant.get_or_create_thread("user", "Ustudent9")
+      {:ok, thread} = Assistant.set_locale(thread, "zh-TW")
+      Process.put(:round, 0)
+
+      Mock.stub(fn _messages, _tools, _opts ->
+        round = Process.get(:round)
+        Process.put(:round, round + 1)
+
+        if round == 0,
+          do:
+            {:ok,
+             %{
+               text: nil,
+               tool_calls: [
+                 %{id: "t1", name: "signup_request", input: %{"note" => "想報名週一晚上"}}
+               ]
+             }},
+          else: {:ok, %{text: "老師會親自回覆你喔！", tool_calls: []}}
+      end)
+
+      assert {:ok, _} = deliver(text_from("Ustudent9", "我想報名週一晚上的課"))
+
+      assert_enqueued(worker: DraftNotifier, args: %{"thread_id" => thread.id})
+    end
+
+    test "a Student chat turn without a Draft schedules nothing" do
+      {:ok, thread} = Assistant.get_or_create_thread("user", "Ustudent10")
+      {:ok, _} = Assistant.set_locale(thread, "zh-TW")
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "你好！", tool_calls: []}} end)
+
+      assert {:ok, _} = deliver(text_from("Ustudent10", "你好"))
+
+      refute_enqueued(worker: DraftNotifier)
+    end
   end
 
   describe "Group chat" do
@@ -233,7 +269,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert [%Assistant.Draft{state: "pending", kind: "record_payment"}] =
                Repo.all(Assistant.Draft)
 
-      assert_enqueued(worker: GroupDraftNotifier, args: %{"group_id" => "Cabc"})
+      {:ok, group} = Assistant.get_or_create_thread("group", "Cabc")
+      assert_enqueued(worker: DraftNotifier, args: %{"thread_id" => group.id})
     end
 
     @tag :capture_log
@@ -252,7 +289,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       assert {:ok, _} = deliver(group_text("Ustudent1", "2.Lulu （Line pay 1200元）"))
       assert [%Assistant.Draft{state: "pending"}] = Repo.all(Assistant.Draft)
-      assert_enqueued(worker: GroupDraftNotifier, args: %{"group_id" => "Cabc"})
+      {:ok, group} = Assistant.get_or_create_thread("group", "Cabc")
+      assert_enqueued(worker: DraftNotifier, args: %{"thread_id" => group.id})
     end
 
     test "does not enqueue a notifier when the group turn creates no Drafts" do
@@ -261,7 +299,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       end)
 
       assert {:ok, _} = deliver(group_text("Ustudent1", "just chatting"))
-      refute_enqueued(worker: GroupDraftNotifier)
+      refute_enqueued(worker: DraftNotifier)
     end
 
     @tag :capture_log
