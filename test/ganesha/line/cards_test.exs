@@ -41,6 +41,24 @@ defmodule Ganesha.Line.CardsTest do
                "action=discard&draft_id=#{draft.id}"
              ]
     end
+
+    test "a sign-up request card leads with 幫他報名, then Confirm and Discard" do
+      {:ok, thread} = Assistant.get_or_create_thread("user", "Unewcomer")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{
+          kind: "signup_request",
+          parsed: %{"note" => "想報名", "new" => true, "line_user_id" => "Unewcomer"}
+        })
+
+      bubble = Cards.draft_bubble(draft, "zh-TW")
+
+      assert Enum.map(bubble.footer.contents, & &1.action.data) == [
+               "action=enroll_from_request&draft_id=#{draft.id}",
+               "action=confirm&draft_id=#{draft.id}",
+               "action=discard&draft_id=#{draft.id}"
+             ]
+    end
   end
 
   test "history_line/2 names the Draft by id and summary for the model" do

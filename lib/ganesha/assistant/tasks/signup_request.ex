@@ -68,6 +68,38 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
 
   def summary(parsed, _locale), do: "新朋友想報名：#{parsed["note"]}"
 
+  @doc """
+  What 「幫他報名」 adds to the Teacher chat as her message (spec 2026-10-06
+  §5), so the model proposes enroll, or add_student first for a newcomer.
+  """
+  @spec teacher_message(pos_integer(), map(), String.t()) :: String.t()
+  def teacher_message(id, %{"new" => false} = parsed, "en"),
+    do:
+      "[Sign-up request ##{id}] Sign up #{parsed["student_name"]} " <>
+        "(student ##{parsed["student_id"]}): #{parsed["note"]}"
+
+  def teacher_message(id, %{"new" => false} = parsed, _locale),
+    do:
+      "[報名申請 ##{id}] 幫 #{parsed["student_name"]}（學生 ##{parsed["student_id"]}）" <>
+        "報名：#{parsed["note"]}"
+
+  def teacher_message(id, parsed, "en"),
+    do:
+      "[Sign-up request ##{id}] #{newcomer(parsed, "en")} (LINE ID #{parsed["line_user_id"]}, " <>
+        "not a student yet) wants to sign up: #{parsed["note"]}. Add the student first, " <>
+        "linked to this LINE ID; sign them up after I confirm."
+
+  def teacher_message(id, parsed, locale),
+    do:
+      "[報名申請 ##{id}] #{newcomer(parsed, locale)}（LINE ID #{parsed["line_user_id"]}，" <>
+        "還不是學生）想報名：#{parsed["note"]}。請先新增這位學生並連結這個 LINE ID，" <>
+        "我確認後再幫他報名。"
+
+  defp newcomer(%{"line_name" => name}, "en") when is_binary(name), do: "Newcomer #{name}"
+  defp newcomer(_parsed, "en"), do: "Newcomer"
+  defp newcomer(%{"line_name" => name}, _locale) when is_binary(name), do: "新朋友 #{name}"
+  defp newcomer(_parsed, _locale), do: "新朋友"
+
   defp asker(line_user_id, note) do
     case People.find_by_line_user_id(line_user_id) do
       %People.Student{} = student ->

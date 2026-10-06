@@ -14,7 +14,8 @@ defmodule Ganesha.Assistant.Conversation do
   require Logger
 
   alias Ganesha.{Assistant, Clock}
-  alias Ganesha.Assistant.{Agent, DraftNotifier, Memory, Prompts, Snapshot, Tasks, Thread, Turn}
+  alias Ganesha.Assistant.{Agent, Draft, DraftNotifier, Memory, Prompts, Snapshot, Tasks, Thread, Turn}
+  alias Ganesha.Assistant.Tasks.SignupRequest
   alias Ganesha.Line.{Cards, Client, Labels, Reply}
 
   @loading_seconds 20
@@ -104,6 +105,14 @@ defmodule Ganesha.Assistant.Conversation do
       else: unknown_action(reply_token, source_id)
   end
 
+  # Spec 2026-10-06 §5: 「幫他報名」 settles a sign-up request and hands it to
+  # this teacher's own chat as a normal turn.
+  def handle_postback(%{"action" => "enroll_from_request"} = params, reply_token, source_id) do
+    if Ganesha.Line.teacher?(source_id),
+      do: enroll_from_request(parse_id(params["draft_id"]), reply_token, source_id),
+      else: unknown_action(reply_token, source_id)
+  end
+
   def handle_postback(_params, reply_token, source_id), do: unknown_action(reply_token, source_id)
 
   @doc """
@@ -119,9 +128,47 @@ defmodule Ganesha.Assistant.Conversation do
 
   defp settle_postback(action, params, reply_token, source_id) do
     thread = thread_for(source_id)
-    locale = locale(thread)
-    {text, history_line} = settle(action, parse_id(params["draft_id"]), locale)
+    outcome = settle(action, parse_id(params["draft_id"]), locale(thread))
+    deliver_outcome(thread, reply_token, source_id, outcome)
+  end
 
+  defp enroll_from_request(id, reply_token, source_id) do
+    thread = thread_for(source_id)
+    locale = locale(thread)
+
+    with %Draft{} = draft <- signup_request(id),
+         {:applied, applied} = result <- outcome("confirm", draft) do
+      {_text, history_line} = describe_outcome(result, locale)
+      {:ok, _} = Assistant.append_message(thread, "assistant", history_line, nil)
+
+      {:ok, _} =
+        Assistant.append_message(
+          thread,
+          "user",
+          SignupRequest.teacher_message(applied.id, applied.parsed, locale),
+          nil
+        )
+
+      handle_message(thread, reply_token, source_id)
+    else
+      nil ->
+        deliver_outcome(thread, reply_token, source_id, {Labels.t(:not_found, locale), nil})
+
+      other ->
+        deliver_outcome(thread, reply_token, source_id, describe_outcome(other, locale))
+    end
+  end
+
+  defp signup_request(nil), do: nil
+
+  defp signup_request(id) do
+    case Assistant.get_draft(id) do
+      %Draft{kind: "signup_request"} = draft -> draft
+      _other -> nil
+    end
+  end
+
+  defp deliver_outcome(thread, reply_token, source_id, {text, history_line}) do
     deliver(reply_token, source_id, [Client.text_message(text)], nil)
 
     if history_line do

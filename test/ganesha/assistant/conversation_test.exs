@@ -4,7 +4,7 @@ defmodule Ganesha.Assistant.ConversationTest do
   alias Ganesha.{Assistant, Catalog, Clock, People, Sales, Studio}
   alias Ganesha.Assistant.{Conversation, Draft, Tasks}
   alias Ganesha.Assistant.Provider.Mock
-  alias Ganesha.Assistant.Tasks.{BookOneOff, RecordPayment}
+  alias Ganesha.Assistant.Tasks.{BookOneOff, RecordPayment, SignupRequest}
   alias Ganesha.Line.{Cards, Labels}
   alias Ganesha.Line.Client.Mock, as: LineMock
   alias Ganesha.Sales.Payment
@@ -115,6 +115,29 @@ defmodule Ganesha.Assistant.ConversationTest do
 
     draft
   end
+
+  # A sign-up request as the Student chat would propose it.
+  defp signup_draft(line_user_id) do
+    {:ok, chat} = Assistant.get_or_create_thread("user", line_user_id)
+
+    {:ok, %{student_id: student_id, parsed: parsed}} =
+      SignupRequest.propose(%{"note" => "想報名週一晚上的課，11月開始"}, %{
+        thread: chat,
+        locale: "zh-TW",
+        today: Clock.today()
+      })
+
+    {:ok, draft} =
+      Assistant.create_draft(chat, %{
+        kind: "signup_request",
+        student_id: student_id,
+        parsed: parsed
+      })
+
+    draft
+  end
+
+  defp enroll_tap(id), do: %{"action" => "enroll_from_request", "draft_id" => to_string(id)}
 
   defp postback(action, id), do: %{"action" => action, "draft_id" => to_string(id)}
 
@@ -518,6 +541,80 @@ defmodule Ganesha.Assistant.ConversationTest do
 
       welcome = Labels.t(:welcome, "en")
       assert [{:reply, {"rt-l", [%{text: ^welcome}]}}] = LineMock.calls()
+    end
+
+    test "幫他報名 settles a known student's request and runs a turn in her chat", %{
+      thread: thread
+    } do
+      {:ok, amy} = People.create_student(%{display_name: "Amy", line_user_id: "Uamy"})
+      draft = signup_draft("Uamy")
+      model([], "好，要幫 Amy 報名哪一堂？")
+
+      :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-e", @teacher)
+
+      assert Repo.reload!(draft).state == "applied"
+
+      assert [_confirmed_line, request, reply] =
+               thread |> Assistant.list_messages() |> Enum.take(-3)
+
+      assert request.role == "user"
+      assert request.content =~ "##{draft.id}"
+      assert request.content =~ "Amy"
+      assert request.content =~ "##{amy.id}"
+      assert reply.content == "好，要幫 Amy 報名哪一堂？"
+
+      assert [{:loading, _}, {:reply, {"rt-e", [%{text: "好，要幫 Amy 報名哪一堂？"}]}}] =
+               LineMock.calls()
+    end
+
+    test "a newcomer's request hands the model their LINE ID to add them first", %{
+      thread: thread
+    } do
+      Process.put(:line_client_mock_profile, {:ok, %{"displayName" => "小美"}})
+      draft = signup_draft("Unewcomer")
+      model([], "先新增小美，確認後跟我說「繼續」。")
+
+      :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-e", @teacher)
+
+      request = thread |> Assistant.list_messages() |> Enum.find(&(&1.role == "user"))
+      assert request.content =~ "Unewcomer"
+      assert request.content =~ "小美"
+    end
+
+    test "a request already handled says so and runs no turn", %{thread: thread} do
+      draft = signup_draft("Unewcomer")
+      {:ok, _} = Assistant.confirm_draft(draft, "line:teacher")
+      Mock.stub(fn _messages, _tools, _opts -> flunk("no turn should run") end)
+
+      :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-e", @teacher)
+
+      handled = Labels.t(:already_handled, "zh-TW")
+      assert [{:reply, {"rt-e", [%{text: ^handled}]}}] = LineMock.calls()
+      refute Enum.any?(Assistant.list_messages(thread), &(&1.role == "user"))
+    end
+
+    test "幫他報名 on any other Draft is not found and changes nothing", %{
+      thread: thread,
+      student: student
+    } do
+      draft = payment_draft(thread, student)
+      Mock.stub(fn _messages, _tools, _opts -> flunk("no turn should run") end)
+
+      :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-e", @teacher)
+
+      assert Repo.reload!(draft).state == "pending"
+      not_found = Labels.t(:not_found, "zh-TW")
+      assert [{:reply, {"rt-e", [%{text: ^not_found}]}}] = LineMock.calls()
+    end
+
+    test "only a teacher may tap 幫他報名" do
+      draft = signup_draft("Unewcomer")
+
+      :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-x", "Ustranger")
+
+      assert Repo.reload!(draft).state == "pending"
+      unknown = Labels.t(:unknown_action, "zh-TW")
+      assert [{:reply, {"rt-x", [%{text: ^unknown}]}}] = LineMock.calls()
     end
   end
 end

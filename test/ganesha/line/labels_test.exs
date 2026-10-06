@@ -7,8 +7,8 @@ defmodule Ganesha.Line.LabelsTest do
            failed reason_changed reason_not_found reason_other already_handled replaced
            not_found exception tag_confirmed tag_discarded
            tag_failed tag_already_handled tag_replaced tag_exception apology unknown_action
-           welcome group_drafts_push_intro pending_drafts_section pending_drafts_empty
-           pending_drafts_student_link)a
+           welcome group_drafts_push_intro student_drafts_push_intro enroll_from_request
+           pending_drafts_section pending_drafts_empty pending_drafts_student_link)a
 
   test "every label speaks both languages, and they differ" do
     for key <- @keys do

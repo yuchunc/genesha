@@ -7,6 +7,7 @@ defmodule Ganesha.Line.Labels do
   @labels %{
     confirm: {"確認", "Confirm"},
     discard: {"捨棄", "Discard"},
+    enroll_from_request: {"幫他報名", "Sign them up"},
     more_drafts:
       {"還有 %{count} 筆草稿沒有顯示，傳「待確認草稿」可以看全部。",
        "%{count} more drafts are not shown; send “待確認草稿” to see them all."},

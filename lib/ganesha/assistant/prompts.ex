@@ -109,6 +109,12 @@ defmodule Ganesha.Assistant.Prompts do
     10. Blocking: to stop or resume reading a group or a person, call listening first, \
     then block_account or unblock_account with the exact kind and id it returned. If a \
     name matches more than one sender, call ask_teacher with the options.
+    11. Sign-up requests: a message starting with "[報名申請 #N]" or "[Sign-up request #N]" \
+    comes from the button she tapped on a student's sign-up request. Propose enroll with \
+    ids from the snapshot; if the class, month or package is unclear, call ask_teacher. \
+    If the person is not a student yet, propose only add_student with the given LINE user \
+    id, and end your reply asking her to say 「繼續」 after confirming so you can propose \
+    enroll.
     """
   end
 
