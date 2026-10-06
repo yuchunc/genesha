@@ -30,7 +30,7 @@ defmodule Ganesha.Assistant.Conversation do
 
     case result do
       {:ok, turn} ->
-        drafts = Assistant.get_drafts(turn.draft_ids)
+        drafts = cards_for(thread, turn)
         messages = Reply.build(turn, drafts, locale)
 
         deliver(reply_token, source_id, messages, fn -> text_only(turn, drafts, locale) end)
@@ -276,6 +276,11 @@ defmodule Ganesha.Assistant.Conversation do
         :ok
     end
   end
+
+  # Spec 2026-10-06 §2: a Student chat never sees Draft cards; its Drafts reach
+  # the teachers through DraftNotifier instead.
+  defp cards_for(%Thread{source_type: "user"}, _turn), do: []
+  defp cards_for(_thread, %Turn{draft_ids: ids}), do: Assistant.get_drafts(ids)
 
   # `turn.text` plus one line per Draft (spec §6.1 step 6).
   defp text_only(turn, drafts, locale) do

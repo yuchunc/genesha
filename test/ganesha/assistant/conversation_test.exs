@@ -182,6 +182,25 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert [{:loading, _}, {:reply, {"rt-2", [%{text: "Hello!"}]}}] = LineMock.calls()
     end
 
+    test "a Student chat's sign-up request becomes a Draft, but the student gets text only" do
+      {:ok, stranger} = Assistant.get_or_create_thread("user", "Ustranger")
+      {:ok, stranger} = Assistant.set_locale(stranger, "zh-TW")
+
+      model(
+        [%{id: "t1", name: "signup_request", input: %{"note" => "想報名週一晚上"}}],
+        "老師會親自回覆你喔！"
+      )
+
+      :ok = Conversation.handle_message(say(stranger, "我想報名週一晚上的課"), "rt-3", "Ustranger")
+
+      assert [%Draft{kind: "signup_request", state: "pending"}] = Repo.all(Draft)
+
+      assert [{:loading, _}, {:reply, {"rt-3", [%{type: "text", text: "老師會親自回覆你喔！"}]}}] =
+               LineMock.calls()
+
+      assert last_message(stranger).content == "老師會親自回覆你喔！"
+    end
+
     test "after set_language the cards come back in the new language", %{thread: thread} do
       model(
         [
