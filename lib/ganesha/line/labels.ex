@@ -39,8 +39,7 @@ defmodule Ganesha.Line.Labels do
     group_drafts_push_intro:
       {"群組有新草稿待確認，請在下方卡片確認或捨棄。",
        "New drafts from the group chat are waiting below — confirm or discard each card."},
-    student_drafts_push_intro:
-      {"私訊有人想報名：", "Someone asked to sign up in a private chat:"},
+    student_drafts_push_intro: {"私訊有人想報名：", "Someone asked to sign up in a private chat:"},
     pending_drafts_section: {"待確認草稿", "Pending drafts"},
     pending_drafts_empty: {"目前沒有待確認的草稿。", "No drafts are waiting."},
     pending_drafts_student_link: {"學生", "Student"}

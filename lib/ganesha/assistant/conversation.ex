@@ -14,7 +14,19 @@ defmodule Ganesha.Assistant.Conversation do
   require Logger
 
   alias Ganesha.{Assistant, Clock}
-  alias Ganesha.Assistant.{Agent, Draft, DraftNotifier, Memory, Prompts, Snapshot, Tasks, Thread, Turn}
+
+  alias Ganesha.Assistant.{
+    Agent,
+    Draft,
+    DraftNotifier,
+    Memory,
+    Prompts,
+    Snapshot,
+    Tasks,
+    Thread,
+    Turn
+  }
+
   alias Ganesha.Assistant.Tasks.SignupRequest
   alias Ganesha.Line.{Cards, Client, Labels, Reply}
 
