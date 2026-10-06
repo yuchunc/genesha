@@ -29,6 +29,7 @@ defmodule Ganesha.Assistant.TasksTest do
     SetLanguage,
     SetNoShow,
     SetSessionStyle,
+    SignupRequest,
     StudentSummary,
     UnblockAccount
   }
@@ -49,7 +50,7 @@ defmodule Ganesha.Assistant.TasksTest do
 
   test "each chat gets its own tasks (spec §2 rule 7)" do
     assert Tasks.for_chat(:group) == [RecordPayment, BookOneOff, MakeupRequest]
-    assert Tasks.for_chat(:student) == [SetLanguage]
+    assert Tasks.for_chat(:student) == [SetLanguage, SignupRequest]
 
     teacher = Tasks.for_chat(:teacher)
 
@@ -176,5 +177,11 @@ defmodule Ganesha.Assistant.TasksTest do
       refute task in Tasks.for_chat(:group)
       refute task in Tasks.for_chat(:student)
     end
+  end
+
+  test "signup_request is Student chat only" do
+    assert SignupRequest in Tasks.for_chat(:student)
+    refute SignupRequest in Tasks.for_chat(:teacher)
+    refute SignupRequest in Tasks.for_chat(:group)
   end
 end

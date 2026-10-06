@@ -32,6 +32,7 @@ defmodule Ganesha.Assistant.Tasks do
     SetLanguage,
     SetNoShow,
     SetSessionStyle,
+    SignupRequest,
     StudentSummary,
     UnblockAccount
   }
@@ -62,7 +63,7 @@ defmodule Ganesha.Assistant.Tasks do
              @schedule ++
              [AskTeacher, SetLanguage, PendingDrafts, Listening, BlockAccount, UnblockAccount]
   @group [RecordPayment, BookOneOff, MakeupRequest]
-  @student [SetLanguage]
+  @student [SetLanguage, SignupRequest]
 
   @spec for_chat(:teacher | :group | :student) :: [module()]
   def for_chat(:teacher), do: @teacher

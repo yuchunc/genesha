@@ -36,8 +36,8 @@ when unsure; code performs every step and enforces every rule.
 6. Cards are a fixed set designed in code. The model picks a card; it never lays one
    out or writes its numbers. A Draft card shows only the Draft's stored values.
 7. The Teacher chat gets every task. The Group chat gets three: record payment,
-   single-class/trial booking, makeup request. Student chats get none (only
-   `set_language`).
+   single-class/trial booking, makeup request. Student chats get `set_language`
+   and `signup_request` (`2026-10-06-student-signup-request-design.md`).
 
 ## 3. Scope
 
@@ -82,7 +82,7 @@ carousel. A confirmed payment for an already-closed month is not a failure:
 
 Publishing and its bank/announcement settings, closing a month, login and account
 screens, dev pages, model-designed cards, editing sent LINE messages (impossible),
-posting in the Group chat, tools for Student chats.
+posting in the Group chat.
 
 ## 4. Architecture
 

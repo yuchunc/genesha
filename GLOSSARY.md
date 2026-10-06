@@ -55,3 +55,7 @@ _Avoid_: approve, accept, apply
 **Discard**:
 The teacher's rejection of a Draft, after which it never takes effect.
 _Avoid_: reject, cancel (a Session is cancelled; a Draft is discarded)
+
+**Sign-up request**:
+A Draft from a Student chat recording that someone asked to sign up for a class; Confirm acknowledges it and books nothing.
+_Avoid_: enrollment request, registration

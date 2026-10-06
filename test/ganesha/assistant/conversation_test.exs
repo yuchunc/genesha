@@ -169,7 +169,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert [%{role: "user", content: "嗨"}] = request.messages
     end
 
-    test "a Student chat gets only set_language and no snapshot" do
+    test "a Student chat gets set_language and signup_request, and no snapshot" do
       {:ok, stranger} = Assistant.get_or_create_thread("user", "Ustranger")
       {:ok, stranger} = Assistant.set_locale(stranger, "en")
       model([], "Hello!")
@@ -177,7 +177,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       :ok = Conversation.handle_message(say(stranger, "hi"), "rt-2", "Ustranger")
 
       request = Process.get(:last_request)
-      assert Enum.map(request.tools, & &1.name) == ["set_language"]
+      assert Enum.map(request.tools, & &1.name) == ["set_language", "signup_request"]
       refute request.system =~ "Studio snapshot"
       assert [{:loading, _}, {:reply, {"rt-2", [%{text: "Hello!"}]}}] = LineMock.calls()
     end
