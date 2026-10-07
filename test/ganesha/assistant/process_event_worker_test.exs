@@ -275,6 +275,26 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert Assistant.list_messages(thread) == []
     end
 
+    # TEMPORARY, DEV ONLY: see `dev_teacher_posts_in_groups` in config/runtime.exs.
+    test "with the dev-only flag, a teacher's group post is handled like a student's" do
+      line_config = Application.fetch_env!(:ganesha, :line)
+      on_exit(fn -> Application.put_env(:ganesha, :line, line_config) end)
+
+      Application.put_env(
+        :ganesha,
+        :line,
+        Keyword.put(line_config, :dev_teacher_posts_in_groups, true)
+      )
+
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "ok", tool_calls: []}} end)
+
+      assert {:ok, _} = deliver(group_text(@teacher, "大家好"))
+
+      assert LineMock.calls() == []
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      assert [%{role: "user", sender_id: @teacher}, _] = Assistant.list_messages(thread)
+    end
+
     test "can produce a pending Draft, never an applied one" do
       student = lulu()
       Process.put(:round, 0)

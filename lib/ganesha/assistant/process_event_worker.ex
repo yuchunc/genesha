@@ -54,12 +54,14 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
 
   # Spec 2026-10-05 §2: a blocked group, a teacher's own post, or a blocked
   # sender is dropped before anything is stored, looked up or sent to the model.
+  # (TEMPORARY, DEV ONLY: `dev_teacher_posts_in_groups?/0` can let a teacher's
+  # post through; see below.)
   defp route(%{source_type: "group", source_id: group_id, raw_type: "message"} = event) do
     sender_id = get_in(event.payload, ["source", "userId"])
 
     cond do
       Line.blocked?("group", group_id) -> :ok
-      Line.teacher?(sender_id) -> :ok
+      Line.teacher?(sender_id) and not dev_teacher_posts_in_groups?() -> :ok
       Line.blocked?("sender", sender_id) -> :ok
       true -> handle_group_message(event, group_id, sender_id)
     end
@@ -220,6 +222,16 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   defp simple_reply? do
     Application.get_env(:ganesha, :line, [])
     |> Keyword.get(:simple_reply, false)
+  end
+
+  # TEMPORARY, DEV ONLY — remove once there is a non-teacher test LINE account.
+  # When `dev_teacher_posts_in_groups: true` (set only in config/runtime.exs's
+  # dev block), a teacher's group posts are handled exactly like a student's,
+  # so one person can be a teacher in her 1:1 chat and a "student" in the test
+  # group. Off by default, and never set in test or prod config.
+  defp dev_teacher_posts_in_groups? do
+    Application.get_env(:ganesha, :line, [])
+    |> Keyword.get(:dev_teacher_posts_in_groups, false)
   end
 
   defp line_client, do: Application.get_env(:ganesha, :line_client, Ganesha.Line.Client)

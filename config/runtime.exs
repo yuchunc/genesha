@@ -54,7 +54,12 @@ if config_env() == :dev do
     simple_reply: System.get_env("LINE_SIMPLE_REPLY", "true") == "true",
     # Dev keeps every raw LINE payload and group message for development;
     # prod and test purge at 24h (spec 2026-10-05 §5).
-    purge_raw_text: false
+    purge_raw_text: false,
+    # TEMPORARY, DEV ONLY — remove once there is a non-teacher test LINE account.
+    # Teachers' group posts are normally ignored (spec 2026-10-05 §2). With this
+    # on, the dev bot handles them like a student's, so a teacher can test the
+    # group flow from her own account. Never set this in prod.
+    dev_teacher_posts_in_groups: true
 
   config :ganesha, Ganesha.Assistant.Provider.Anthropic,
     api_key: System.get_env("ANTHROPIC_API_KEY", ""),
