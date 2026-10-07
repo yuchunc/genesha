@@ -1,0 +1,7 @@
+# Loads the dev LINE and Anthropic credentials into every shell (with mise
+# activated) inside this project, so `mix phx.server` and the LINE scripts
+# never start without them. .env.dev is gitignored: create it with
+# `cp .env.dev.example .env.dev`. A missing file is skipped, not an error.
+# Production does not use this; Fly secrets configure it.
+[env]
+_.file = { path = ".env.dev", redact = true }

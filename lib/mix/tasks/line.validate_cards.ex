@@ -8,7 +8,7 @@ defmodule Mix.Tasks.Line.ValidateCards do
   Nothing is sent to users. Prints PASS or FAIL per check and exits non-zero
   when any fails.
 
-      set -a && source .env.dev && set +a && mix line.validate_cards
+      mix line.validate_cards   # credentials come from .env.dev via mise.toml
   """
 
   use Mix.Task

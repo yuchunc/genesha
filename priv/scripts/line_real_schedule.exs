@@ -2,9 +2,10 @@
 # Real Teacher chat turns for schedule tasks (spec §8 slice 3).
 #
 #     mix ecto.migrate
-#     source .env.dev && mix run priv/scripts/line_real_schedule.exs
+#     mix run priv/scripts/line_real_schedule.exs
 #
-# Uses Anthropic + Line.Client.Mock. Seeds SMOKE schedule data, runs three
+# Uses Anthropic (ANTHROPIC_API_KEY from .env.dev, loaded by mise.toml) +
+# Line.Client.Mock. Seeds SMOKE schedule data, runs three
 # Conversation turns (cancel without reason, cancel with reason, style change).
 
 import Ecto.Query
@@ -24,7 +25,7 @@ api_key =
   |> Keyword.get(:api_key, "")
 
 if provider != Ganesha.Assistant.Provider.Anthropic or api_key == "" do
-  IO.puts("Needs the dev Anthropic provider and ANTHROPIC_API_KEY: run `source .env.dev` first.")
+  IO.puts("Needs the dev Anthropic provider and ANTHROPIC_API_KEY in .env.dev (loaded by mise.toml).")
   System.halt(1)
 end
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env elixir
 # Real Sonnet 5.5 runs for the six lookup tasks (spec §8, slice 2).
 #
-#     source .env.dev && mix run priv/scripts/line_real_questions.exs
+#     mix run priv/scripts/line_real_questions.exs
 #
-# Uses the dev Anthropic provider and Line.Client.Mock — nothing reaches users.
+# Uses the dev Anthropic provider (ANTHROPIC_API_KEY from .env.dev, loaded by
+# mise.toml) and Line.Client.Mock — nothing reaches users.
 # For LINE Flex validation against the real API, run `mix line.validate_cards`.
 #
 # Seeds a small SMOKE studio (a Slot, two Sessions, two students, purchases, a
@@ -29,7 +30,7 @@ api_key =
   |> Keyword.get(:api_key, "")
 
 if provider != Ganesha.Assistant.Provider.Anthropic or api_key == "" do
-  IO.puts("Needs the dev Anthropic provider and ANTHROPIC_API_KEY: run `source .env.dev` first.")
+  IO.puts("Needs the dev Anthropic provider and ANTHROPIC_API_KEY in .env.dev (loaded by mise.toml).")
   System.halt(1)
 end
 

@@ -3,12 +3,13 @@
 # the real model (spec §8: every slice ends with a real Sonnet 5.5 run).
 #
 #     mix ecto.migrate
-#     source .env.dev && mix run priv/scripts/line_real_turn.exs
-#     source .env.dev && mix run priv/scripts/line_real_turn.exs enroll
-#     source .env.dev && mix run priv/scripts/line_real_turn.exs no_show
+#     mix run priv/scripts/line_real_turn.exs
+#     mix run priv/scripts/line_real_turn.exs enroll
+#     mix run priv/scripts/line_real_turn.exs no_show
 #
-# Uses the dev Anthropic provider (ANTHROPIC_API_KEY; ANTHROPIC_MODEL or
-# claude-sonnet-5-5) and Ganesha.Line.Client.Mock, so nothing reaches LINE.
+# Uses the dev Anthropic provider (ANTHROPIC_API_KEY from .env.dev, loaded by
+# mise.toml; ANTHROPIC_MODEL or claude-sonnet-5-5) and Ganesha.Line.Client.Mock,
+# so nothing reaches LINE.
 
 import Ecto.Query
 
@@ -30,7 +31,7 @@ api_key =
   |> Keyword.get(:api_key, "")
 
 if provider != Ganesha.Assistant.Provider.Anthropic or api_key == "" do
-  IO.puts("Needs the dev Anthropic provider and ANTHROPIC_API_KEY: run `source .env.dev` first.")
+  IO.puts("Needs the dev Anthropic provider and ANTHROPIC_API_KEY in .env.dev (loaded by mise.toml).")
   System.halt(1)
 end
 
