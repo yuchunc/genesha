@@ -140,7 +140,8 @@ defmodule Ganesha.Assistant do
 
   defp replace(_thread, _old_id, _draft), do: :ok
 
-  defp latest_user_message(%Thread{} = thread) do
+  @doc "The thread's newest `user` message, or nil: the message a turn is handling."
+  def latest_user_message(%Thread{} = thread) do
     Repo.one(
       from m in Message,
         where: m.thread_id == ^thread.id and m.role == "user",

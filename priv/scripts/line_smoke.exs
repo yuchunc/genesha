@@ -1224,6 +1224,127 @@ Smoke.check(
   add_student_draft != nil and add_student_draft.parsed["line_user_id"] == newcomer_id
 )
 
+# ---------------------------------------------------------------- Step 13
+Smoke.step(13, "a group sender asks to sign up; the teacher gets the card and taps 幫他報名")
+
+group_joiner_id = "Usmokegroupjoiner00000000000000"
+Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "SMOKE 群組新朋友"}})
+
+# The Group chat proposes signup_request; the Teacher chat (the only one with
+# enroll) proposes add_student for the sender's LINE ID.
+ProviderMock.stub(fn messages, tools, _opts ->
+  teacher_chat? = "enroll" in Enum.map(tools, & &1.name)
+
+  case {List.last(messages), teacher_chat?} do
+    {%{role: "tool"}, false} ->
+      {:ok, %{text: "已記錄報名申請。", tool_calls: []}}
+
+    {%{role: "tool"}, true} ->
+      {:ok, %{text: "先新增這位學生，確認後跟我說「繼續」。", tool_calls: []}}
+
+    {_, false} ->
+      {:ok,
+       %{
+         text: nil,
+         tool_calls: [
+           %{id: "smoke-call-10", name: "signup_request", input: %{"note" => "我想報名週一早上的課"}}
+         ]
+       }}
+
+    {_, true} ->
+      {:ok,
+       %{
+         text: nil,
+         tool_calls: [
+           %{
+             id: "smoke-call-11",
+             name: "add_student",
+             input: %{"display_name" => "SMOKE 群組新朋友", "line_user_id" => group_joiner_id}
+           }
+         ]
+       }}
+  end
+end)
+
+group_signup_event = %{
+  "webhookEventId" => "smoke-group-5",
+  "mode" => "active",
+  "type" => "message",
+  "replyToken" => "smoke-reply-14",
+  "source" => %{"type" => "group", "groupId" => group_id, "userId" => group_joiner_id},
+  "message" => %{"id" => "smoke-msg-11", "type" => "text", "text" => "我想報名週一早上的課"}
+}
+
+:ok = Line.record_event(group_signup_event)
+group_signup_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-group-5")
+Process.delete(:line_client_mock_calls)
+
+:ok =
+  ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => group_signup_line_event.id}})
+
+group_thread = Assistant.get_group_thread(group_id)
+
+group_signup_draft =
+  Repo.one(
+    from d in Draft,
+      where:
+        d.thread_id == ^group_thread.id and d.kind == "signup_request" and d.state == "pending"
+  )
+
+Smoke.check(
+  "the group sender's sign-up request is a pending draft for that sender",
+  group_signup_draft != nil and group_signup_draft.parsed["line_user_id"] == group_joiner_id and
+    group_signup_draft.parsed["line_name"] == "SMOKE 群組新朋友"
+)
+
+Smoke.check("NOTHING sent to LINE from the group sign-up", LineMock.calls() == [])
+
+Process.delete(:line_client_mock_calls)
+:ok = DraftNotifier.perform(%Oban.Job{args: %{"thread_id" => group_thread.id}})
+
+Smoke.check(
+  "the group sign-up card is pushed to the teacher",
+  Enum.any?(LineMock.calls(), fn
+    {:push, {to, _}} -> to == teacher_id
+    _ -> false
+  end)
+)
+
+group_tap_event = %{
+  "webhookEventId" => "smoke-postback-7",
+  "mode" => "active",
+  "type" => "postback",
+  "replyToken" => "smoke-reply-15",
+  "source" => %{"type" => "user", "userId" => teacher_id},
+  "postback" => %{
+    "data" => "action=enroll_from_request&draft_id=#{group_signup_draft && group_signup_draft.id}"
+  }
+}
+
+:ok = Line.record_event(group_tap_event)
+group_tap_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-postback-7")
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => group_tap_line_event.id}})
+
+Smoke.check(
+  "幫他報名 marks the group request handled",
+  group_signup_draft != nil and Repo.reload!(group_signup_draft).state == "applied"
+)
+
+group_add_student_draft =
+  Repo.one(
+    from d in Draft,
+      join: t in Thread,
+      on: d.thread_id == t.id,
+      where: t.source_id == ^teacher_id and d.kind == "add_student" and d.state == "pending",
+      where: fragment("json_extract(?, '$.line_user_id')", d.parsed) == ^group_joiner_id
+  )
+
+Smoke.check(
+  "the teacher's turn proposes add_student linked to the group sender's LINE ID",
+  group_add_student_draft != nil
+)
+
 # ---------------------------------------------------------------- teardown
 cleanup.()
 Oban.resume_all_queues()

@@ -35,9 +35,9 @@ when unsure; code performs every step and enforces every rule.
    with quick-reply options instead of guessing.
 6. Cards are a fixed set designed in code. The model picks a card; it never lays one
    out or writes its numbers. A Draft card shows only the Draft's stored values.
-7. The Teacher chat gets every task. The Group chat gets three: record payment,
-   single-class/trial booking, makeup request. Student chats get `set_language`
-   and `signup_request` (`2026-10-06-student-signup-request-design.md`).
+7. The Teacher chat gets every task. The Group chat gets four: record payment,
+   single-class/trial booking, makeup request, sign-up request. Student chats get
+   `set_language` and `signup_request` (`2026-10-06-student-signup-request-design.md`).
 
 ## 3. Scope
 

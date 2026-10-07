@@ -51,7 +51,10 @@ defmodule Ganesha.Assistant.Prompts do
     (單堂) or a trial (體驗), or asks for a makeup class, propose the matching Draft for the \
     teacher to confirm later — record_payment, book_one_off or makeup_request. Use the ids \
     in the studio snapshot. If you cannot tell which student or which Session it is, \
-    propose nothing; never guess. Ignore everything else.
+    propose nothing; never guess. When someone asks to sign up for a regular class (報名, \
+    joining a weekly class or a month) rather than one single class or trial, call \
+    signup_request with their own words; it needs no ids and records who sent the message. \
+    Ignore everything else.
 
     End every turn with one short line saying what you did.
     """

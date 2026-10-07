@@ -48,6 +48,44 @@ defmodule Ganesha.Assistant.Tasks.SignupRequestTest do
              SignupRequest.propose(%{"note" => "想報名"}, ctx("Unewcomer2"))
   end
 
+  describe "in the Group chat" do
+    # The group thread's source_id is the group; the asker is the sender of
+    # the message being handled, as stored by ProcessEventWorker.
+    defp group_ctx(sender_id, sender_name) do
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cgroupsignup")
+
+      {:ok, _} =
+        Assistant.append_message(thread, "user", "我想報名週一早上的課", nil,
+          sender_id: sender_id,
+          sender_name: sender_name
+        )
+
+      %{thread: thread, locale: "zh-TW", today: ~D[2026-10-07]}
+    end
+
+    test "an unlinked sender is named by the stored group display name, without asking LINE" do
+      assert {:ok, %{student_id: nil, parsed: parsed}} =
+               SignupRequest.propose(%{"note" => "想報名週一早上"}, group_ctx("Ugroupnew", "小美"))
+
+      assert %{"new" => true, "line_user_id" => "Ugroupnew", "line_name" => "小美"} = parsed
+      assert LineMock.lookups() == []
+    end
+
+    test "a linked sender is that student" do
+      {:ok, amy} = People.create_student(%{display_name: "Amy", line_user_id: "Ugroupamy"})
+
+      assert {:ok, %{student_id: student_id, parsed: %{"new" => false, "student_name" => "Amy"}}} =
+               SignupRequest.propose(%{"note" => "想報名"}, group_ctx("Ugroupamy", "Amy L"))
+
+      assert student_id == amy.id
+    end
+
+    test "a message without a sender proposes nothing" do
+      assert {:error, _reason} =
+               SignupRequest.propose(%{"note" => "想報名"}, group_ctx(nil, nil))
+    end
+  end
+
   test "rejects a blank or missing note" do
     assert {:error, message} = SignupRequest.propose(%{"note" => "  "}, ctx("Ublank"))
     assert message =~ "needs a note"

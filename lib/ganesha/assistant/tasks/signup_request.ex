@@ -1,18 +1,22 @@
 defmodule Ganesha.Assistant.Tasks.SignupRequest do
   @moduledoc """
-  `signup_request` (spec 2026-10-06 §1): someone in a Student chat asked to
-  sign up for a class. The Draft is acknowledged only; confirming books
-  nothing. The teacher enrolls them herself, or through 「幫他報名」.
+  `signup_request` (spec 2026-10-06 §1): someone asked to sign up for a class,
+  in a Student chat or the Group chat. The Draft is acknowledged only;
+  confirming books nothing. The teacher enrolls them herself, or through
+  「幫他報名」.
 
-  Who asked comes from the Student chat, never from the model: the student
-  linked to the chat's LINE user id, or else a newcomer named by their LINE
-  profile.
+  Who asked never comes from the model. In a Student chat it is the chat's
+  LINE user, named by their LINE profile when unlinked. In the Group chat it
+  is the sender of the message being handled, named by the group display
+  name `ProcessEventWorker` stored with it (spec 2026-10-06 §8).
+  Either way the student linked to that LINE user id wins when there is one.
   """
   @behaviour Ganesha.Assistant.Task
 
   require Logger
 
-  alias Ganesha.People
+  alias Ganesha.{Assistant, People}
+  alias Ganesha.Assistant.Thread
 
   @impl true
   def name, do: "signup_request"
@@ -25,8 +29,7 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
     %{
       description: """
       The person wants to sign up for a class. Pass on what they asked for in their own \
-      words so the teacher can follow up. You cannot see the timetable or prices; never \
-      add a time, date or price they did not say.\
+      words so the teacher can follow up. Never add a time, date or price they did not say.\
       """,
       input_schema: %{
         type: "object",
@@ -42,9 +45,25 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
   end
 
   @impl true
-  def propose(input, %{thread: %{source_id: line_user_id}}) do
-    with {:ok, note} <- fetch_note(input["note"]) do
-      {:ok, asker(line_user_id, note)}
+  def propose(input, %{thread: thread}) do
+    with {:ok, note} <- fetch_note(input["note"]),
+         {:ok, line_user_id, line_name} <- who_asked(thread) do
+      {:ok, asker(line_user_id, line_name, note)}
+    end
+  end
+
+  # Each returns the LINE user id and a function naming them if unlinked, so
+  # LINE is only asked for a profile when the name is actually needed.
+  defp who_asked(%Thread{source_type: "user", source_id: line_user_id}),
+    do: {:ok, line_user_id, fn -> profile_name(line_user_id) end}
+
+  defp who_asked(%Thread{source_type: "group"} = thread) do
+    case Assistant.latest_user_message(thread) do
+      %{sender_id: sender_id, sender_name: sender_name} when is_binary(sender_id) ->
+        {:ok, sender_id, fn -> sender_name end}
+
+      _ ->
+        {:error, "cannot tell who sent this group message; propose nothing"}
     end
   end
 
@@ -118,7 +137,7 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
 
   defp line_id(%{"line_user_id" => id}), do: id
 
-  defp asker(line_user_id, note) do
+  defp asker(line_user_id, line_name, note) do
     case People.find_by_line_user_id(line_user_id) do
       %People.Student{} = student ->
         %{
@@ -141,14 +160,14 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
             "student_id" => nil,
             "student_name" => nil,
             "line_user_id" => line_user_id,
-            "line_name" => line_name(line_user_id),
+            "line_name" => line_name.(),
             "new" => true
           }
         }
     end
   end
 
-  defp line_name(line_user_id) do
+  defp profile_name(line_user_id) do
     case line_client().get_profile(line_user_id) do
       {:ok, %{"displayName" => name}} when is_binary(name) and name != "" ->
         name

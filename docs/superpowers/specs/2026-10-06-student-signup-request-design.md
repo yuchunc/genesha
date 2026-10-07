@@ -87,7 +87,7 @@ than 300 characters after trim (tells the model to shorten it).
 ## 2. Student chat
 
 - `Tasks.for_chat(:student)` becomes `[SetLanguage, SignupRequest]`. The Teacher
-  chat and the Group chat do not get `signup_request`.
+  chat does not get `signup_request`; the Group chat does since §8.
 - `Prompts.student/1` (both locales) adds one rule: when the person asks to sign
   up for a class, call `signup_request` with what they asked for, then reply that
   the teacher will reply personally. The existing rule stays: never state or
@@ -262,6 +262,30 @@ with that LINE ID.
 - `GLOSSARY.md`: add **Sign-up request**: a Draft from a Student chat recording
   that someone asked to sign up for a class; Confirm acknowledges it and books
   nothing.
+
+## 8. Addendum (2026-10-07): sign-up requests in the Group chat
+
+Found in dev testing: students ask to sign up in the group, where the Group chat
+had only `record_payment`, `book_one_off` and `makeup_request`. A request to join
+a regular class fit none, so no Draft was made and no teacher heard about it.
+
+- `Tasks.for_chat(:group)` is `[RecordPayment, BookOneOff, MakeupRequest,
+  SignupRequest]`. `Prompts.group/0` sends a request to join a regular class to
+  `signup_request`; one single class or a trial stays `book_one_off`.
+- The asker is the sender of the message being handled:
+  `Assistant.latest_user_message/1`'s `sender_id`. The group thread's
+  `source_id` is the group, never a person. The linked student wins, as in §1;
+  an unlinked sender is named by the stored `sender_name` (the group display
+  name), not `get_profile/1`, which only answers for people who added the bot.
+  A message with no sender proposes nothing and returns an error to the model.
+- The tool description drops "you cannot see the timetable": the Group chat
+  has the snapshot. The never-add-a-time-date-or-price rule stays.
+- Delivery is unchanged group delivery (§3): 3 minutes from the first Draft,
+  intro `:group_drafts_push_intro`. The card and 「幫他報名」 work as in §5.
+- Tests: a group sender, unlinked or linked, and a message without a sender
+  (`signup_request_test.exs`); the group task lists (`tasks_test.exs`,
+  `process_event_worker_test.exs`); smoke Step 13 (group request, card pushed to
+  the teacher, 「幫他報名」 proposes `add_student` with the sender's LINE ID).
 
 ## Out of scope
 

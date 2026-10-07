@@ -49,7 +49,7 @@ defmodule Ganesha.Assistant.TasksTest do
   end
 
   test "each chat gets its own tasks (spec §2 rule 7)" do
-    assert Tasks.for_chat(:group) == [RecordPayment, BookOneOff, MakeupRequest]
+    assert Tasks.for_chat(:group) == [RecordPayment, BookOneOff, MakeupRequest, SignupRequest]
     assert Tasks.for_chat(:student) == [SetLanguage, SignupRequest]
 
     teacher = Tasks.for_chat(:teacher)
@@ -179,9 +179,9 @@ defmodule Ganesha.Assistant.TasksTest do
     end
   end
 
-  test "signup_request is Student chat only" do
+  test "signup_request is for Student chats and the Group chat, never the Teacher chat" do
     assert SignupRequest in Tasks.for_chat(:student)
+    assert SignupRequest in Tasks.for_chat(:group)
     refute SignupRequest in Tasks.for_chat(:teacher)
-    refute SignupRequest in Tasks.for_chat(:group)
   end
 end

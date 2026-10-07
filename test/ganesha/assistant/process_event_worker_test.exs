@@ -254,7 +254,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
                Assistant.list_messages(thread)
     end
 
-    test "gives the model the Group chat's three tasks and the snapshot" do
+    test "gives the model the Group chat's four tasks and the snapshot" do
       Mock.stub(fn _messages, tools, opts ->
         Process.put(:group_request, {Enum.map(tools, & &1.name), opts[:system]})
         {:ok, %{text: "nothing to do", tool_calls: []}}
@@ -263,7 +263,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       {:ok, _} = deliver(group_text("Ustudent1", "大家好"))
 
       {names, system} = Process.get(:group_request)
-      assert names == ~w(record_payment book_one_off makeup_request)
+      assert names == ~w(record_payment book_one_off makeup_request signup_request)
       assert system =~ "Studio snapshot"
     end
 

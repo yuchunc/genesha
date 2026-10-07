@@ -62,7 +62,7 @@ defmodule Ganesha.Assistant.Tasks do
              @students_money ++
              @schedule ++
              [AskTeacher, SetLanguage, PendingDrafts, Listening, BlockAccount, UnblockAccount]
-  @group [RecordPayment, BookOneOff, MakeupRequest]
+  @group [RecordPayment, BookOneOff, MakeupRequest, SignupRequest]
   @student [SetLanguage, SignupRequest]
 
   @spec for_chat(:teacher | :group | :student) :: [module()]
