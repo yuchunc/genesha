@@ -1,6 +1,8 @@
 defmodule Ganesha.Assistant.Tasks.StudentSummary do
   @moduledoc """
-  `student_summary` (spec §3.1 #4): owed, purchases, upcoming Sessions, open Credits.
+  `student_summary` (spec §3.1 #4): owed, purchases, claimed payments with
+  their ids for `confirm_payment` (spec 2026-10-07 §7), upcoming Sessions,
+  open Credits.
   """
   @behaviour Ganesha.Assistant.Task
 
@@ -20,8 +22,9 @@ defmodule Ganesha.Assistant.Tasks.StudentSummary do
   def tool do
     %{
       description: """
-      Summarize one student: what they owe, their purchases and payments, upcoming \
-      Sessions, and open makeup Credits.\
+      Summarize one student: what they owe, their purchases and payments, claimed \
+      payments waiting to be confirmed (with the payment ids confirm_payment takes), \
+      upcoming Sessions, and open makeup Credits.\
       """,
       input_schema: %{
         type: "object",
@@ -43,6 +46,7 @@ defmodule Ganesha.Assistant.Tasks.StudentSummary do
         "#{student.display_name} (student #{student.id}): owes #{Format.money(owed)}, " <>
           "#{length(credits)} open credit(s)" <>
           purchases_data(purchases) <>
+          claimed_data(purchases) <>
           upcoming_data(upcoming, ctx.locale)
 
       {:ok, %{data: data}}
@@ -70,6 +74,28 @@ defmodule Ganesha.Assistant.Tasks.StudentSummary do
         payable = Format.money(Sales.payable(purchase))
         "#{purchase.package.name} paid #{paid} of #{payable}"
       end)
+  end
+
+  # Spec 2026-10-07 §7: the ids confirm_payment needs.
+  defp claimed_data(purchases) do
+    case Enum.flat_map(purchases, &claimed_payments/1) do
+      [] ->
+        ""
+
+      claimed ->
+        "; claimed payment(s) to confirm: " <>
+          Enum.map_join(claimed, ", ", fn {payment, purchase} ->
+            "payment #{payment.id} #{Format.money(payment.amount)} #{payment.method} " <>
+              "paid on #{Date.to_iso8601(payment.paid_on)} for #{purchase.package.name}"
+          end)
+    end
+  end
+
+  defp claimed_payments(purchase) do
+    purchase.id
+    |> Sales.list_payments_for_purchase()
+    |> Enum.filter(&(&1.state == "claimed"))
+    |> Enum.map(&{&1, purchase})
   end
 
   defp upcoming_data([], _locale), do: ""

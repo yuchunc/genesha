@@ -46,7 +46,7 @@ defmodule Ganesha.Assistant.Tasks.StudentSummaryTest do
 
     {:ok, _} = Sales.confirm_payment(confirmed, "teacher")
 
-    {:ok, _claimed} =
+    {:ok, claimed} =
       Sales.record_payment(%{
         purchase_id: purchase.id,
         amount: 300,
@@ -73,6 +73,7 @@ defmodule Ganesha.Assistant.Tasks.StudentSummaryTest do
     %{
       ctx: %{thread: thread, locale: "zh-TW", today: ~D[2026-10-02]},
       lulu: lulu,
+      claimed: claimed,
       september: september,
       oct7: oct7,
       oct14: oct14,
@@ -102,6 +103,14 @@ defmodule Ganesha.Assistant.Tasks.StudentSummaryTest do
 
     refute data =~ ~r/Session #{c.september.id}\b/
     refute data =~ ~r/Session #{c.oct21.id}\b/
+  end
+
+  test "lists claimed payments with the ids confirm_payment takes", c do
+    assert {:ok, %{data: data}} = StudentSummary.answer(%{"student_id" => c.lulu.id}, c.ctx)
+
+    assert data =~
+             "claimed payment(s) to confirm: payment #{c.claimed.id} #{Format.money(300)} " <>
+               "line_pay paid on 2026-10-02 for 月課程"
   end
 
   test "answers a student with nothing on file", c do
