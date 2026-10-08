@@ -1,13 +1,15 @@
 defmodule Ganesha.Assistant.Tasks.CopyMonth do
   @moduledoc """
-  `copy_month` (spec §3.1 #11): copies every active Slot's schedule into a
-  month through `Ganesha.Studio.copy_month/1`, the same call the web month
-  page's copy prompt uses.
+  `copy_month` (spec §3.1 #11): copies the active Slots' schedule into a
+  month through `Ganesha.Studio.copy_month/2`, the same call the web month
+  page's copy prompt uses. `slot_ids` narrows it to the weekly classes she
+  named; without it every active Slot is copied, as on the web.
   """
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.Studio
   alias Ganesha.Assistant.Summary
+  alias GaneshaWeb.Fmt
 
   @impl true
   def name, do: "copy_month"
@@ -19,14 +21,21 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
   def tool do
     %{
       description: """
-      Copy every active weekly Slot's Sessions into a month (same as the web "copy last \
-      month's schedule" prompt). This only proposes a Draft; Sessions are created when the \
-      teacher taps Confirm. Pass month as the first day of the target month (ISO 8601).\
+      Generate a month's Sessions from weekly Slots (固定班), like the web "copy last \
+      month's schedule" prompt. This only proposes a Draft; Sessions are created when the \
+      teacher taps Confirm. Pass month as the first day of the target month (ISO 8601). \
+      Leave slot_ids out only when she wants every weekly class; to open just some of them, \
+      pass their slot ids from the snapshot. One call per month.\
       """,
       input_schema: %{
         type: "object",
         properties: %{
-          month: %{type: "string", description: "Target month, ISO 8601 date like 2026-10-01"}
+          month: %{type: "string", description: "Target month, ISO 8601 date like 2026-10-01"},
+          slot_ids: %{
+            type: "array",
+            items: %{type: "integer"},
+            description: "Only these active Slots; omit for every active Slot"
+          }
         },
         required: ["month"]
       }
@@ -36,11 +45,11 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
   @impl true
   def propose(input, _ctx) do
     with {:ok, month} <- parse_month(input["month"]),
-         {:ok, slots} <- active_slots() do
+         {:ok, slots} <- pick_slots(input["slot_ids"]) do
       case new_sessions(slots, month) do
         [] ->
           {:error,
-           "every active slot already has all its sessions in #{Date.to_iso8601(month)}; " <>
+           "these slots already have all their sessions in #{Date.to_iso8601(month)}; " <>
              "there is nothing to copy"}
 
         new_sessions ->
@@ -49,6 +58,8 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
              student_id: nil,
              parsed: %{
                "month" => Date.to_iso8601(month),
+               "slot_ids" => input["slot_ids"] && Enum.map(slots, & &1.id),
+               "slots" => input["slot_ids"] && Enum.map(slots, &slot_display/1),
                "session_count" => length(new_sessions),
                "new_sessions" => new_sessions
              }
@@ -61,8 +72,9 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
   @impl true
   def apply(parsed, _confirmed_by) do
     with {:ok, month} <- parse_month(parsed["month"]),
-         :ok <- same_sessions(month, parsed["new_sessions"]),
-         {:ok, _created} <- Studio.copy_month(month) do
+         {:ok, slots} <- still_active(parsed["slot_ids"]),
+         :ok <- same_sessions(slots, month, parsed["new_sessions"]),
+         {:ok, _created} <- Studio.copy_month(month, slots) do
       {:ok, {nil, nil}}
     end
   end
@@ -71,10 +83,11 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
   def summary(parsed, locale) do
     month = Summary.month_name(parsed["month"], locale)
     count = parsed["session_count"] || 0
+    classes = Summary.paren(Enum.map(parsed["slots"] || [], &slot_name(&1, locale)), locale)
 
     if locale == "en",
-      do: "Schedule #{month} from the weekly classes: #{count} sessions",
-      else: "照固定班排 #{month} 課表，共 #{count} 堂"
+      do: "Schedule #{month} from the weekly classes#{classes}: #{count} sessions",
+      else: "照固定班#{classes}排 #{month} 課表，共 #{count} 堂"
   end
 
   defp parse_month(text) when is_binary(text) do
@@ -86,14 +99,58 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
 
   defp parse_month(_text), do: {:error, "month must be an ISO 8601 date like 2026-10-01"}
 
-  defp active_slots do
+  defp pick_slots(nil) do
     case Studio.list_active_slots() do
       [] -> {:error, "there are no active slots to copy; add a weekly slot first"}
       slots -> {:ok, slots}
     end
   end
 
-  # The Sessions `Studio.copy_month/1` would create, as sorted
+  defp pick_slots([_ | _] = ids) do
+    if Enum.all?(ids, &is_integer/1) do
+      active = Map.new(Studio.list_active_slots(), &{&1.id, &1})
+
+      case Enum.reject(Enum.uniq(ids), &Map.has_key?(active, &1)) do
+        [] ->
+          {:ok,
+           active |> Map.take(ids) |> Map.values() |> Enum.sort_by(&{&1.weekday, &1.start_time})}
+
+        unknown ->
+          {:error,
+           "no active slot with id #{Enum.join(unknown, ", ")}; use active slot ids from the snapshot"}
+      end
+    else
+      {:error, slot_ids_invalid()}
+    end
+  end
+
+  defp pick_slots(_ids), do: {:error, slot_ids_invalid()}
+
+  defp slot_ids_invalid,
+    do: "slot_ids must be a non-empty list of slot ids from the snapshot, or left out"
+
+  # A Slot she picked that was deactivated since propose changes what she confirmed.
+  defp still_active(nil), do: {:ok, Studio.list_active_slots()}
+
+  defp still_active(ids) do
+    case pick_slots(ids) do
+      {:ok, slots} -> {:ok, slots}
+      {:error, _} -> {:error, :schedule_changed}
+    end
+  end
+
+  defp slot_display(slot) do
+    %{
+      "weekday" => slot.weekday,
+      "time" => Fmt.time_range(slot.start_time, slot.end_time),
+      "title" => Fmt.slot_title(slot.label)
+    }
+  end
+
+  defp slot_name(slot, locale),
+    do: Summary.words([Summary.weekday(slot["weekday"], locale), slot["time"], slot["title"]])
+
+  # The Sessions `Studio.copy_month/2` would create, as sorted
   # `[slot_id, iso_date]` pairs (lists, so they survive the Draft's JSON).
   defp new_sessions(slots, month) do
     slots
@@ -105,8 +162,8 @@ defmodule Ganesha.Assistant.Tasks.CopyMonth do
 
   # The teacher confirmed these exact Sessions; a Slot or Session change since
   # propose would make the copy create different ones, even at the same count.
-  defp same_sessions(month, proposed) do
-    if new_sessions(Studio.list_active_slots(), month) == proposed,
+  defp same_sessions(slots, month, proposed) do
+    if new_sessions(slots, month) == proposed,
       do: :ok,
       else: {:error, :schedule_changed}
   end

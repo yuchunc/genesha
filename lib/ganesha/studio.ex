@@ -95,16 +95,17 @@ defmodule Ganesha.Studio do
   end
 
   @doc """
-  Runs `generate_month/2` for every active slot, in one transaction.
+  Runs `generate_month/2` for `slots` (every active slot by default), in one
+  transaction.
 
   Backs the "copy last month's classes" prompt: idempotent, so it never
   duplicates or overwrites a cancellation or style override already made
   this month. Returns the number of sessions newly created (not the
   month's total).
   """
-  def copy_month(%Date{} = month) do
+  def copy_month(%Date{} = month, slots \\ list_active_slots()) do
     Repo.transaction(fn ->
-      Enum.reduce(list_active_slots(), 0, fn slot, created ->
+      Enum.reduce(slots, 0, fn slot, created ->
         before_count = slot |> sessions_for_slot_in_month(month) |> length()
         {:ok, sessions} = generate_month(slot, month)
         created + (length(sessions) - before_count)
