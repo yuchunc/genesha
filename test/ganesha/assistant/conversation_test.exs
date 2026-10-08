@@ -386,6 +386,15 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert last_message(thread).content == outcome_line(:tag_confirmed, draft, "zh-TW")
     end
 
+    test "Confirm records which teacher confirmed", %{thread: thread, student: student} do
+      draft = payment_draft(thread, student)
+
+      :ok = Conversation.handle_postback(postback("confirm", draft.id), "rt-p", @teacher)
+
+      assert [%Payment{confirmed_by: confirmed_by}] = Repo.all(Payment)
+      assert confirmed_by == "line:" <> @teacher
+    end
+
     test "a Draft that no longer applies is marked failed with the reason", %{
       thread: thread,
       student: student
@@ -628,7 +637,7 @@ defmodule Ganesha.Assistant.ConversationTest do
 
     test "a request already handled says so and runs no turn", %{thread: thread} do
       draft = signup_draft("Unewcomer")
-      {:ok, _} = Assistant.confirm_draft(draft, "line:teacher")
+      {:ok, _} = Assistant.confirm_draft(draft, "line:" <> @teacher)
       Mock.stub(fn _messages, _tools, _opts -> flunk("no turn should run") end)
 
       :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-e", @teacher)

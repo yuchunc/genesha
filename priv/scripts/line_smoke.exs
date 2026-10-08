@@ -382,8 +382,8 @@ Smoke.check("payment row created from the draft", payment != nil)
 Smoke.check("payment is confirmed", payment && payment.state == "confirmed")
 
 Smoke.check(
-  "confirmed_by records the human LINE action",
-  payment && payment.confirmed_by == "line:teacher"
+  "confirmed_by records which teacher confirmed",
+  payment && payment.confirmed_by == "line:" <> teacher_id
 )
 
 Smoke.check("payment tagged as draft-sourced", payment && payment.source == "line_draft")

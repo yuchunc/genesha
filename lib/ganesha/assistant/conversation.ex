@@ -152,7 +152,7 @@ defmodule Ganesha.Assistant.Conversation do
 
   defp settle_postback(action, params, reply_token, source_id) do
     thread = thread_for(source_id)
-    outcome = settle(action, parse_id(params["draft_id"]), locale(thread))
+    outcome = settle(action, parse_id(params["draft_id"]), source_id, locale(thread))
     deliver_outcome(thread, reply_token, source_id, outcome)
   end
 
@@ -220,17 +220,18 @@ defmodule Ganesha.Assistant.Conversation do
     end
   end
 
-  defp settle(_action, nil, locale), do: {Labels.t(:not_found, locale), nil}
+  defp settle(_action, nil, _source_id, locale), do: {Labels.t(:not_found, locale), nil}
 
-  defp settle(action, id, locale) do
+  defp settle(action, id, source_id, locale) do
     case Assistant.get_draft(id) do
       nil -> {Labels.t(:not_found, locale), nil}
-      draft -> action |> outcome(draft) |> describe_outcome(locale)
+      draft -> action |> outcome(draft, source_id) |> describe_outcome(locale)
     end
   end
 
-  defp outcome("confirm", draft) do
-    case Assistant.confirm_draft(draft, "line:teacher") do
+  # Spec 2026-10-07 §7: `confirmed_by` names the teacher who tapped.
+  defp outcome("confirm", draft, source_id) do
+    case Assistant.confirm_draft(draft, "line:" <> source_id) do
       {:ok, applied} -> {:applied, applied}
       {:error, {:failed, failed}} -> {:failed, failed}
       {:error, :not_pending} -> not_pending(draft)
@@ -245,7 +246,7 @@ defmodule Ganesha.Assistant.Conversation do
       {:exception, draft}
   end
 
-  defp outcome("discard", draft) do
+  defp outcome("discard", draft, _source_id) do
     case Assistant.discard_draft(draft) do
       {:ok, discarded} -> {:discarded, discarded}
       {:error, :not_pending} -> not_pending(draft)
