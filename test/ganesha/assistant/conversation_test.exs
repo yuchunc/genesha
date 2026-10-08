@@ -305,6 +305,15 @@ defmodule Ganesha.Assistant.ConversationTest do
                LineMock.calls()
     end
 
+    test "without a reply token, pushes the turn (a re-run after an edit)", %{thread: thread} do
+      model([], "好的")
+
+      :ok = Conversation.handle_message(say(thread, "嗨"), nil, @teacher)
+
+      assert [{:loading, _}, {:push, {@teacher, [%{type: "text", text: "好的"}]}}] =
+               LineMock.calls()
+    end
+
     @tag :capture_log
     test "pushes a text-only version when LINE rejects the messages themselves", %{
       thread: thread,

@@ -5,11 +5,11 @@ defmodule Ganesha.Assistant.Conversation do
 
   A turn shows LINE's loading animation, runs the agent with the chat's
   prompt, memory and tasks, packs the `Turn` into LINE messages, replies
-  (pushing when the reply token is unusable, or a text-only version when LINE
-  rejects the messages), and appends the cards it sent to the model's own
-  reply. Confirm and Discard answer with one text message and leave the
-  outcome in the Teacher chat's history; a request card's shortcut runs a
-  Teacher-chat turn instead (spec 2026-10-07 §4).
+  (pushing when there is no reply token or it is unusable, or a text-only
+  version when LINE rejects the messages), and appends the cards it sent to
+  the model's own reply. Confirm and Discard answer with one text message and
+  leave the outcome in the Teacher chat's history; a request card's shortcut
+  runs a Teacher-chat turn instead (spec 2026-10-07 §4).
   """
 
   require Logger
@@ -39,7 +39,11 @@ defmodule Ganesha.Assistant.Conversation do
     "book_from_request" => MakeupRequest
   }
 
-  @spec handle_message(Thread.t(), String.t(), String.t()) :: :ok
+  @doc """
+  Runs one turn and delivers it. A nil `reply_token` (a re-run after an
+  edit) pushes instead of replying (spec 2026-10-07 §6).
+  """
+  @spec handle_message(Thread.t(), String.t() | nil, String.t()) :: :ok
   def handle_message(%Thread{} = thread, reply_token, source_id) do
     show_loading(source_id)
 
@@ -193,13 +197,15 @@ defmodule Ganesha.Assistant.Conversation do
   end
 
   @doc """
-  Sends `messages` as a reply, which is free. An unusable reply token pushes
-  the same messages to `source_id`; LINE rejecting the messages themselves is
-  logged and pushes `fallback.()` as one text message, or nothing when
-  `fallback` is nil (spec §6.1 step 6, §7).
+  Sends `messages` as a reply, which is free. A nil `reply_token` pushes
+  directly (spec 2026-10-07 §6), and so does an unusable one; LINE rejecting
+  the messages themselves is logged and pushes `fallback.()` as one text
+  message, or nothing when `fallback` is nil (spec §6.1 step 6, §7).
   """
-  @spec deliver(String.t(), String.t(), [map()], (-> String.t()) | nil) :: :ok
+  @spec deliver(String.t() | nil, String.t(), [map()], (-> String.t()) | nil) :: :ok
   def deliver(_reply_token, _source_id, [], _fallback), do: :ok
+
+  def deliver(nil, source_id, messages, _fallback), do: push(source_id, messages)
 
   def deliver(reply_token, source_id, messages, fallback) do
     case line_client().reply(reply_token, messages) do
