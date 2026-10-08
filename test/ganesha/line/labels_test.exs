@@ -3,11 +3,13 @@ defmodule Ganesha.Line.LabelsTest do
 
   alias Ganesha.Line.Labels
 
-  @keys ~w(confirm discard more_drafts choose draft pending options confirmed discarded
-           failed reason_changed reason_not_found reason_other already_handled replaced
+  @keys ~w(confirm discard handled more_drafts choose draft pending options confirmed discarded
+           failed reason_changed reason_not_found reason_other reason_request_already_handled
+           reason_line_user_id_taken already_handled replaced
            not_found exception tag_confirmed tag_discarded
            tag_failed tag_already_handled tag_replaced tag_exception apology unknown_action
-           welcome group_drafts_push_intro student_drafts_push_intro enroll_from_request
+           welcome group_drafts_push_intro student_drafts_push_intro
+           enroll_from_request book_from_request
            pending_drafts_section pending_drafts_empty pending_drafts_student_link)a
 
   test "every label speaks both languages, and they differ" do
@@ -41,7 +43,8 @@ defmodule Ganesha.Line.LabelsTest do
 
   test "stored failure reasons read as a sentence, never as an error code" do
     for reason <- ~w(purchase_changed attendance_changed package_changed payment_not_claimed
-                     credit_already_consumed session_cancelled not_found boom),
+                     credit_already_consumed session_cancelled student_line_user_id_changed
+                     request_already_handled line_user_id_taken not_found boom),
         locale <- ["zh-TW", "en"] do
       refute Labels.failure_reason(reason, locale) =~ "_"
     end
@@ -51,5 +54,15 @@ defmodule Ganesha.Line.LabelsTest do
 
     assert Labels.failure_reason("amount: must be greater than 0", "zh-TW") ==
              "amount: must be greater than 0"
+
+    assert Labels.failure_reason(:request_already_handled, "zh-TW") == "這個申請已經處理過了"
+
+    assert Labels.failure_reason("request_already_handled", "en") ==
+             "This request was already handled"
+  end
+
+  test "the request buttons read as the spec says" do
+    assert Labels.t(:handled, "zh-TW") == "已處理"
+    assert Labels.t(:book_from_request, "zh-TW") == "幫他補課"
   end
 end

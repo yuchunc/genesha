@@ -1,5 +1,7 @@
 # LINE assistant: student sign-up requests
 
+Amended by `2026-10-07-line-flow-fixes-design.md`.
+
 Extends `2026-10-02-line-teacher-assistant-design.md` (Student chats, Drafts,
 `GroupDraftNotifier`) and `2026-10-05-line-group-blocklist-design.md`
 (the notifier it renames). Everything else in those specs stands.

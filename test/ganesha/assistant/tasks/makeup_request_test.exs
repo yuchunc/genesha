@@ -51,4 +51,22 @@ defmodule Ganesha.Assistant.Tasks.MakeupRequestTest do
     assert zh =~ "想補 8/17"
     assert MakeupRequest.summary(%{"note" => "8/17"}, "en") =~ "8/17"
   end
+
+  test "the request message asks for one book_makeup carrying the request's id" do
+    known = %{"student_id" => 3, "student_name" => "蘭子", "note" => "想補 8/17"}
+    unknown = %{"student_id" => nil, "student_name" => nil, "note" => "有人想補課"}
+
+    zh = MakeupRequest.teacher_message(9, known, "zh-TW")
+    assert zh =~ "[補課申請 #9]"
+    assert zh =~ "蘭子（學生 #3）"
+    assert zh =~ "學生原話：「想補 8/17」"
+    assert zh =~ "book_makeup"
+    assert zh =~ "makeup_request_id 9"
+    assert zh =~ "open_credits"
+
+    en = MakeupRequest.teacher_message(9, unknown, "en")
+    assert en =~ "[Makeup request #9]"
+    assert en =~ ~s|Their words: "有人想補課"|
+    assert en =~ "book_makeup with makeup_request_id 9"
+  end
 end

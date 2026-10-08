@@ -57,5 +57,5 @@ The teacher's rejection of a Draft, after which it never takes effect.
 _Avoid_: reject, cancel (a Session is cancelled; a Draft is discarded)
 
 **Sign-up request**:
-A Draft from a Student chat or the Group chat recording that someone asked to sign up for a class; Confirm acknowledges it and books nothing.
+A Draft from a Student chat or the Group chat recording that someone asked to sign up for a class. 幫他報名 asks for an `enroll` Draft carrying the request, whose Confirm books the class and settles the request; 已處理 (Confirm on the request itself) only acknowledges it and books nothing.
 _Avoid_: enrollment request, registration

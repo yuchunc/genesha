@@ -2,7 +2,10 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
   use Ganesha.DataCase, async: false
 
   alias Ganesha.{Assistant, Catalog, Enrolling, People, Roster, Sales, Studio}
+  alias Ganesha.Assistant.Draft
   alias Ganesha.Assistant.Tasks.Enroll
+  alias Ganesha.People.Student
+  alias Ganesha.Sales.Purchase
 
   setup do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
@@ -50,6 +53,45 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
       },
       extra
     )
+  end
+
+  # An unlinked sign-up request, as a Student chat proposes it.
+  defp signup_request(line_user_id) do
+    {:ok, chat} = Assistant.get_or_create_thread("user", line_user_id)
+
+    {:ok, request} =
+      Assistant.create_draft(chat, %{
+        kind: "signup_request",
+        parsed: %{
+          "note" => "想報名週二晚上",
+          "student_id" => nil,
+          "student_name" => nil,
+          "line_user_id" => line_user_id,
+          "line_name" => "小美",
+          "new" => true
+        }
+      })
+
+    request
+  end
+
+  defp newcomer_input(c, request) do
+    c
+    |> input(%{"signup_request_id" => request.id, "new_student_name" => " 小美 "})
+    |> Map.delete("student_id")
+  end
+
+  defp enroll_draft(c, input) do
+    {:ok, %{student_id: student_id, parsed: parsed}} = Enroll.propose(input, c.ctx)
+
+    {:ok, draft} =
+      Assistant.create_draft(c.ctx.thread, %{
+        kind: "enroll",
+        student_id: student_id,
+        parsed: parsed
+      })
+
+    draft
   end
 
   describe "propose/2" do
@@ -121,6 +163,105 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
     end
   end
 
+  describe "propose/2 with a sign-up request" do
+    test "a newcomer becomes a new student with the request's LINE id", c do
+      request = signup_request("Unewcomer")
+
+      assert {:ok, %{student_id: nil, parsed: parsed}} =
+               Enroll.propose(newcomer_input(c, request), c.ctx)
+
+      assert parsed["signup_request_id"] == request.id
+      assert parsed["new_student"] == %{"display_name" => "小美", "line_user_id" => "Unewcomer"}
+      assert parsed["student_name"] == "小美"
+      assert parsed["link_line_user_id"] == nil
+      assert length(parsed["session_ids"]) == 4
+    end
+
+    test "a snapshot student gets the request's LINE id linked", c do
+      request = signup_request("Ululu")
+
+      assert {:ok, %{student_id: student_id, parsed: parsed}} =
+               Enroll.propose(input(c, %{"signup_request_id" => request.id}), c.ctx)
+
+      assert student_id == c.student.id
+      assert parsed["link_line_user_id"] == "Ululu"
+      assert parsed["new_student"] == nil
+    end
+
+    test "without student_id, the student linked to the request's LINE id is enrolled", c do
+      {:ok, _} = People.update_student(c.student, %{line_user_id: "Ululu"})
+      request = signup_request("Ululu")
+
+      assert {:ok, %{student_id: student_id, parsed: parsed}} =
+               Enroll.propose(newcomer_input(c, request), c.ctx)
+
+      assert student_id == c.student.id
+      assert parsed["new_student"] == nil
+      assert parsed["link_line_user_id"] == nil
+    end
+
+    test "links nothing when another student already holds the request's LINE id", c do
+      {:ok, _} = People.create_student(%{display_name: "媽媽", line_user_id: "Umom"})
+      request = signup_request("Umom")
+
+      assert {:ok, %{parsed: parsed}} =
+               Enroll.propose(input(c, %{"signup_request_id" => request.id}), c.ctx)
+
+      assert parsed["link_line_user_id"] == nil
+    end
+
+    test "rejects a student linked to a different LINE id than the request's", c do
+      {:ok, _} = People.update_student(c.student, %{line_user_id: "Uother"})
+      request = signup_request("Unewcomer")
+
+      assert {:error, message} =
+               Enroll.propose(input(c, %{"signup_request_id" => request.id}), c.ctx)
+
+      assert message =~ "different LINE account"
+    end
+
+    test "new_student_name needs a sign-up request, and some student is always needed", c do
+      no_student = Map.delete(input(c), "student_id")
+
+      assert {:error, message} =
+               Enroll.propose(Map.put(no_student, "new_student_name", "小美"), c.ctx)
+
+      assert message =~ "signup_request_id"
+
+      assert {:error, message} = Enroll.propose(no_student, c.ctx)
+      assert message =~ "student_id"
+
+      request = signup_request("Unewcomer")
+
+      assert {:error, message} =
+               Enroll.propose(Map.put(no_student, "signup_request_id", request.id), c.ctx)
+
+      assert message =~ "new_student_name"
+    end
+
+    test "rejects a request that is not a pending sign-up request", c do
+      request = signup_request("Unewcomer")
+      {:ok, _} = Assistant.discard_draft(request)
+
+      assert {:error, message} = Enroll.propose(newcomer_input(c, request), c.ctx)
+      assert message =~ "not a pending sign-up request"
+
+      {:ok, makeup} =
+        Assistant.create_draft(c.ctx.thread, %{kind: "makeup_request", parsed: %{"note" => "x"}})
+
+      assert {:error, _} =
+               Enroll.propose(input(c, %{"signup_request_id" => makeup.id}), c.ctx)
+    end
+
+    test "a new student only needs the package to be open to anyone", c do
+      {:ok, _} = Catalog.update_package(c.monthly, %{active: false})
+      request = signup_request("Unewcomer")
+
+      assert {:error, message} = Enroll.propose(newcomer_input(c, request), c.ctx)
+      assert message =~ "closed to new students"
+    end
+  end
+
   describe "apply/2" do
     test "creates the purchase, books every session and mints the package credits", c do
       {:ok, %{parsed: parsed}} = Enroll.propose(input(c), c.ctx)
@@ -185,6 +326,65 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
       assert [_one_off] = Sales.list_purchases_for_student(c.student.id)
       assert Roster.list_for_session(hd(c.sessions)) == []
     end
+
+    test "a newcomer's request adds the student, enrolls them and settles the request", c do
+      request = signup_request("Unewcomer")
+      draft = enroll_draft(c, newcomer_input(c, request))
+
+      assert {:ok, %Draft{applied_record_id: purchase_id}} =
+               Assistant.confirm_draft(draft, "line:Uteacher")
+
+      student = People.find_by_line_user_id("Unewcomer")
+      assert student.display_name == "小美"
+      assert Sales.get_purchase!(purchase_id).student_id == student.id
+
+      for session <- c.sessions do
+        assert [%{student_id: student_id}] = Roster.list_for_session(session)
+        assert student_id == student.id
+      end
+
+      request = Repo.reload!(request)
+      assert request.state == "applied"
+      assert request.applied_record_type == "Ganesha.Sales.Purchase"
+      assert request.applied_record_id == purchase_id
+    end
+
+    test "a snapshot student's request links the LINE id and settles the request", c do
+      request = signup_request("Ululu")
+      draft = enroll_draft(c, input(c, %{"signup_request_id" => request.id}))
+
+      assert {:ok, %Draft{applied_record_id: purchase_id}} =
+               Assistant.confirm_draft(draft, "line:Uteacher")
+
+      assert People.get_student(c.student.id).line_user_id == "Ululu"
+      assert Repo.reload!(request).applied_record_id == purchase_id
+    end
+
+    test "a request handled meanwhile fails the confirm and books nothing", c do
+      request = signup_request("Unewcomer")
+      draft = enroll_draft(c, newcomer_input(c, request))
+      {:ok, _} = Assistant.confirm_draft(request, "line:Uteacher")
+
+      assert {:error, {:failed, failed}} = Assistant.confirm_draft(draft, "line:Uteacher")
+      assert failed.failure_reason == "request_already_handled"
+
+      refute People.find_by_line_user_id("Unewcomer")
+      assert Repo.aggregate(Purchase, :count) == 0
+      assert Roster.list_for_session(hd(c.sessions)) == []
+    end
+
+    test "a newcomer whose LINE id got linked meanwhile is not added twice", c do
+      request = signup_request("Unewcomer")
+      draft = enroll_draft(c, newcomer_input(c, request))
+      {:ok, _} = People.update_student(c.student, %{line_user_id: "Unewcomer"})
+
+      assert {:error, {:failed, failed}} = Assistant.confirm_draft(draft, "line:Uteacher")
+      assert failed.failure_reason == "line_user_id_taken"
+
+      assert Repo.aggregate(Student, :count) == 1
+      assert Repo.aggregate(Purchase, :count) == 0
+      assert Repo.reload!(request).state == "pending"
+    end
   end
 
   describe "summary/2" do
@@ -208,6 +408,23 @@ defmodule Ganesha.Assistant.Tasks.EnrollTest do
       assert Enroll.summary(parsed, "zh-TW") =~ "10月"
       assert Enroll.summary(parsed, "en") =~ "October"
       assert Enroll.summary(%{parsed | "custom_amount" => 1500}, "zh-TW") =~ "NT$1,500"
+    end
+
+    test "a new student's summary says the student is added first" do
+      parsed = %{
+        "student_name" => "小美",
+        "new_student" => %{"display_name" => "小美", "line_user_id" => "Unewcomer"},
+        "month" => "2026-10",
+        "slot_weekday" => 2,
+        "slot_time" => "19:00–20:15",
+        "slot_label" => "基礎",
+        "session_ids" => [1, 2, 3, 4],
+        "custom_amount" => nil,
+        "price" => 1600
+      }
+
+      assert String.starts_with?(Enroll.summary(parsed, "zh-TW"), "新增學生 小美 並")
+      assert String.starts_with?(Enroll.summary(parsed, "en"), "Add new student 小美 and ")
     end
   end
 end

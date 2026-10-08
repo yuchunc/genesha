@@ -170,4 +170,31 @@ defmodule Ganesha.Assistant.Tasks.SignupRequestTest do
     assert en =~ "Unewcomer"
     refute en =~ "not a student"
   end
+
+  test "the request message asks for one enroll carrying the request's id" do
+    linked = %{"new" => false, "student_id" => 3, "student_name" => "Amy", "note" => "想報名"}
+
+    unlinked = %{
+      "new" => true,
+      "line_user_id" => "Unewcomer",
+      "line_name" => "小美",
+      "note" => "想報名"
+    }
+
+    for locale <- ["zh-TW", "en"] do
+      known = SignupRequest.teacher_message(7, linked, locale)
+      assert known =~ "enroll"
+      assert known =~ "signup_request_id 7"
+      assert known =~ "student_id 3"
+
+      newcomer = SignupRequest.teacher_message(7, unlinked, locale)
+      assert newcomer =~ "signup_request_id 7"
+      assert newcomer =~ "student_id"
+      assert newcomer =~ "new_student_name"
+      assert newcomer =~ "小美"
+      assert newcomer =~ "ask_teacher"
+      refute newcomer =~ "add_student"
+      refute newcomer =~ "繼續"
+    end
+  end
 end

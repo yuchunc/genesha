@@ -223,6 +223,42 @@ defmodule Ganesha.Assistant do
   defp failure_reason(reason) when is_binary(reason), do: reason
   defp failure_reason(reason), do: inspect(reason)
 
+  @doc """
+  The pending request Draft of `kind` (`"signup_request"`, `"makeup_request"`)
+  with this id, or nil: what `enroll` / `book_makeup` check at propose time
+  (spec 2026-10-07 §1).
+  """
+  def get_pending_request(kind, id) when is_binary(kind) and is_integer(id),
+    do: Repo.get_by(Draft, id: id, kind: kind, state: "pending")
+
+  def get_pending_request(_kind, _id), do: nil
+
+  @doc """
+  Settles a request Draft from the Draft that acted on it (spec 2026-10-07
+  §1): a compare-and-set pending → applied, pointing at the new record. Runs
+  inside the caller's transaction (`confirm_draft/2` wraps `apply/2`), so
+  returning `{:error, :request_already_handled}` from `apply/2` rolls the
+  booking back and fails the acting Draft with that reason.
+  """
+  @spec claim_request(String.t(), integer(), {String.t(), integer()}) ::
+          :ok | {:error, :request_already_handled}
+  def claim_request(kind, id, {record_type, record_id})
+      when is_binary(kind) and is_integer(id) do
+    from(d in Draft, where: d.id == ^id and d.kind == ^kind and d.state == "pending")
+    |> Repo.update_all(
+      set: [
+        state: "applied",
+        applied_record_type: record_type,
+        applied_record_id: record_id,
+        updated_at: now()
+      ]
+    )
+    |> case do
+      {1, _} -> :ok
+      {0, _} -> {:error, :request_already_handled}
+    end
+  end
+
   @doc "Discards a pending Draft; compare-and-set, so a stale copy cannot undo a confirm."
   def discard_draft(%Draft{id: id}) do
     from(d in Draft, where: d.id == ^id and d.state == "pending")

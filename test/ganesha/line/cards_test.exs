@@ -3,7 +3,7 @@ defmodule Ganesha.Line.CardsTest do
 
   alias Ganesha.Assistant
   alias Ganesha.Assistant.Draft
-  alias Ganesha.Line.Cards
+  alias Ganesha.Line.{Cards, Labels}
 
   defp payment(id) do
     %Draft{
@@ -25,24 +25,19 @@ defmodule Ganesha.Line.CardsTest do
 
   describe "draft_bubble/2" do
     test "the body is the Draft's summary and the footer is exactly Confirm and Discard" do
-      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
-
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
-
-      bubble = Cards.draft_bubble(draft, "zh-TW")
+      bubble = Cards.draft_bubble(payment(41), "zh-TW")
 
       assert [%{text: text}] = bubble.body.contents
-      assert text == Assistant.draft_summary(draft, "zh-TW")
+      assert text == Assistant.draft_summary(payment(41), "zh-TW")
       refute Map.has_key?(bubble, :header)
 
-      assert Enum.map(bubble.footer.contents, & &1.action.data) == [
-               "action=confirm&draft_id=#{draft.id}",
-               "action=discard&draft_id=#{draft.id}"
+      assert Enum.map(bubble.footer.contents, &{&1.action.label, &1.action.data}) == [
+               {Labels.t(:confirm, "zh-TW"), "action=confirm&draft_id=41"},
+               {Labels.t(:discard, "zh-TW"), "action=discard&draft_id=41"}
              ]
     end
 
-    test "a sign-up request card leads with 幫他報名, then Confirm and Discard" do
+    test "a sign-up request card leads with 幫他報名, then 已處理 and 捨棄" do
       {:ok, thread} = Assistant.get_or_create_thread("user", "Unewcomer")
 
       {:ok, draft} =
@@ -53,8 +48,24 @@ defmodule Ganesha.Line.CardsTest do
 
       bubble = Cards.draft_bubble(draft, "zh-TW")
 
-      assert Enum.map(bubble.footer.contents, & &1.action.data) == [
-               "action=enroll_from_request&draft_id=#{draft.id}",
+      assert Enum.map(bubble.footer.contents, &{&1.action.label, &1.action.data}) == [
+               {"幫他報名", "action=enroll_from_request&draft_id=#{draft.id}"},
+               {"已處理", "action=confirm&draft_id=#{draft.id}"},
+               {"捨棄", "action=discard&draft_id=#{draft.id}"}
+             ]
+    end
+
+    test "a makeup request card leads with 幫他補課, then 已處理 and 捨棄" do
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+      {:ok, draft} =
+        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
+
+      assert Enum.map(Cards.draft_bubble(draft, "en").footer.contents, & &1.action.label) ==
+               ["Book makeup", "Handled", "Discard"]
+
+      assert Enum.map(Cards.draft_bubble(draft, "zh-TW").footer.contents, & &1.action.data) == [
+               "action=book_from_request&draft_id=#{draft.id}",
                "action=confirm&draft_id=#{draft.id}",
                "action=discard&draft_id=#{draft.id}"
              ]

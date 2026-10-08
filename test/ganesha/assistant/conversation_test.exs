@@ -4,7 +4,7 @@ defmodule Ganesha.Assistant.ConversationTest do
   alias Ganesha.{Assistant, Catalog, Clock, People, Sales, Studio}
   alias Ganesha.Assistant.{Conversation, Draft, Tasks}
   alias Ganesha.Assistant.Provider.Mock
-  alias Ganesha.Assistant.Tasks.{BookOneOff, RecordPayment, SignupRequest}
+  alias Ganesha.Assistant.Tasks.{BookOneOff, MakeupRequest, RecordPayment, SignupRequest}
   alias Ganesha.Line.{Cards, Labels}
   alias Ganesha.Line.Client.Mock, as: LineMock
   alias Ganesha.Sales.Payment
@@ -139,6 +139,26 @@ defmodule Ganesha.Assistant.ConversationTest do
 
   defp enroll_tap(id), do: %{"action" => "enroll_from_request", "draft_id" => to_string(id)}
 
+  defp makeup_tap(id), do: %{"action" => "book_from_request", "draft_id" => to_string(id)}
+
+  defp makeup_draft(thread, student) do
+    {:ok, %{student_id: student_id, parsed: parsed}} =
+      MakeupRequest.propose(%{"student_id" => student.id, "note" => "想補 8/17"}, %{
+        thread: thread,
+        locale: "zh-TW",
+        today: Clock.today()
+      })
+
+    {:ok, draft} =
+      Assistant.create_draft(thread, %{
+        kind: "makeup_request",
+        student_id: student_id,
+        parsed: parsed
+      })
+
+    draft
+  end
+
   defp postback(action, id), do: %{"action" => action, "draft_id" => to_string(id)}
 
   defp last_message(thread), do: thread |> Assistant.list_messages() |> List.last()
@@ -239,7 +259,11 @@ defmodule Ganesha.Assistant.ConversationTest do
       [bubble] = flex.contents.contents
 
       assert Enum.map(bubble.footer.contents, & &1.action.label) ==
-               [Labels.t(:confirm, "en"), Labels.t(:discard, "en")]
+               [
+                 Labels.t(:book_from_request, "en"),
+                 Labels.t(:handled, "en"),
+                 Labels.t(:discard, "en")
+               ]
     end
 
     test "ask_teacher's options ride on the reply as quick replies", %{thread: thread} do
@@ -543,7 +567,7 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert [{:reply, {"rt-l", [%{text: ^welcome}]}}] = LineMock.calls()
     end
 
-    test "幫他報名 settles a known student's request and runs a turn in her chat", %{
+    test "幫他報名 leaves the request pending and runs a turn in her chat", %{
       thread: thread
     } do
       {:ok, amy} = People.create_student(%{display_name: "Amy", line_user_id: "Uamy"})
@@ -552,19 +576,38 @@ defmodule Ganesha.Assistant.ConversationTest do
 
       :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-e", @teacher)
 
-      assert Repo.reload!(draft).state == "applied"
+      assert Repo.reload!(draft).state == "pending"
 
-      assert [_confirmed_line, request, reply] =
-               thread |> Assistant.list_messages() |> Enum.take(-3)
+      assert [request, reply] = Assistant.list_messages(thread)
 
       assert request.role == "user"
-      assert request.content =~ "##{draft.id}"
-      assert request.content =~ "Amy"
+      assert request.content == SignupRequest.teacher_message(draft.id, draft.parsed, "zh-TW")
+      assert request.content =~ "signup_request_id #{draft.id}"
       assert request.content =~ "##{amy.id}"
       assert reply.content == "好，要幫 Amy 報名哪一堂？"
 
       assert [{:loading, _}, {:reply, {"rt-e", [%{text: "好，要幫 Amy 報名哪一堂？"}]}}] =
                LineMock.calls()
+    end
+
+    test "幫他補課 leaves the request pending and runs a turn in her chat", %{
+      thread: thread,
+      student: student
+    } do
+      draft = makeup_draft(thread, student)
+      model([], "要排哪一堂？")
+
+      :ok = Conversation.handle_postback(makeup_tap(draft.id), "rt-m", @teacher)
+
+      assert Repo.reload!(draft).state == "pending"
+
+      assert [request, reply] = Assistant.list_messages(thread)
+      assert request.role == "user"
+      assert request.content == MakeupRequest.teacher_message(draft.id, draft.parsed, "zh-TW")
+      assert request.content =~ "makeup_request_id #{draft.id}"
+      assert reply.content == "要排哪一堂？"
+
+      assert [{:loading, _}, {:reply, {"rt-m", [%{text: "要排哪一堂？"}]}}] = LineMock.calls()
     end
 
     test "an unlinked asker's request hands the model their LINE ID, not 'not a student'", %{
@@ -609,14 +652,22 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert [{:reply, {"rt-e", [%{text: ^not_found}]}}] = LineMock.calls()
     end
 
-    test "only a teacher may tap 幫他報名" do
-      draft = signup_draft("Unewcomer")
+    test "only a teacher may tap 幫他報名 or 幫他補課", %{thread: thread, student: student} do
+      signup = signup_draft("Unewcomer")
+      makeup = makeup_draft(thread, student)
+      Mock.stub(fn _messages, _tools, _opts -> flunk("no turn should run") end)
 
-      :ok = Conversation.handle_postback(enroll_tap(draft.id), "rt-x", "Ustranger")
+      :ok = Conversation.handle_postback(enroll_tap(signup.id), "rt-x", "Ustranger")
+      :ok = Conversation.handle_postback(makeup_tap(makeup.id), "rt-y", "Ustranger")
 
-      assert Repo.reload!(draft).state == "pending"
+      assert Repo.reload!(signup).state == "pending"
+      assert Repo.reload!(makeup).state == "pending"
       unknown = Labels.t(:unknown_action, "zh-TW")
-      assert [{:reply, {"rt-x", [%{text: ^unknown}]}}] = LineMock.calls()
+
+      assert [
+               {:reply, {"rt-x", [%{text: ^unknown}]}},
+               {:reply, {"rt-y", [%{text: ^unknown}]}}
+             ] = LineMock.calls()
     end
   end
 end

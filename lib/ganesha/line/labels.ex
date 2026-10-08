@@ -7,7 +7,9 @@ defmodule Ganesha.Line.Labels do
   @labels %{
     confirm: {"確認", "Confirm"},
     discard: {"捨棄", "Discard"},
+    handled: {"已處理", "Handled"},
     enroll_from_request: {"幫他報名", "Sign them up"},
+    book_from_request: {"幫他補課", "Book makeup"},
     more_drafts:
       {"還有 %{count} 筆草稿沒有顯示，傳「待確認草稿」可以看全部。",
        "%{count} more drafts are not shown; send “待確認草稿” to see them all."},
@@ -21,6 +23,9 @@ defmodule Ganesha.Line.Labels do
     reason_changed: {"資料已經變了，請再跟我說一次", "the data changed since; please ask me again"},
     reason_not_found: {"找不到相關資料了", "the record is gone"},
     reason_other: {"系統沒辦法完成這筆", "the system couldn't complete it"},
+    reason_request_already_handled: {"這個申請已經處理過了", "This request was already handled"},
+    reason_line_user_id_taken:
+      {"這個 LINE 帳號已經連結到其他學生", "this LINE account is already linked to another student"},
     already_handled: {"這筆草稿已經處理過了。", "This draft was already handled."},
     replaced: {"這筆草稿已被取代。", "This draft was replaced."},
     not_found: {"找不到這筆草稿。", "Draft not found."},
@@ -56,7 +61,7 @@ defmodule Ganesha.Line.Labels do
   end
 
   @changed ~w(purchase_changed attendance_changed package_changed payment_not_claimed
-              credit_already_consumed session_cancelled)
+              credit_already_consumed session_cancelled student_line_user_id_changed)
 
   @doc """
   A Draft's stored `failure_reason` as she should read it (chat-first replies
@@ -69,6 +74,11 @@ defmodule Ganesha.Line.Labels do
 
   def failure_reason(reason, locale) when reason in @changed, do: t(:reason_changed, locale)
   def failure_reason("not_found", locale), do: t(:reason_not_found, locale)
+
+  def failure_reason("request_already_handled", locale),
+    do: t(:reason_request_already_handled, locale)
+
+  def failure_reason("line_user_id_taken", locale), do: t(:reason_line_user_id_taken, locale)
 
   def failure_reason(reason, locale) when is_binary(reason) do
     if String.contains?(reason, ": "), do: reason, else: t(:reason_other, locale)

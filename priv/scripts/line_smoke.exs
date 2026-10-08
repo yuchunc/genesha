@@ -1091,24 +1091,19 @@ Smoke.check(
 Smoke.check("NOTHING sent to LINE for the blocked message", LineMock.calls() == [])
 
 # ---------------------------------------------------------------- Step 12
-Smoke.step(12, "a newcomer asks to sign up; the teacher gets the card and taps 幫他報名")
+Smoke.step(12, "a newcomer asks to sign up; 幫他報名 proposes one enroll that adds them")
 
 {:ok, newcomer_thread} = Assistant.get_or_create_thread("user", newcomer_id)
 {:ok, _} = Assistant.set_locale(newcomer_thread, "zh-TW")
 Process.put(:line_client_mock_profile, {:ok, %{"displayName" => "SMOKE 新朋友"}})
 
-# The Student chat proposes signup_request; the Teacher chat proposes add_student.
-ProviderMock.stub(fn messages, tools, _opts ->
-  student_chat? = "signup_request" in Enum.map(tools, & &1.name)
-
-  case {List.last(messages), student_chat?} do
-    {%{role: "tool"}, true} ->
+# The Student chat proposes signup_request.
+ProviderMock.stub(fn messages, _tools, _opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
       {:ok, %{text: "老師會親自回覆你喔！", tool_calls: []}}
 
-    {%{role: "tool"}, false} ->
-      {:ok, %{text: "先新增這位學生，確認後跟我說「繼續」。", tool_calls: []}}
-
-    {_, true} ->
+    _ ->
       {:ok,
        %{
          text: nil,
@@ -1117,19 +1112,6 @@ ProviderMock.stub(fn messages, tools, _opts ->
              id: "smoke-call-8",
              name: "signup_request",
              input: %{"note" => "想報名週一晚上的課，11月開始"}
-           }
-         ]
-       }}
-
-    {_, false} ->
-      {:ok,
-       %{
-         text: nil,
-         tool_calls: [
-           %{
-             id: "smoke-call-9",
-             name: "add_student",
-             input: %{"display_name" => "SMOKE 新朋友", "line_user_id" => newcomer_id}
            }
          ]
        }}
@@ -1190,6 +1172,68 @@ Smoke.check(
   end)
 )
 
+# 幫他報名 runs a Teacher-chat turn; it proposes one enroll that carries the
+# request and adds the newcomer as a new student (spec 2026-10-07 §2).
+request_enroll_stub = fn request, name, call_id ->
+  ProviderMock.stub(fn messages, _tools, _opts ->
+    case List.last(messages) do
+      %{role: "tool"} ->
+        {:ok, %{text: "已建立報名草稿，請確認。", tool_calls: []}}
+
+      _ ->
+        {:ok,
+         %{
+           text: nil,
+           tool_calls: [
+             %{
+               id: call_id,
+               name: "enroll",
+               input: %{
+                 "signup_request_id" => request && request.id,
+                 "new_student_name" => name,
+                 "slot_id" => enroll_slot.id,
+                 "month" => "2026-10",
+                 "package_id" => enroll_package.id
+               }
+             }
+           ]
+         }}
+    end
+  end)
+end
+
+# The pending enroll Draft in the Teacher chat that acts on `request`.
+request_enroll_draft = fn request ->
+  request &&
+    Repo.one(
+      from d in Draft,
+        join: t in Thread,
+        on: d.thread_id == t.id,
+        where: t.source_id == ^teacher_id and d.kind == "enroll" and d.state == "pending",
+        where: fragment("json_extract(?, '$.signup_request_id')", d.parsed) == ^request.id
+    )
+end
+
+# Confirms an enroll Draft from the teacher's chat; returns it and its request reloaded.
+confirm_request_enroll = fn draft, request, event_id ->
+  :ok =
+    Line.record_event(%{
+      "webhookEventId" => event_id,
+      "mode" => "active",
+      "type" => "postback",
+      "replyToken" => "#{event_id}-reply",
+      "source" => %{"type" => "user", "userId" => teacher_id},
+      "postback" => %{"data" => "action=confirm&draft_id=#{draft && draft.id}"}
+    })
+
+  line_event = Repo.get_by!(LineEvent, webhook_event_id: event_id)
+  Process.delete(:line_client_mock_calls)
+  :ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => line_event.id}})
+  {draft && Repo.reload!(draft), request && Repo.reload!(request)}
+end
+
+request_enroll_stub.(signup_draft, "SMOKE 新朋友", "smoke-call-9")
+
 enroll_tap_event = %{
   "webhookEventId" => "smoke-postback-6",
   "mode" => "active",
@@ -1207,60 +1251,54 @@ Process.delete(:line_client_mock_calls)
 :ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => enroll_tap_line_event.id}})
 
 Smoke.check(
-  "幫他報名 marks the request handled",
-  signup_draft != nil and Repo.reload!(signup_draft).state == "applied"
+  "幫他報名 leaves the request pending",
+  signup_draft != nil and Repo.reload!(signup_draft).state == "pending"
 )
 
-add_student_draft =
-  Repo.one(
-    from d in Draft,
-      join: t in Thread,
-      on: d.thread_id == t.id,
-      where: t.source_id == ^teacher_id and d.kind == "add_student" and d.state == "pending"
-  )
+newcomer_enroll_draft = request_enroll_draft.(signup_draft)
 
 Smoke.check(
-  "the teacher's turn proposes add_student linked to the newcomer's LINE ID",
-  add_student_draft != nil and add_student_draft.parsed["line_user_id"] == newcomer_id
+  "the teacher's turn proposes one enroll adding the newcomer with their LINE ID",
+  newcomer_enroll_draft != nil and
+    newcomer_enroll_draft.parsed["new_student"]["line_user_id"] == newcomer_id
+)
+
+{applied_newcomer_enroll, settled_signup} =
+  confirm_request_enroll.(newcomer_enroll_draft, signup_draft, "smoke-postback-8")
+
+newcomer = People.find_by_line_user_id(newcomer_id)
+
+Smoke.check(
+  "Confirm adds the newcomer as a student linked to their LINE ID",
+  newcomer != nil and newcomer.display_name == "SMOKE 新朋友"
+)
+
+Smoke.check(
+  "Confirm enrolls the newcomer and settles the request with the purchase",
+  applied_newcomer_enroll != nil and applied_newcomer_enroll.state == "applied" and
+    settled_signup != nil and settled_signup.state == "applied" and
+    settled_signup.applied_record_type == "Ganesha.Sales.Purchase" and
+    settled_signup.applied_record_id == applied_newcomer_enroll.applied_record_id
 )
 
 # ---------------------------------------------------------------- Step 13
-Smoke.step(13, "a group sender asks to sign up; the teacher gets the card and taps 幫他報名")
+Smoke.step(13, "a group sender asks to sign up; 幫他報名 proposes one enroll that adds them")
 
 group_joiner_id = "Usmokegroupjoiner00000000000000"
 Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "SMOKE 群組新朋友"}})
 
-# The Group chat proposes signup_request; the Teacher chat (the only one with
-# enroll) proposes add_student for the sender's LINE ID.
-ProviderMock.stub(fn messages, tools, _opts ->
-  teacher_chat? = "enroll" in Enum.map(tools, & &1.name)
-
-  case {List.last(messages), teacher_chat?} do
-    {%{role: "tool"}, false} ->
+# The Group chat proposes signup_request.
+ProviderMock.stub(fn messages, _tools, _opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
       {:ok, %{text: "已記錄報名申請。", tool_calls: []}}
 
-    {%{role: "tool"}, true} ->
-      {:ok, %{text: "先新增這位學生，確認後跟我說「繼續」。", tool_calls: []}}
-
-    {_, false} ->
+    _ ->
       {:ok,
        %{
          text: nil,
          tool_calls: [
            %{id: "smoke-call-10", name: "signup_request", input: %{"note" => "我想報名週一早上的課"}}
-         ]
-       }}
-
-    {_, true} ->
-      {:ok,
-       %{
-         text: nil,
-         tool_calls: [
-           %{
-             id: "smoke-call-11",
-             name: "add_student",
-             input: %{"display_name" => "SMOKE 群組新朋友", "line_user_id" => group_joiner_id}
-           }
          ]
        }}
   end
@@ -1310,6 +1348,8 @@ Smoke.check(
   end)
 )
 
+request_enroll_stub.(group_signup_draft, "SMOKE 群組新朋友", "smoke-call-11")
+
 group_tap_event = %{
   "webhookEventId" => "smoke-postback-7",
   "mode" => "active",
@@ -1327,22 +1367,27 @@ Process.delete(:line_client_mock_calls)
 :ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => group_tap_line_event.id}})
 
 Smoke.check(
-  "幫他報名 marks the group request handled",
-  group_signup_draft != nil and Repo.reload!(group_signup_draft).state == "applied"
+  "幫他報名 leaves the group request pending",
+  group_signup_draft != nil and Repo.reload!(group_signup_draft).state == "pending"
 )
 
-group_add_student_draft =
-  Repo.one(
-    from d in Draft,
-      join: t in Thread,
-      on: d.thread_id == t.id,
-      where: t.source_id == ^teacher_id and d.kind == "add_student" and d.state == "pending",
-      where: fragment("json_extract(?, '$.line_user_id')", d.parsed) == ^group_joiner_id
-  )
+joiner_enroll_draft = request_enroll_draft.(group_signup_draft)
 
 Smoke.check(
-  "the teacher's turn proposes add_student linked to the group sender's LINE ID",
-  group_add_student_draft != nil
+  "the teacher's turn proposes one enroll adding the group sender with their LINE ID",
+  joiner_enroll_draft != nil and
+    joiner_enroll_draft.parsed["new_student"]["line_user_id"] == group_joiner_id
+)
+
+{applied_joiner_enroll, settled_group_signup} =
+  confirm_request_enroll.(joiner_enroll_draft, group_signup_draft, "smoke-postback-9")
+
+Smoke.check(
+  "Confirm adds the group sender as a student and settles the request",
+  People.find_by_line_user_id(group_joiner_id) != nil and
+    applied_joiner_enroll != nil and applied_joiner_enroll.state == "applied" and
+    settled_group_signup != nil and settled_group_signup.state == "applied" and
+    settled_group_signup.applied_record_id == applied_joiner_enroll.applied_record_id
 )
 
 # ---------------------------------------------------------------- teardown

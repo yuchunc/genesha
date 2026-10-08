@@ -1,9 +1,10 @@
 defmodule Ganesha.Assistant.Tasks.SignupRequest do
   @moduledoc """
   `signup_request` (spec 2026-10-06 §1): someone asked to sign up for a class,
-  in a Student chat or the Group chat. The Draft is acknowledged only;
-  confirming books nothing. The teacher enrolls them herself, or through
-  「幫他報名」.
+  in a Student chat or the Group chat. Confirming (「已處理」) only
+  acknowledges it, for a request settled outside LINE. 「幫他報名」 asks the
+  model for an `enroll` Draft carrying this request's id, whose confirm
+  books the class and settles the request (spec 2026-10-07 §2, §4).
 
   Who asked never comes from the model. In a Student chat it is the chat's
   LINE user, named by their LINE profile when unlinked. In the Group chat it
@@ -88,52 +89,60 @@ defmodule Ganesha.Assistant.Tasks.SignupRequest do
   def summary(parsed, _locale), do: "未連結的 LINE 用戶想報名：#{parsed["note"]}"
 
   @doc """
-  What 「幫他報名」 adds to the Teacher chat as her message (spec 2026-10-06
-  §5), so the model proposes enroll, or add_student first for a newcomer.
+  What 「幫他報名」 adds to the Teacher chat as her message (spec 2026-10-07
+  §4), so the model proposes one `enroll` with this request's id: for the
+  linked student, or for a snapshot match or a new student when unlinked.
   """
   @spec teacher_message(pos_integer(), map(), String.t()) :: String.t()
   def teacher_message(id, %{"new" => false} = parsed, "en") do
-    note = parsed["note"]
-
     "[Sign-up request ##{id}] Sign up #{parsed["student_name"]} " <>
-      "(student ##{parsed["student_id"]}). #{quoted_words(note, "en")}"
+      "(student ##{parsed["student_id"]}). #{quoted_words(parsed["note"], "en")}" <>
+      "Propose enroll with signup_request_id #{id} and student_id #{parsed["student_id"]}."
   end
 
   def teacher_message(id, %{"new" => false} = parsed, locale) do
-    note = parsed["note"]
-
     "[報名申請 ##{id}] 幫 #{parsed["student_name"]}（學生 ##{parsed["student_id"]}）" <>
-      "報名。#{quoted_words(note, locale)}"
+      "報名。#{quoted_words(parsed["note"], locale)}" <>
+      "請提出 enroll，帶 signup_request_id #{id} 和 student_id #{parsed["student_id"]}。"
   end
 
   def teacher_message(id, parsed, "en") do
-    line = line_label(parsed, "en")
-    note = parsed["note"]
-
-    "[Sign-up request ##{id}] #{line}This LINE ID isn't linked to a student. " <>
-      "#{quoted_words(note, "en")} Check the snapshot for a student " <>
-      "matching the LINE display name or their words; if none, add a student with " <>
-      "this LINE user id, then ask her to say 「繼續」 after confirming."
+    "[Sign-up request ##{id}] #{line_label(parsed, "en")}This LINE ID isn't linked to a " <>
+      "student. #{quoted_words(parsed["note"], "en")}Propose enroll with " <>
+      "signup_request_id #{id}. Check the snapshot for a student matching the LINE display " <>
+      "name or their words: if one fits, pass that student_id; if none does, pass " <>
+      "new_student_name (#{name_hint(parsed, "en")}). Call ask_teacher only when the match " <>
+      "is unclear."
   end
 
   def teacher_message(id, parsed, locale) do
-    line = line_label(parsed, locale)
-    note = parsed["note"]
-
-    "[報名申請 ##{id}] #{line}這個 LINE ID 還沒連結任何學生。" <>
-      "#{quoted_words(note, locale)}" <>
-      "請先在名冊中查看 LINE 顯示名稱或報名內容是否有相符的學生；" <>
-      "若沒有，再新增學生並連結此 LINE ID，確認後跟我說「繼續」。"
+    "[報名申請 ##{id}] #{line_label(parsed, locale)}這個 LINE ID 還沒連結任何學生。" <>
+      "#{quoted_words(parsed["note"], locale)}" <>
+      "請提出 enroll，帶 signup_request_id #{id}。先在名冊中查看 LINE 顯示名稱或報名內容" <>
+      "是否有相符的學生：有就帶那位的 student_id；沒有就帶 new_student_name" <>
+      "（#{name_hint(parsed, locale)}）。只有分不清是哪位時才用 ask_teacher。"
   end
 
   defp quoted_words(note, "en"), do: ~s|Their words: "#{note}". |
   defp quoted_words(note, _locale), do: "學生原話：「#{note}」。"
 
-  defp line_label(%{"line_name" => name} = parsed, _locale) when is_binary(name),
+  defp line_label(%{"line_name" => name} = parsed, "en") when is_binary(name),
     do: "LINE display name #{name}; LINE ID #{line_id(parsed)}. "
+
+  defp line_label(%{"line_name" => name} = parsed, _locale) when is_binary(name),
+    do: "LINE 顯示名稱 #{name}，LINE ID #{line_id(parsed)}，"
 
   defp line_label(parsed, "en"), do: "LINE ID #{line_id(parsed)}. "
   defp line_label(parsed, _locale), do: "LINE ID #{line_id(parsed)}，"
+
+  defp name_hint(%{"line_name" => name}, "en") when is_binary(name),
+    do: "#{name}, their LINE display name, unless the teacher says otherwise"
+
+  defp name_hint(%{"line_name" => name}, _locale) when is_binary(name),
+    do: "用 LINE 顯示名稱 #{name}，除非老師另外指定"
+
+  defp name_hint(_parsed, "en"), do: "the name the teacher gives; ask her if she gave none"
+  defp name_hint(_parsed, _locale), do: "用老師給的名字；她沒說就問她"
 
   defp line_id(%{"line_user_id" => id}), do: id
 

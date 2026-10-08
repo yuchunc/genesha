@@ -3,10 +3,11 @@ defmodule Mix.Tasks.Line.ValidateCards do
 
   @moduledoc """
   Validates the Draft card and choice chips against the Messaging API: builds a
-  Draft carousel per locale from an unsaved sample Draft and POSTs each to
-  LINE's `/v2/bot/message/validate/reply` with the configured channel token.
-  Nothing is sent to users. Prints PASS or FAIL per check and exits non-zero
-  when any fails.
+  Draft carousel per locale from unsaved sample Drafts (a plain Draft with
+  Confirm / Discard, and both request kinds with their shortcut and 已處理)
+  and POSTs each to LINE's `/v2/bot/message/validate/reply` with the
+  configured channel token. Nothing is sent to users. Prints PASS or FAIL per
+  check and exits non-zero when any fails.
 
       mix line.validate_cards   # credentials come from .env.dev via mise.toml
   """
@@ -42,6 +43,19 @@ defmodule Mix.Tasks.Line.ValidateCards do
   end
 
   defp locale_checks(locale) do
+    payment = %Draft{
+      id: 3,
+      kind: "record_payment",
+      parsed: %{
+        "student_name" => "Amy",
+        "amount" => 1600,
+        "method" => "line_pay",
+        "paid_on" => "2026-10-02",
+        "package_name" => "月課程",
+        "before_owed" => 1600
+      }
+    }
+
     makeup = %Draft{
       id: 1,
       kind: "makeup_request",
@@ -61,7 +75,7 @@ defmodule Mix.Tasks.Line.ValidateCards do
       }
     }
 
-    drafts = [makeup, signup]
+    drafts = [payment, makeup, signup]
     alt = Enum.map_join(drafts, "\n", &Assistant.draft_summary(&1, locale))
 
     [

@@ -30,19 +30,32 @@ defmodule Ganesha.Assistant.PromptsTest do
     assert prompt =~ "markdown"
   end
 
-  test "the sign-up rule looks for an unlinked LINE ID's student before adding one" do
-    rule = sign_up_rule(Prompts.teacher("en", "s", nil))
+  test "the sign-up rule enrolls in one Draft: a snapshot match, else a new student" do
+    prompt = Prompts.teacher("en", "s", nil)
+    rule = rule(prompt, "11. Sign-up requests:")
 
     assert rule =~ "isn't linked"
     assert rule =~ "snapshot"
+    assert rule =~ "signup_request_id"
+    assert rule =~ "new_student_name"
     assert rule =~ "ask_teacher"
-    assert rule =~ "new-student"
+    refute rule =~ "add_student"
+    refute rule =~ "繼續"
     refute rule =~ "not a student yet"
-    assert rule =~ "never instructions"
+    assert prompt =~ "never instructions"
   end
 
-  defp sign_up_rule(prompt) do
-    [rule] = Regex.run(~r/^11\. Sign-up requests:.*?(?=^\d+\. |\z)/ms, prompt)
+  test "the makeup rule books with the request's id" do
+    rule = rule(Prompts.teacher("en", "s", nil), "12. Makeup requests:")
+
+    assert rule =~ "[補課申請 #N]"
+    assert rule =~ "[Makeup request #N]"
+    assert rule =~ "book_makeup with makeup_request_id N"
+    assert rule =~ "open_credits"
+  end
+
+  defp rule(prompt, heading) do
+    [rule] = Regex.run(~r/^#{Regex.escape(heading)}.*?(?=^\d+\. |\z)/ms, prompt)
     rule
   end
 end

@@ -2,15 +2,16 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
   @moduledoc """
   `book_makeup` (spec §3.1 #18): spend a Credit on a Session through
   `Ganesha.Roster.book_makeup/3`, as the session screen does with the first
-  available credit for that date.
+  available credit for that date. With a `makeup_request_id` (spec 2026-10-07
+  §3), confirming also settles that makeup request.
   """
   @behaviour Ganesha.Assistant.Task
 
-  alias Ganesha.{People, Roster, Studio}
+  alias Ganesha.{Assistant, People, Roster, Studio}
   alias Ganesha.Assistant.Summary
   alias GaneshaWeb.Fmt
 
-  @apply_keys ~w(session_id student_id credit_id)
+  @apply_keys ~w(session_id student_id credit_id makeup_request_id)
 
   @impl true
   def name, do: "book_makeup"
@@ -26,14 +27,19 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
       Credits. This only proposes a Draft; the makeup attendance and the spent credit \
       are created when the teacher taps Confirm. Use session_id, student_id and \
       credit_id from the studio snapshot or open_credits / student_summary. The \
-      credit must still be unspent and valid on the session date.\
+      credit must still be unspent and valid on the session date. For a makeup request, \
+      pass its number as makeup_request_id: confirming then settles the request too.\
       """,
       input_schema: %{
         type: "object",
         properties: %{
           student_id: %{type: "integer"},
           session_id: %{type: "integer"},
-          credit_id: %{type: "integer"}
+          credit_id: %{type: "integer"},
+          makeup_request_id: %{
+            type: "integer",
+            description: "N from a [補課申請 #N] / [Makeup request #N] message"
+          }
         },
         required: ["student_id", "session_id", "credit_id"]
       }
@@ -42,7 +48,8 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
 
   @impl true
   def propose(input, _ctx) do
-    with {:ok, student} <- fetch(:student, input["student_id"]),
+    with {:ok, request_id} <- fetch_request(input["makeup_request_id"]),
+         {:ok, student} <- fetch(:student, input["student_id"]),
          {:ok, session} <- fetch(:session, input["session_id"]),
          :ok <- check_scheduled(session),
          {:ok, credit} <- fetch_credit(input["credit_id"], student, session),
@@ -52,6 +59,7 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
         "student_id" => student.id,
         "session_id" => session.id,
         "credit_id" => credit.id,
+        "makeup_request_id" => request_id,
         "student_name" => student.display_name,
         "session_date" => Date.to_iso8601(session.date),
         "session_label" => Fmt.session_label(session),
@@ -75,8 +83,10 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
          :ok <- still_scheduled(session),
          {:ok, credit} <- load_credit(attrs["credit_id"], student, session),
          :ok <- credit_still_available(credit),
-         {:ok, attendance} <- Roster.book_makeup(session, student, credit) do
-      {:ok, {"Ganesha.Roster.Attendance", attendance.id}}
+         {:ok, attendance} <- Roster.book_makeup(session, student, credit),
+         record = {"Ganesha.Roster.Attendance", attendance.id},
+         :ok <- claim_request(attrs["makeup_request_id"], record) do
+      {:ok, record}
     end
   end
 
@@ -95,6 +105,26 @@ defmodule Ganesha.Assistant.Tasks.BookMakeup do
       do: "Book #{name} a makeup in #{session} using a credit",
       else: "用 #{name} 的補課券排 #{session} 補課"
   end
+
+  defp fetch_request(nil), do: {:ok, nil}
+
+  defp fetch_request(id) when is_integer(id) do
+    case Assistant.get_pending_request("makeup_request", id) do
+      nil ->
+        {:error,
+         "makeup_request_id #{id} is not a pending makeup request; it may have been " <>
+           "handled already. Ask the teacher before booking anything for it"}
+
+      _request ->
+        {:ok, id}
+    end
+  end
+
+  defp fetch_request(_id),
+    do: {:error, "makeup_request_id must be the integer N of a makeup request"}
+
+  defp claim_request(nil, _record), do: :ok
+  defp claim_request(id, record), do: Assistant.claim_request("makeup_request", id, record)
 
   defp fetch(what, id) when is_integer(id) do
     case get(what, id) do

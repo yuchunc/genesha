@@ -272,6 +272,55 @@ defmodule Ganesha.AssistantTest do
     end
   end
 
+  describe "claim_request/3" do
+    test "settles a pending request once, pointing at the acting record", %{thread: thread} do
+      {:ok, request} = makeup(thread, "8/17")
+
+      assert :ok =
+               Assistant.claim_request(
+                 "makeup_request",
+                 request.id,
+                 {"Ganesha.Roster.Attendance", 5}
+               )
+
+      assert %Draft{
+               state: "applied",
+               applied_record_type: "Ganesha.Roster.Attendance",
+               applied_record_id: 5
+             } = Repo.reload!(request)
+
+      assert {:error, :request_already_handled} =
+               Assistant.claim_request(
+                 "makeup_request",
+                 request.id,
+                 {"Ganesha.Roster.Attendance", 6}
+               )
+    end
+
+    test "never claims a Draft of another kind", %{thread: thread} do
+      {:ok, request} = makeup(thread, "8/17")
+
+      assert {:error, :request_already_handled} =
+               Assistant.claim_request(
+                 "signup_request",
+                 request.id,
+                 {"Ganesha.Sales.Purchase", 1}
+               )
+
+      assert Repo.reload!(request).state == "pending"
+    end
+
+    test "get_pending_request/2 finds only a pending request of that kind", %{thread: thread} do
+      {:ok, request} = makeup(thread, "8/17")
+
+      assert %Draft{} = Assistant.get_pending_request("makeup_request", request.id)
+      assert Assistant.get_pending_request("signup_request", request.id) == nil
+
+      {:ok, _} = Assistant.discard_draft(request)
+      assert Assistant.get_pending_request("makeup_request", request.id) == nil
+    end
+  end
+
   test "list_pending_drafts/0 lists pending Drafts oldest first with the student loaded", %{
     thread: thread
   } do

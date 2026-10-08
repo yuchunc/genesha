@@ -1,7 +1,9 @@
 defmodule Ganesha.Line.Cards do
   @moduledoc """
-  The Draft card (chat-first replies spec §2): one sentence and 確認 / 捨棄,
-  plus 「幫他報名」 first on a sign-up request (spec 2026-10-06 §5).
+  The Draft card (chat-first replies spec §2): one sentence and 確認 / 捨棄.
+  A request card (`signup_request`, `makeup_request`) leads with its shortcut,
+  「幫他報名」 / 「幫他補課」, and relabels 確認 as 「已處理」, since confirming
+  it only acknowledges (spec 2026-10-07 §4).
   """
 
   alias Ganesha.Assistant
@@ -9,6 +11,12 @@ defmodule Ganesha.Line.Cards do
   alias Ganesha.Line.Labels
 
   @max_bubbles 12
+
+  # Request kind => the postback action and label of its shortcut button.
+  @shortcuts %{
+    "signup_request" => {"enroll_from_request", :enroll_from_request},
+    "makeup_request" => {"book_from_request", :book_from_request}
+  }
 
   @doc "A Draft as one sentence with its buttons (chat-first replies spec §2)."
   @spec draft_bubble(Draft.t(), String.t()) :: map()
@@ -18,7 +26,7 @@ defmodule Ganesha.Line.Cards do
         [
           button("primary", %{
             type: "postback",
-            label: Labels.t(:confirm, locale),
+            label: Labels.t(confirm_label(draft), locale),
             data: "action=confirm&draft_id=#{draft.id}"
           }),
           button("secondary", %{
@@ -46,17 +54,22 @@ defmodule Ganesha.Line.Cards do
     }
   end
 
-  defp shortcut_buttons(%Draft{kind: "signup_request", id: id}, locale) do
+  defp shortcut_buttons(%Draft{kind: kind, id: id}, locale) when is_map_key(@shortcuts, kind) do
+    {action, label} = Map.fetch!(@shortcuts, kind)
+
     [
       button("primary", %{
         type: "postback",
-        label: Labels.t(:enroll_from_request, locale),
-        data: "action=enroll_from_request&draft_id=#{id}"
+        label: Labels.t(label, locale),
+        data: "action=#{action}&draft_id=#{id}"
       })
     ]
   end
 
   defp shortcut_buttons(_draft, _locale), do: []
+
+  defp confirm_label(%Draft{kind: kind}) when is_map_key(@shortcuts, kind), do: :handled
+  defp confirm_label(_draft), do: :confirm
 
   @doc "The line recorded in the chat history for a Draft card she was shown."
   @spec history_line({:draft, Draft.t()}, String.t()) :: String.t()

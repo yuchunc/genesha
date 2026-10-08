@@ -8,7 +8,8 @@ defmodule Ganesha.Assistant.Conversation do
   (pushing when the reply token is unusable, or a text-only version when LINE
   rejects the messages), and appends the cards it sent to the model's own
   reply. Confirm and Discard answer with one text message and leave the
-  outcome in the Teacher chat's history.
+  outcome in the Teacher chat's history; a request card's shortcut runs a
+  Teacher-chat turn instead (spec 2026-10-07 §4).
   """
 
   require Logger
@@ -27,10 +28,16 @@ defmodule Ganesha.Assistant.Conversation do
     Turn
   }
 
-  alias Ganesha.Assistant.Tasks.SignupRequest
+  alias Ganesha.Assistant.Tasks.{MakeupRequest, SignupRequest}
   alias Ganesha.Line.{Cards, Client, Labels, Reply}
 
   @loading_seconds 20
+
+  # Spec 2026-10-07 §4: a request card's shortcut action => its request task.
+  @request_actions %{
+    "enroll_from_request" => SignupRequest,
+    "book_from_request" => MakeupRequest
+  }
 
   @spec handle_message(Thread.t(), String.t(), String.t()) :: :ok
   def handle_message(%Thread{} = thread, reply_token, source_id) do
@@ -117,12 +124,17 @@ defmodule Ganesha.Assistant.Conversation do
       else: unknown_action(reply_token, source_id)
   end
 
-  # Spec 2026-10-06 §5: 「幫他報名」 settles a sign-up request and hands it to
-  # this teacher's own chat as a normal turn.
-  def handle_postback(%{"action" => "enroll_from_request"} = params, reply_token, source_id) do
-    if Ganesha.Line.teacher?(source_id),
-      do: enroll_from_request(parse_id(params["draft_id"]), reply_token, source_id),
-      else: unknown_action(reply_token, source_id)
+  # Spec 2026-10-07 §4: 「幫他報名」 / 「幫他補課」 hand a pending request to
+  # this teacher's own chat as a normal turn. Nothing is confirmed here; the
+  # Draft that turn proposes settles the request when she confirms it.
+  def handle_postback(%{"action" => action} = params, reply_token, source_id)
+      when is_map_key(@request_actions, action) do
+    if Ganesha.Line.teacher?(source_id) do
+      task = Map.fetch!(@request_actions, action)
+      act_on_request(task, parse_id(params["draft_id"]), reply_token, source_id)
+    else
+      unknown_action(reply_token, source_id)
+    end
   end
 
   def handle_postback(_params, reply_token, source_id), do: unknown_action(reply_token, source_id)
@@ -144,39 +156,23 @@ defmodule Ganesha.Assistant.Conversation do
     deliver_outcome(thread, reply_token, source_id, outcome)
   end
 
-  defp enroll_from_request(id, reply_token, source_id) do
+  defp act_on_request(task, id, reply_token, source_id) do
     thread = thread_for(source_id)
     locale = locale(thread)
+    kind = task.name()
 
-    with %Draft{} = draft <- signup_request(id),
-         {:applied, applied} = result <- outcome("confirm", draft) do
-      {_text, history_line} = describe_outcome(result, locale)
-      {:ok, _} = Assistant.append_message(thread, "assistant", history_line, nil)
+    case id && Assistant.get_draft(id) do
+      %Draft{kind: ^kind, state: "pending"} = request ->
+        message = task.teacher_message(request.id, request.parsed, locale)
+        {:ok, _} = Assistant.append_message(thread, "user", message, nil)
+        handle_message(thread, reply_token, source_id)
 
-      {:ok, _} =
-        Assistant.append_message(
-          thread,
-          "user",
-          SignupRequest.teacher_message(applied.id, applied.parsed, locale),
-          nil
-        )
+      %Draft{kind: ^kind} = request ->
+        outcome = request |> not_pending() |> describe_outcome(locale)
+        deliver_outcome(thread, reply_token, source_id, outcome)
 
-      handle_message(thread, reply_token, source_id)
-    else
-      nil ->
+      _other ->
         deliver_outcome(thread, reply_token, source_id, {Labels.t(:not_found, locale), nil})
-
-      other ->
-        deliver_outcome(thread, reply_token, source_id, describe_outcome(other, locale))
-    end
-  end
-
-  defp signup_request(nil), do: nil
-
-  defp signup_request(id) do
-    case Assistant.get_draft(id) do
-      %Draft{kind: "signup_request"} = draft -> draft
-      _other -> nil
     end
   end
 

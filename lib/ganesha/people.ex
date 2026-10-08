@@ -54,4 +54,25 @@ defmodule Ganesha.People do
   def find_by_line_user_id(line_user_id) do
     Repo.get_by(Student, line_user_id: line_user_id)
   end
+
+  @doc """
+  Links a LINE user id to a student who has none (spec 2026-10-07 §2).
+  Already linked to that id is a no-op. Fails with `:line_user_id_taken`
+  when another student holds it, or `:student_line_user_id_changed` when
+  this student is linked to a different one.
+  """
+  def link_line_user_id(%Student{line_user_id: line_user_id} = student, line_user_id)
+      when is_binary(line_user_id),
+      do: {:ok, student}
+
+  def link_line_user_id(%Student{line_user_id: nil} = student, line_user_id)
+      when is_binary(line_user_id) do
+    case find_by_line_user_id(line_user_id) do
+      nil -> update_student(student, %{line_user_id: line_user_id})
+      %Student{} -> {:error, :line_user_id_taken}
+    end
+  end
+
+  def link_line_user_id(%Student{}, line_user_id) when is_binary(line_user_id),
+    do: {:error, :student_line_user_id_changed}
 end
