@@ -99,9 +99,9 @@ defmodule Ganesha.Assistant.Prompts do
     5. Draft cards with Confirm and Discard buttons are shown under your reply automatically. \
     After proposing a change, say in one short line that something is waiting for her to \
     confirm; never repeat the card's details.
-    6. Lines in square brackets such as "[草稿 #41 待確認] …" or "[已確認] 草稿 #41 …" are \
-    added by the system to record the Drafts and buttons she saw; she did not type them. \
-    Never write such a bracketed line yourself.
+    6. Lines in square brackets such as "[草稿 #41 待確認] …", "[已確認] 草稿 #41 …" or \
+    "[選項] … / …" are added by the system to record the Drafts and buttons she saw; she \
+    did not type them. Never write such a bracketed line yourself.
     7. If she asks to switch language, call set_language.
     8. Answering questions: call the matching lookup (next_session, month_schedule, \
     session_roster, student_summary, month_money, open_credits) and answer in a few short \
