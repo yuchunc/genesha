@@ -13,10 +13,14 @@ defmodule Ganesha.Line do
   alias Ganesha.Repo
 
   @doc """
-  Persists one webhook event, deduping on `webhookEventId`. Enqueues async
-  processing only for a newly-inserted, active-mode event — a duplicate
-  delivery or a standby-mode event is stored but never processed twice.
+  Persists one webhook event, deduping on `webhookEventId`, and for an
+  active-mode event enqueues its `Ganesha.Assistant.ProcessEventWorker` job in
+  the same transaction, so no row is stored without its job (spec 2026-10-07
+  §5). A duplicate delivery is `:ok` and never processed twice; a
+  standby-mode event is stored only. Any other failure stores nothing and
+  returns `{:error, reason}`, so the webhook answers 500 and LINE redelivers.
   """
+  @spec record_event(map()) :: :ok | {:error, term()}
   def record_event(%{"webhookEventId" => webhook_event_id} = event) do
     attrs = %{
       webhook_event_id: webhook_event_id,
@@ -26,20 +30,30 @@ defmodule Ganesha.Line do
       payload: without_group_reply_token(event)
     }
 
-    case %LineEvent{} |> LineEvent.changeset(attrs) |> Repo.insert() do
-      {:ok, line_event} ->
-        if event["mode"] == "active" do
-          enqueue(line_event)
-        end
-
+    case Repo.transaction(fn -> insert_and_enqueue(attrs, event["mode"]) end) do
+      {:ok, :ok} ->
         :ok
 
-      {:error, changeset} ->
-        if unique_violation?(changeset, :webhook_event_id), do: :ok, else: {:error, changeset}
+      {:error, reason} ->
+        if duplicate?(reason) do
+          :ok
+        else
+          Logger.error("failed to record LINE event #{webhook_event_id}: #{inspect(reason)}")
+          {:error, reason}
+        end
     end
   end
 
   def record_event(_event), do: :ok
+
+  defp insert_and_enqueue(attrs, mode) do
+    with {:ok, line_event} <- %LineEvent{} |> LineEvent.changeset(attrs) |> Repo.insert(),
+         :ok <- enqueue(line_event, mode) do
+      :ok
+    else
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
 
   @doc "The LINE user ids that get the Teacher chat (config `:line, :teacher_line_user_ids`)."
   @spec teacher_ids() :: [String.t()]
@@ -69,6 +83,11 @@ defmodule Ganesha.Line do
 
   defp without_group_reply_token(event), do: event
 
+  defp duplicate?(%Ecto.Changeset{data: %LineEvent{}} = changeset),
+    do: unique_violation?(changeset, :webhook_event_id)
+
+  defp duplicate?(_reason), do: false
+
   defp unique_violation?(changeset, field) do
     Enum.any?(changeset.errors, fn
       {^field, {_, [constraint: :unique, constraint_name: _]}} -> true
@@ -76,17 +95,13 @@ defmodule Ganesha.Line do
     end)
   end
 
-  defp enqueue(%LineEvent{id: id}) do
-    case %{"line_event_id" => id}
-         |> Ganesha.Assistant.ProcessEventWorker.new()
-         |> Oban.insert() do
-      {:ok, _job} ->
-        :ok
+  defp enqueue(%LineEvent{id: id}, "active") do
+    job = Ganesha.Assistant.ProcessEventWorker.new(%{"line_event_id" => id})
 
-      {:error, reason} ->
-        Logger.error("failed to enqueue line_event #{id}: #{inspect(reason)}")
-    end
+    with {:ok, _job} <- Oban.insert(job), do: :ok
   end
+
+  defp enqueue(_line_event, _mode), do: :ok
 
   @doc """
   Whether the event's chat has an earlier active-mode event still unprocessed

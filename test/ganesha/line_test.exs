@@ -1,12 +1,11 @@
 defmodule Ganesha.LineTest do
   use Ganesha.DataCase
+  use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
+
+  alias Ganesha.Assistant.ProcessEventWorker
   alias Ganesha.Line
 
-  # `mode: "standby"` here is deliberate: `record_event/1` only attempts to
-  # enqueue `Ganesha.Assistant.ProcessEventWorker` for `mode: "active"`
-  # events, and that worker does not exist until Task 15. Active-mode
-  # enqueueing is exercised there instead, once it exists — see
-  # `enqueue_teacher_message/1` in `process_event_worker_test.exs`.
+  # Standby by default, so storing is tested apart from enqueueing.
   defp event(overrides \\ %{}) do
     Map.merge(
       %{
@@ -29,6 +28,30 @@ defmodule Ganesha.LineTest do
     assert :ok = Line.record_event(e)
     assert :ok = Line.record_event(e)
     assert Repo.aggregate(Line.LineEvent, :count) == 1
+  end
+
+  test "record_event/1 enqueues an active event's job once, however often LINE redelivers it" do
+    e = event(%{"mode" => "active"})
+    assert :ok = Line.record_event(e)
+    assert :ok = Line.record_event(e)
+
+    stored = Repo.get_by!(Line.LineEvent, webhook_event_id: e["webhookEventId"])
+    assert [_job] = all_enqueued(worker: ProcessEventWorker)
+    assert_enqueued(worker: ProcessEventWorker, args: %{"line_event_id" => stored.id})
+  end
+
+  test "record_event/1 stores a standby event without enqueueing it" do
+    assert :ok = Line.record_event(event())
+    refute_enqueued(worker: ProcessEventWorker)
+  end
+
+  @tag :capture_log
+  test "record_event/1 returns the error and stores nothing when the insert fails" do
+    e = event(%{"mode" => "active"}) |> Map.delete("type")
+
+    assert {:error, %Ecto.Changeset{}} = Line.record_event(e)
+    assert Repo.aggregate(Line.LineEvent, :count) == 0
+    refute_enqueued(worker: ProcessEventWorker)
   end
 
   test "get_event!/1 and mark_processed/1" do
