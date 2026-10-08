@@ -11,9 +11,8 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   @teacher "Uteacher0000000000000000000000"
   @other_teacher "Uteacher2000000000000000000000"
 
-  # Records a webhook event and runs its job inline; returns the job's result
-  # and the stored event.
-  defp deliver(event) do
+  # Records a webhook event (enqueueing its job) without running it.
+  defp record(event) do
     webhook_event_id = "evt-#{System.unique_integer([:positive])}"
 
     :ok =
@@ -21,8 +20,17 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
         Map.merge(%{"webhookEventId" => webhook_event_id, "mode" => "active"}, event)
       )
 
-    line_event = Repo.get_by!(Line.LineEvent, webhook_event_id: webhook_event_id)
-    {perform_job(ProcessEventWorker, %{"line_event_id" => line_event.id}), line_event}
+    Repo.get_by!(Line.LineEvent, webhook_event_id: webhook_event_id)
+  end
+
+  defp run_job(line_event),
+    do: perform_job(ProcessEventWorker, %{"line_event_id" => line_event.id})
+
+  # Records a webhook event and runs its job inline; returns the job's result
+  # and the stored event.
+  defp deliver(event) do
+    line_event = record(event)
+    {run_job(line_event), line_event}
   end
 
   defp new_line_message_id, do: "linemsg-#{System.unique_integer([:positive])}"
@@ -272,6 +280,54 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       assert [{:reply, {"rt-1", [message]}}] = LineMock.calls()
       assert message == Line.Client.language_picker_message()
       assert Assistant.list_messages(Conversation.thread_for("Ustranger3")) == []
+    end
+  end
+
+  describe "event order" do
+    setup do
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "好", tool_calls: []}} end)
+      %{thread: teacher_thread()}
+    end
+
+    test "a later event for the same chat waits while an earlier one is unprocessed", c do
+      first = record(text_from(@teacher, "第一則"))
+      second = record(text_from(@teacher, "第二則"))
+
+      assert {:snooze, 1} = run_job(second)
+      assert LineMock.calls() == []
+      refute Line.get_event!(second.id).processed_at
+
+      assert :ok = run_job(first)
+      assert :ok = run_job(second)
+
+      assert [%{content: "第一則"}, %{content: "好"}, %{content: "第二則"}, %{content: "好"}] =
+               Assistant.list_messages(c.thread)
+    end
+
+    test "an earlier event unprocessed for over ten minutes no longer holds the chat back", c do
+      stale = record(text_from(@teacher, "很久以前"))
+      eleven_minutes_ago = DateTime.utc_now() |> DateTime.add(-660) |> DateTime.truncate(:second)
+
+      Repo.update_all(from(e in Line.LineEvent, where: e.id == ^stale.id),
+        set: [inserted_at: eleven_minutes_ago]
+      )
+
+      assert {:ok, _} = deliver(text_from(@teacher, "現在"))
+      assert [%{content: "現在"}, %{content: "好"}] = Assistant.list_messages(c.thread)
+    end
+
+    test "another chat's unprocessed event doesn't hold this chat back", c do
+      _other = record(text_from(@other_teacher, "別的聊天室"))
+
+      assert {:ok, _} = deliver(text_from(@teacher, "我的"))
+      assert [%{content: "我的"}, %{content: "好"}] = Assistant.list_messages(c.thread)
+    end
+
+    test "an earlier standby event for the same chat doesn't hold it back", c do
+      _standby = record(Map.put(text_from(@teacher, "待命模式"), "mode", "standby"))
+
+      assert {:ok, _} = deliver(text_from(@teacher, "現在"))
+      assert [%{content: "現在"}, %{content: "好"}] = Assistant.list_messages(c.thread)
     end
   end
 

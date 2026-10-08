@@ -88,6 +88,27 @@ defmodule Ganesha.Line do
     end
   end
 
+  @doc """
+  Whether the event's chat has an earlier active-mode event still unprocessed
+  and younger than ten minutes; its job waits for that one (spec 2026-10-07
+  §5). A standby-mode event is never enqueued, so it never holds the chat
+  back; neither does an older one that never processed. An event without a
+  chat never waits.
+  """
+  @spec earlier_unprocessed?(%LineEvent{}) :: boolean()
+  def earlier_unprocessed?(%LineEvent{source_id: nil}), do: false
+
+  def earlier_unprocessed?(%LineEvent{id: id, source_id: source_id}) do
+    cutoff = DateTime.utc_now() |> DateTime.add(-600) |> DateTime.truncate(:second)
+
+    Repo.exists?(
+      from e in LineEvent,
+        where:
+          e.source_id == ^source_id and e.id < ^id and is_nil(e.processed_at) and
+            e.inserted_at > ^cutoff and json_extract_path(e.payload, ["mode"]) == "active"
+    )
+  end
+
   @doc "Whether a group (`\"group\"`) or a sender in every group (`\"sender\"`) is blocked."
   @spec blocked?(String.t(), String.t() | nil) :: boolean()
   def blocked?(_kind, nil), do: false

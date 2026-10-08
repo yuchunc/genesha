@@ -1,9 +1,12 @@
 defmodule Ganesha.Assistant.ProcessEventWorker do
   @moduledoc """
-  Routes one `line_events` row (spec §6.1). 1:1 text messages go to
-  `Ganesha.Assistant.Conversation` once the sender has picked a language (the
-  first-contact picker lives here); any other 1:1 message gets one "text only"
-  reply and is not stored; 1:1 postbacks go to
+  Routes one `line_events` row (spec §6.1). One chat's events run in webhook
+  order: a job whose chat has an earlier unprocessed event younger than ten
+  minutes snoozes for a second (spec 2026-10-07 §5).
+
+  1:1 text messages go to `Ganesha.Assistant.Conversation` once the sender
+  has picked a language (the first-contact picker lives here); any other 1:1
+  message gets one "text only" reply and is not stored; 1:1 postbacks go to
   `Conversation.handle_postback/3`. Group chat text messages run the agent
   with the Group chat's tasks and are never answered. Unsend and
   messageEdited correct the stored text, discard the message's pending
@@ -34,9 +37,13 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   def perform(%Oban.Job{args: %{"line_event_id" => line_event_id}}) do
     line_event = Line.get_event!(line_event_id)
 
-    :ok = route(line_event)
-    Line.mark_processed(line_event)
-    :ok
+    if Line.earlier_unprocessed?(line_event) do
+      {:snooze, 1}
+    else
+      :ok = route(line_event)
+      Line.mark_processed(line_event)
+      :ok
+    end
   end
 
   defp route(%{source_type: "user", raw_type: "message"} = event) do

@@ -42,6 +42,14 @@ defmodule Ganesha.LineTest do
     assert %{processed_at: %DateTime{}} = Line.get_event!(stored.id)
   end
 
+  test "earlier_unprocessed?/1 never holds back an event without a chat" do
+    for id <- ["no-chat-1", "no-chat-2"] do
+      :ok = Line.record_event(event(%{"webhookEventId" => id}) |> Map.delete("source"))
+    end
+
+    refute Line.earlier_unprocessed?(Repo.get_by!(Line.LineEvent, webhook_event_id: "no-chat-2"))
+  end
+
   test "record_event/1 routes source_id to the group, not the per-message sender" do
     e =
       event(%{
