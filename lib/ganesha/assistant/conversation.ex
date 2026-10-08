@@ -76,8 +76,7 @@ defmodule Ganesha.Assistant.Conversation do
 
   @doc """
   Runs the agent for the thread's latest message with the prompt, history and
-  tasks its chat gets (spec §6.1, §2 rule 7). Also used to re-run a turn after
-  messageEdited.
+  tasks its chat gets (spec §6.1, §2 rule 7).
   """
   @spec run_turn(Thread.t()) :: {:ok, Turn.t()} | {:error, term()}
   def run_turn(%Thread{source_type: "teacher"} = thread) do

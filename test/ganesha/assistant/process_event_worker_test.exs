@@ -591,7 +591,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       refute Repo.reload(c.weekly)
     end
 
-    test "editing a message drops them too and re-runs the turn", c do
+    test "editing a message drops them too and pushes the re-run turn", c do
       Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "改好了", tool_calls: []}} end)
 
       assert {:ok, _} =
@@ -605,6 +605,11 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       refute Repo.reload(c.weekly)
 
       assert %{role: "assistant", content: "改好了"} = List.last(Assistant.list_messages(c.thread))
+
+      assert [
+               {:loading, {@teacher, 20}},
+               {:push, {@teacher, [%{type: "text", text: "改好了"}]}}
+             ] = LineMock.calls()
     end
   end
 end

@@ -6,9 +6,10 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   `Conversation.handle_postback/4`. Group chat messages run the agent with
   the Group chat's three tasks and are never answered. Unsend and
   messageEdited correct the stored text, discard the message's pending
-  Drafts and, in the Teacher chat, drop the digests covering its day. A
-  failed agent run is logged, never retried: a retry would
-  re-append the message and risk duplicate Drafts for one fact.
+  Drafts and, in the Teacher chat, drop the digests covering its day; an
+  edited 1:1 message re-runs the turn and delivers it. A failed agent run is
+  logged, never retried: a retry would re-append the message and risk
+  duplicate Drafts for one fact.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
@@ -175,11 +176,15 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
         # The stored sender_id is nil on older or purged rows; the edit
         # event's own sender is checked first.
         sender_id = get_in(event.payload, ["source", "userId"]) || message.sender_id
-        rerun_after_edit(thread, sender_id)
+        rerun_after_edit(thread, sender_id, event.payload["replyToken"])
     end
   end
 
-  defp rerun_after_edit(%{source_type: "group", source_id: group_id} = thread, sender_id) do
+  defp rerun_after_edit(
+         %{source_type: "group", source_id: group_id} = thread,
+         sender_id,
+         _reply_token
+       ) do
     if Line.blocked?("group", group_id) or Line.blocked?("sender", sender_id) do
       :ok
     else
@@ -188,11 +193,10 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
-  defp rerun_after_edit(thread, _sender_id) do
-    thread |> Conversation.run_turn() |> log_failure(thread, "messageEdited")
-    if thread.source_type == "user", do: DraftNotifier.schedule_if_pending(thread)
-    :ok
-  end
+  # Spec 2026-10-07 §6: the re-run turn reaches LINE, by push when the edit
+  # event carries no usable reply token.
+  defp rerun_after_edit(thread, _sender_id, reply_token),
+    do: Conversation.handle_message(thread, reply_token, thread.source_id)
 
   defp log_failure({:ok, _turn}, _thread, _what), do: :ok
 
