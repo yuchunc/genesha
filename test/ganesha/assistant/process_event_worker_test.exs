@@ -3,7 +3,7 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
 
   alias Ganesha.{Assistant, Catalog, Line, People, Sales}
-  alias Ganesha.Assistant.{Digest, DraftNotifier, ProcessEventWorker}
+  alias Ganesha.Assistant.{Conversation, Digest, DraftNotifier, ProcessEventWorker}
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Line.Client.Mock, as: LineMock
   alias Ganesha.Line.Labels
@@ -43,6 +43,20 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
       "type" => "message",
       "source" => %{"type" => "group", "groupId" => "Cabc", "userId" => sender_id},
       "message" => %{"id" => line_message_id, "type" => "text", "text" => text}
+    }
+  end
+
+  defp sticker_from(user_id) do
+    %{
+      "type" => "message",
+      "replyToken" => "rt-1",
+      "source" => %{"type" => "user", "userId" => user_id},
+      "message" => %{
+        "id" => new_line_message_id(),
+        "type" => "sticker",
+        "packageId" => "446",
+        "stickerId" => "1988"
+      }
     }
   end
 
@@ -236,6 +250,28 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
       assert [job] = all_enqueued(worker: DraftNotifier, args: %{"thread_id" => thread.id})
       assert DateTime.diff(job.scheduled_at, four_minutes_ago) == 300
+    end
+
+    test "a 1:1 sticker gets the text-only reply and nothing is stored" do
+      thread = teacher_thread()
+      Mock.stub(fn _messages, _tools, _opts -> flunk("the agent ran for a sticker") end)
+
+      assert {:ok, line_event} = deliver(sticker_from(@teacher))
+
+      text_only = Labels.t(:text_only, "zh-TW")
+      assert [{:reply, {"rt-1", [%{type: "text", text: ^text_only}]}}] = LineMock.calls()
+      assert Assistant.list_messages(thread) == []
+      assert Line.get_event!(line_event.id).processed_at
+    end
+
+    test "a sticker from a sender without a language gets the language picker" do
+      Mock.stub(fn _messages, _tools, _opts -> flunk("the agent ran for a sticker") end)
+
+      assert {:ok, _} = deliver(sticker_from("Ustranger3"))
+
+      assert [{:reply, {"rt-1", [message]}}] = LineMock.calls()
+      assert message == Line.Client.language_picker_message()
+      assert Assistant.list_messages(Conversation.thread_for("Ustranger3")) == []
     end
   end
 
@@ -431,6 +467,17 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
         {:ok, thread} = Assistant.get_or_create_thread("group", group_id)
         assert Assistant.list_messages(thread) == []
       end
+    end
+
+    test "ignores a non-text group message" do
+      Mock.stub(fn _messages, _tools, _opts -> flunk("the agent ran for a sticker") end)
+
+      sticker = %{sticker_from("Ustudent1") | "source" => group_source("Ustudent1")}
+      assert {:ok, _} = deliver(Map.delete(sticker, "replyToken"))
+
+      assert LineMock.calls() == []
+      assert LineMock.lookups() == []
+      assert Assistant.get_group_thread("Cabc") == nil
     end
   end
 

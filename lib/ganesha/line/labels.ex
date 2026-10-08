@@ -40,6 +40,8 @@ defmodule Ganesha.Line.Labels do
       {"抱歉，我現在無法處理這則訊息，請稍後再試一次。",
        "Sorry, I couldn't process that message. Please try again later."},
     unknown_action: {"無法辨識的操作。", "Unrecognized action."},
+    text_only:
+      {"我目前只看得懂文字訊息，請用文字告訴我。", "I can only read text messages for now; please type it out."},
     welcome: {"好的！有什麼需要我幫忙的？", "Thanks! How can I help you today?"},
     group_drafts_push_intro:
       {"群組有新草稿待確認，請在下方卡片確認或捨棄。",

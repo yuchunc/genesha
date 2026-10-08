@@ -2,9 +2,10 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   @moduledoc """
   Routes one `line_events` row (spec §6.1). 1:1 text messages go to
   `Ganesha.Assistant.Conversation` once the sender has picked a language (the
-  first-contact picker lives here); 1:1 postbacks go to
-  `Conversation.handle_postback/4`. Group chat messages run the agent with
-  the Group chat's three tasks and are never answered. Unsend and
+  first-contact picker lives here); any other 1:1 message gets one "text only"
+  reply and is not stored; 1:1 postbacks go to
+  `Conversation.handle_postback/3`. Group chat text messages run the agent
+  with the Group chat's tasks and are never answered. Unsend and
   messageEdited correct the stored text, discard the message's pending
   Drafts and, in the Teacher chat, drop the digests covering its day; an
   edited 1:1 message re-runs the turn and delivers it. A failed agent run is
@@ -92,6 +93,24 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
+  # Spec 2026-10-07 §6: the bot reads text only, so a sticker, photo or file
+  # gets one text reply and nothing is stored. A sender who has not picked a
+  # language gets the picker, as for text.
+  defp handle_user_message(%{
+         payload: %{"message" => %{"type" => type}} = payload,
+         source_id: source_id
+       })
+       when type != "text" do
+    thread = Conversation.thread_for(source_id)
+
+    message =
+      if is_nil(thread.locale),
+        do: Line.Client.language_picker_message(),
+        else: Line.Client.text_message(Line.Labels.t(:text_only, thread.locale))
+
+    Conversation.deliver(payload["replyToken"], source_id, [message], nil)
+  end
+
   defp handle_user_message(_event), do: :ok
 
   defp handle_simple_reply(%{
@@ -140,8 +159,8 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     end
   end
 
-  # The Group chat's three tasks, the snapshot their ids come from, and its
-  # full history; never summaries (ADR 0003).
+  # The Group chat's tasks, the snapshot their ids come from, and its full
+  # history; never summaries (ADR 0003).
   defp run_group_agent(thread) do
     system = Prompts.group() <> "\n\n" <> Prompts.snapshot_section(Snapshot.build(Clock.today()))
     Agent.run(thread, Tasks.for_chat(:group), system, Assistant.list_messages(thread))

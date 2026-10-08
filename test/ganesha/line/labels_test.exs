@@ -8,7 +8,7 @@ defmodule Ganesha.Line.LabelsTest do
            reason_line_user_id_taken already_handled replaced
            not_found exception tag_confirmed tag_discarded
            tag_failed tag_already_handled tag_replaced tag_exception apology unknown_action
-           welcome group_drafts_push_intro student_drafts_push_intro
+           text_only welcome group_drafts_push_intro student_drafts_push_intro
            enroll_from_request book_from_request
            pending_drafts_section pending_drafts_empty pending_drafts_student_link)a
 
@@ -61,7 +61,12 @@ defmodule Ganesha.Line.LabelsTest do
              "This request was already handled"
   end
 
-  test "the request buttons read as the spec says" do
+  test "the text-only reply and the request buttons read as the spec says" do
+    assert Labels.t(:text_only, "zh-TW") == "我目前只看得懂文字訊息，請用文字告訴我。"
+
+    assert Labels.t(:text_only, "en") ==
+             "I can only read text messages for now; please type it out."
+
     assert Labels.t(:handled, "zh-TW") == "已處理"
     assert Labels.t(:book_from_request, "zh-TW") == "幫他補課"
   end
