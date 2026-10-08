@@ -1,5 +1,6 @@
 defmodule GaneshaWeb.LineWebhookControllerTest do
   use GaneshaWeb.ConnCase, async: true
+  @moduletag :capture_log
 
   alias Ganesha.{Line, Repo}
 
