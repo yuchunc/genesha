@@ -44,6 +44,38 @@ defmodule Ganesha.Line.Reply do
     if lines == [], do: nil, else: Enum.join(lines, "\n")
   end
 
+  @system_tags ~w(options tag_confirmed tag_discarded tag_failed tag_already_handled tag_replaced tag_exception)a
+
+  @doc """
+  `text` without the lines only the system writes: the card lines of
+  `history_text/3` (「[草稿 #41 待確認] …」, 「[選項] …」) and Confirm outcomes
+  (「[已確認] 草稿 #41 …」), in either language. The model sees them in its
+  history and copies them into replies, where she would read every card twice.
+  """
+  @spec without_system_lines(String.t() | nil) :: String.t() | nil
+  def without_system_lines(nil), do: nil
+
+  def without_system_lines(text) when is_binary(text) do
+    pattern = system_line_pattern()
+
+    text
+    |> String.split("\n")
+    |> Enum.reject(&Regex.match?(pattern, &1))
+    |> Enum.join("\n")
+    |> String.trim_trailing()
+  end
+
+  defp system_line_pattern do
+    alternatives =
+      for locale <- ["zh-TW", "en"] do
+        draft = Regex.escape(Labels.t(:draft, locale))
+        tags = Enum.map(@system_tags, &Regex.escape(Labels.t(&1, locale)))
+        ["#{draft} #\\d+[^\\]]*" | tags]
+      end
+
+    Regex.compile!("^\\s*\\[(?:#{alternatives |> List.flatten() |> Enum.join("|")})\\]", "u")
+  end
+
   defp text(text, hidden, locale) do
     more = if hidden > 0, do: Labels.t(:more_drafts, locale, count: hidden)
 

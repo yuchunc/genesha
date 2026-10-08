@@ -80,6 +80,20 @@ defmodule Ganesha.Assistant.AgentTest do
              Assistant.list_messages(thread)
   end
 
+  test "card lines the model copies from its history are neither returned nor stored", %{
+    thread: thread,
+    history: history
+  } do
+    Mock.stub(fn _messages, _tools, _opts ->
+      {:ok, %{text: "還有 1 張草稿在等你。\n[草稿 #3 待確認] 照固定班排 11月 課表", tool_calls: []}}
+    end)
+
+    assert {:ok, %Turn{text: "還有 1 張草稿在等你。", reply_message_id: id}} =
+             Agent.run(thread, [Echo], "system", history)
+
+    assert %{content: "還有 1 張草稿在等你。"} = Enum.find(Assistant.list_messages(thread), &(&1.id == id))
+  end
+
   test "sends the given history, every message with tool_calls present", %{thread: thread} do
     {:ok, reply} = Assistant.append_message(thread, "assistant", "earlier reply", nil)
     {:ok, question} = Assistant.append_message(thread, "user", "and now?", nil)

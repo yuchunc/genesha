@@ -122,4 +122,27 @@ defmodule Ganesha.Line.ReplyTest do
       assert Reply.history_text(%Turn{text: "hi"}, [], "zh-TW") == nil
     end
   end
+
+  describe "without_system_lines/1" do
+    test "drops the card, options and outcome lines the system writes, in both languages" do
+      for locale <- ["zh-TW", "en"] do
+        cards = Reply.history_text(%Turn{choices: ["A", "B"]}, drafts(2), locale)
+        tag = Labels.t(:tag_confirmed, locale)
+        outcome = "[#{tag}] #{Labels.t(:draft, locale)} #8 停課 10/9"
+        text = Enum.join(["還有 2 張草稿在等你：", "#1 想補 1", cards, outcome], "\n")
+
+        assert Reply.without_system_lines(text) == "還有 2 張草稿在等你：\n#1 想補 1"
+      end
+    end
+
+    test "keeps her words and any other bracketed text" do
+      text = "[報名申請 #1] 已收到\n[備註] 週三改上午\n草稿 #3 還在等你"
+      assert Reply.without_system_lines(text) == text
+    end
+
+    test "leaves nil alone and empties a reply that was only system lines" do
+      assert Reply.without_system_lines(nil) == nil
+      assert Reply.without_system_lines(line(draft(4))) == ""
+    end
+  end
 end

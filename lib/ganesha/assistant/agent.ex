@@ -8,10 +8,14 @@ defmodule Ganesha.Assistant.Agent do
     `replaces: input["replaces_draft_id"]`); the Draft id joins `draft_ids`.
   - `:lookup` → `answer/2`; optional `draft_ids` are merged onto the Turn (deduped).
   - `:control` → `answer/2`; its `choices` become `Turn.choices`.
+
+  The model's text is stored and returned without the bracketed lines only the
+  system writes (`Ganesha.Line.Reply.without_system_lines/1`).
   """
 
   alias Ganesha.{Assistant, Clock}
   alias Ganesha.Assistant.{Tasks, Turn}
+  alias Ganesha.Line.Reply
 
   @max_rounds 6
 
@@ -36,10 +40,12 @@ defmodule Ganesha.Assistant.Agent do
 
     case state.provider.complete(messages, state.schemas, system: state.system) do
       {:ok, %{text: text, tool_calls: []}} ->
+        text = Reply.without_system_lines(text)
         {:ok, reply} = Assistant.append_message(thread, "assistant", text, nil)
         {:ok, %Turn{turn | text: text, reply_message_id: reply.id}}
 
       {:ok, %{text: text, tool_calls: calls}} ->
+        text = Reply.without_system_lines(text)
         {:ok, _} = Assistant.append_message(thread, "assistant", text, calls)
         {results, turn} = Enum.map_reduce(calls, turn, &dispatch(&1, &2, state))
         {:ok, _} = Assistant.append_message(thread, "tool", nil, results)
