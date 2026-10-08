@@ -1,9 +1,11 @@
 defmodule Ganesha.Assistant.Provider.Anthropic do
   @moduledoc """
   Req-based Anthropic Messages API adapter (`POST /v1/messages`) — the
-  concrete `Ganesha.Assistant.Provider` used outside tests (spec §6). The
-  `:plug` option in `opts` lets tests substitute a stub transport instead of
-  a real network call, per `Req`'s own testing support.
+  concrete `Ganesha.Assistant.Provider` used outside tests (spec §6). A turn
+  may take up to 60 s, and a 408/429/5xx or transport error is retried twice:
+  re-sending a completion has no side effects (spec 2026-10-07 decision 8).
+  The `:plug` option in `opts` lets tests substitute a stub transport instead
+  of a real network call, per `Req`'s own testing support.
   """
   @behaviour Ganesha.Assistant.Provider
 
@@ -28,7 +30,10 @@ defmodule Ganesha.Assistant.Provider.Anthropic do
     req_opts =
       [
         base_url: @base_url,
-        headers: [{"x-api-key", api_key}, {"anthropic-version", @api_version}]
+        headers: [{"x-api-key", api_key}, {"anthropic-version", @api_version}],
+        receive_timeout: 60_000,
+        retry: :transient,
+        max_retries: 2
       ]
       |> then(fn base -> if plug = opts[:plug], do: base ++ [plug: plug], else: base end)
 

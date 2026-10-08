@@ -55,6 +55,49 @@ defmodule Ganesha.Assistant.Provider.AnthropicTest do
              Anthropic.complete([], [], system: "sys", plug: stub)
   end
 
+  # `retry-after: 0` keeps Req's retry from sleeping between attempts.
+  @tag :capture_log
+  test "retries an overloaded POST twice before giving up" do
+    attempts = :counters.new(1, [])
+
+    stub = fn conn ->
+      :counters.add(attempts, 1, 1)
+
+      conn
+      |> Plug.Conn.put_resp_header("retry-after", "0")
+      |> Plug.Conn.send_resp(503, "overloaded")
+    end
+
+    assert {:error, {:http_error, 503, "overloaded"}} =
+             Anthropic.complete([], [], system: "sys", plug: stub)
+
+    assert :counters.get(attempts, 1) == 3
+  end
+
+  @tag :capture_log
+  test "a retry that succeeds returns the completion" do
+    attempts = :counters.new(1, [])
+
+    stub = fn conn ->
+      :counters.add(attempts, 1, 1)
+
+      if :counters.get(attempts, 1) == 1 do
+        conn
+        |> Plug.Conn.put_resp_header("retry-after", "0")
+        |> Plug.Conn.send_resp(429, "rate limited")
+      else
+        body = %{"content" => [%{"type" => "text", "text" => "ok"}]}
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(200, Jason.encode!(body))
+      end
+    end
+
+    assert {:ok, %{text: "ok"}} = Anthropic.complete([], [], system: "sys", plug: stub)
+    assert :counters.get(attempts, 1) == 2
+  end
+
   test "translates every Agent.to_wire/1 shape into non-empty Anthropic content, even past the retention sweep" do
     parent = self()
 
