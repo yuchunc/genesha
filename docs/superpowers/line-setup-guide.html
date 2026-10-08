@@ -327,12 +327,13 @@
     <div class="step-body">
       <h2>Point the webhook at your server</h2>
       <p>Expose the app publicly first, e.g.:</p>
-      <pre>cloudflared tunnel --url http://localhost:4000</pre>
+      <pre>cloudflared tunnel --url http://localhost:4006</pre>
       <p>Then on the Messaging API tab, set <strong>Webhook URL</strong> to:</p>
       <pre>https://&lt;your-tunnel-or-domain&gt;/line/webhook</pre>
       <p>Click <strong>Verify</strong> — LINE POSTs a test event and expects <code class="inline">200</code>.
         A <code class="inline">403</code> means the secret configured on the server doesn't match the
-        console. Toggle <strong>Use webhook</strong> to on.</p>
+        console — or <code class="inline">.env.dev</code> is missing or wasn't loaded (open a new shell in the project with mise active; run <code class="inline">mise trust</code> once); the server log
+        says which. Toggle <strong>Use webhook</strong> to on.</p>
     </div>
   </section>
 
@@ -389,10 +390,8 @@
     <div class="step-num">10</div>
     <div class="step-body">
       <h2>Boot with real credentials</h2>
-      <pre>LINE_CHANNEL_SECRET=&lt;from step 4&gt; \
-LINE_CHANNEL_ACCESS_TOKEN=&lt;from step 5&gt; \
-TEACHER_LINE_USER_ID=&lt;from step 9&gt; \
-ANTHROPIC_API_KEY=sk-ant-&lt;your key&gt; \
+      <pre>cp .env.dev.example .env.dev   # fill in the four values below
+mise trust                     # once: mise.toml then loads .env.dev in this directory
 mix phx.server</pre>
 
       <table class="env">

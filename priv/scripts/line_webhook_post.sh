@@ -8,7 +8,7 @@
 #     priv/scripts/line_webhook_post.sh event.json [url]
 #
 #   # read the body from stdin
-#   ... | priv/scripts/line_webhook_post.sh - http://localhost:4000/line/webhook
+#   ... | priv/scripts/line_webhook_post.sh - http://localhost:4006/line/webhook
 #
 #   # forge the signature to prove the plug is fail-closed (expects 403)
 #   LINE_SIGNATURE_OVERRIDE=bogus priv/scripts/line_webhook_post.sh event.json
@@ -17,7 +17,7 @@ set -euo pipefail
 : "${LINE_CHANNEL_SECRET:?set LINE_CHANNEL_SECRET to the value the server booted with}"
 
 BODY_SRC="${1:--}"
-URL="${2:-http://localhost:4000/line/webhook}"
+URL="${2:-http://localhost:4006/line/webhook}"
 BODY="$(cat -- "$BODY_SRC")"
 
 if [ -n "${LINE_SIGNATURE_OVERRIDE:-}" ]; then
