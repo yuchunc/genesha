@@ -1,5 +1,5 @@
 defmodule Ganesha.Line.CardsTest do
-  use Ganesha.DataCase, async: true
+  use ExUnit.Case, async: true
 
   alias Ganesha.Assistant
   alias Ganesha.Assistant.Draft
@@ -38,36 +38,37 @@ defmodule Ganesha.Line.CardsTest do
     end
 
     test "a sign-up request card leads with 幫他報名, then 已處理 and 捨棄" do
-      {:ok, thread} = Assistant.get_or_create_thread("user", "Unewcomer")
-
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{
-          kind: "signup_request",
-          parsed: %{"note" => "想報名", "new" => true, "line_user_id" => "Unewcomer"}
-        })
+      draft = %Draft{
+        id: 42,
+        kind: "signup_request",
+        state: "pending",
+        parsed: %{"note" => "想報名", "new" => true, "line_user_id" => "Unewcomer"}
+      }
 
       bubble = Cards.draft_bubble(draft, "zh-TW")
 
       assert Enum.map(bubble.footer.contents, &{&1.action.label, &1.action.data}) == [
-               {"幫他報名", "action=enroll_from_request&draft_id=#{draft.id}"},
-               {"已處理", "action=confirm&draft_id=#{draft.id}"},
-               {"捨棄", "action=discard&draft_id=#{draft.id}"}
+               {"幫他報名", "action=enroll_from_request&draft_id=42"},
+               {"已處理", "action=confirm&draft_id=42"},
+               {"捨棄", "action=discard&draft_id=42"}
              ]
     end
 
     test "a makeup request card leads with 幫他補課, then 已處理 and 捨棄" do
-      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
-
-      {:ok, draft} =
-        Assistant.create_draft(thread, %{kind: "makeup_request", parsed: %{"note" => "8/17"}})
+      draft = %Draft{
+        id: 43,
+        kind: "makeup_request",
+        state: "pending",
+        parsed: %{"note" => "8/17"}
+      }
 
       assert Enum.map(Cards.draft_bubble(draft, "en").footer.contents, & &1.action.label) ==
                ["Book makeup", "Handled", "Discard"]
 
       assert Enum.map(Cards.draft_bubble(draft, "zh-TW").footer.contents, & &1.action.data) == [
-               "action=book_from_request&draft_id=#{draft.id}",
-               "action=confirm&draft_id=#{draft.id}",
-               "action=discard&draft_id=#{draft.id}"
+               "action=book_from_request&draft_id=43",
+               "action=confirm&draft_id=43",
+               "action=discard&draft_id=43"
              ]
     end
   end
