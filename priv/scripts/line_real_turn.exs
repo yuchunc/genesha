@@ -8,7 +8,7 @@
 #     mix run priv/scripts/line_real_turn.exs no_show
 #
 # Uses the dev Anthropic provider (ANTHROPIC_API_KEY from .env.dev, loaded by
-# mise.toml; ANTHROPIC_MODEL or claude-sonnet-5-5) and Ganesha.Line.Client.Mock,
+# mise.toml; ANTHROPIC_MODEL or claude-haiku-5-5) and Ganesha.Line.Client.Mock,
 # so nothing reaches LINE.
 
 import Ecto.Query

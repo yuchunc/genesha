@@ -63,7 +63,7 @@ if config_env() == :dev do
 
   config :ganesha, Ganesha.Assistant.Provider.Anthropic,
     api_key: System.get_env("ANTHROPIC_API_KEY", ""),
-    model: System.get_env("ANTHROPIC_MODEL") || "claude-sonnet-5-5"
+    model: System.get_env("ANTHROPIC_MODEL") || "claude-haiku-5-5"
 
   config :ganesha, :assistant, provider: Ganesha.Assistant.Provider.Anthropic
 end
@@ -183,7 +183,7 @@ if config_env() == :prod do
 
   config :ganesha, Ganesha.Assistant.Provider.Anthropic,
     api_key: anthropic_api_key,
-    model: System.get_env("ANTHROPIC_MODEL") || "claude-sonnet-5-5"
+    model: System.get_env("ANTHROPIC_MODEL") || "claude-haiku-5-5"
 
   config :ganesha, :assistant, provider: Ganesha.Assistant.Provider.Anthropic
 end
