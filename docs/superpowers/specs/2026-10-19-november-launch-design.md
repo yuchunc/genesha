@@ -121,8 +121,8 @@ snapshot."
 Oban worker, `queue: :default`, `max_attempts: 3`. Args: kind (`created`, `linked`,
 `unsure`), `line_user_id`, `display_name`, student id or candidate ids. Pushes one
 message to every id in `Line.teacher_ids()`, in that teacher's locale (the lookup
-`DraftNotifier` uses). A push failure fails the job and retries; it never fails the
-group event.
+`DraftNotifier` uses). As in `DraftNotifier`, the job fails and retries only when no
+teacher's push succeeded; it never fails the group event.
 
 | kind | text (zh-TW) | buttons |
 |---|---|---|
@@ -195,8 +195,8 @@ Permanent, existing conventions:
 - Postbacks: each action's effect; a stale tap gets "already handled"; a
   non-teacher tap is refused; `member_not_student` from created deletes a Student
   with no records and only unlinks one with records.
-- `MemberNoticeWorker`: pushes to every teacher in her locale; a push error fails
-  the job.
+- `MemberNoticeWorker`: pushes to every teacher in her locale; the job fails when
+  every push failed and succeeds when at least one went out.
 
 After deploy: checklist steps 9 and 10 on the real account.
 
