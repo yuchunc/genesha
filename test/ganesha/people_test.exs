@@ -1,6 +1,7 @@
 defmodule Ganesha.PeopleTest do
   use Ganesha.DataCase
   alias Ganesha.People
+  alias Ganesha.People.{LineMember, Student}
 
   test "creates a student with only a display name" do
     assert {:ok, student} = People.create_student(%{display_name: "Lulu"})
@@ -90,5 +91,71 @@ defmodule Ganesha.PeopleTest do
     assert People.find_by_alias(nil) == nil
     assert People.find_by_line_user_id("Unknown") == nil
     assert People.find_by_line_user_id(nil) == nil
+  end
+
+  describe "resolve_line_member/2" do
+    test "an already linked student is known" do
+      s = student!(%{display_name: "小美", line_user_id: "U1"})
+      assert {:known, %{id: id}} = People.resolve_line_member("U1", "別的名字")
+      assert id == s.id
+    end
+
+    test "a not_student member stays not a student" do
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "老公", state: "not_student"})
+      assert :not_student = People.resolve_line_member("U1", "老公")
+      assert Repo.aggregate(Student, :count) == 0
+    end
+
+    test "an unsure member is pending" do
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+      assert :pending = People.resolve_line_member("U1", "Amy")
+    end
+
+    test "no name match creates a linked student named after LINE" do
+      assert {:created, %Student{display_name: "小美", line_user_id: "U1"}} =
+               People.resolve_line_member("U1", " 小美 ")
+    end
+
+    test "one active unlinked match is linked" do
+      s = student!(%{display_name: "Amy"})
+      assert {:linked, %{id: id, line_user_id: "U1"}} = People.resolve_line_member("U1", "Amy")
+      assert id == s.id
+    end
+
+    test "normalizes before matching" do
+      s = student!(%{display_name: "ａｍｙ Chen"})
+      assert {:linked, %{id: id}} = People.resolve_line_member("U1", "AMY CHEN ")
+      assert id == s.id
+    end
+
+    test "an alias alone matches" do
+      t = student!(%{display_name: "林美玲"})
+      {:ok, _} = People.add_alias(t, "阿美")
+      assert {:linked, %{id: id}} = People.resolve_line_member("U2", "阿美")
+      assert id == t.id
+    end
+
+    test "several matches are unsure and recorded" do
+      a = student!(%{display_name: "Amy"})
+      b = student!(%{display_name: "amy"})
+      assert {:unsure, candidates} = People.resolve_line_member("U1", "Amy")
+      assert Enum.map(candidates, & &1.id) == [a.id, b.id]
+      assert %LineMember{state: "unsure", display_name: "Amy"} = People.get_line_member("U1")
+    end
+
+    test "an inactive single match is unsure" do
+      student!(%{display_name: "Amy", active: false})
+      assert {:unsure, [_]} = People.resolve_line_member("U1", "Amy")
+    end
+
+    test "a single match linked to another LINE id is unsure" do
+      student!(%{display_name: "Amy", line_user_id: "U9"})
+      assert {:unsure, [_]} = People.resolve_line_member("U1", "Amy")
+    end
+  end
+
+  defp student!(attrs) do
+    {:ok, student} = People.create_student(attrs)
+    student
   end
 end

@@ -14,6 +14,8 @@ defmodule Ganesha.People.Student do
     timestamps(type: :utc_datetime)
   end
 
+  @type t :: %__MODULE__{}
+
   def changeset(student, attrs) do
     student
     |> cast(attrs, [:display_name, :line_user_id, :active])

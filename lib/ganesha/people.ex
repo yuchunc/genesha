@@ -2,7 +2,7 @@ defmodule Ganesha.People do
   @moduledoc "Students and the names they are known by."
 
   import Ecto.Query, warn: false
-  alias Ganesha.People.{Student, StudentAlias}
+  alias Ganesha.People.{LineMember, Student, StudentAlias}
   alias Ganesha.Repo
 
   def list_students do
@@ -75,4 +75,130 @@ defmodule Ganesha.People do
 
   def link_line_user_id(%Student{}, line_user_id) when is_binary(line_user_id),
     do: {:error, :student_line_user_id_changed}
+
+  # --- LINE group members (spec 2026-10-19-november-launch-design.md §1) ---
+
+  @type resolution ::
+          {:known, Student.t()}
+          | :not_student
+          | :pending
+          | {:created, Student.t()}
+          | {:linked, Student.t()}
+          | {:unsure, [Student.t()]}
+
+  def get_line_member(line_user_id), do: Repo.get_by(LineMember, line_user_id: line_user_id)
+
+  @doc """
+  Every Student, active or not, whose display name or an alias equals
+  `display_name` after normalization, ordered by id.
+  """
+  def matching_students(display_name) do
+    name = normalize_name(display_name)
+
+    from(s in Student, order_by: s.id, preload: :aliases)
+    |> Repo.all()
+    |> Enum.filter(fn student ->
+      Enum.any?(
+        [student.display_name | Enum.map(student.aliases, & &1.alias)],
+        &(normalize_name(&1) == name)
+      )
+    end)
+  end
+
+  @doc """
+  Resolves a LINE group member to a Student by LINE id, then by name:
+
+    1. a Student has this LINE id: `{:known, student}`
+    2. the teacher said not a student: `:not_student`
+    3. an open question exists: `:pending`
+    4. no Student matches the name: `{:created, student}`
+    5. one active, unlinked match: `{:linked, student}`
+    6. anything else: `{:unsure, candidates}`, recorded as an `unsure` member
+
+  Cases 4-6 run in one transaction. If a concurrent event for the same member
+  wins the race on `line_user_id`, its outcome is re-read and returned.
+  """
+  @spec resolve_line_member(String.t(), String.t()) :: resolution()
+  def resolve_line_member(line_user_id, display_name)
+      when is_binary(line_user_id) and is_binary(display_name) do
+    lookup_line_member(line_user_id) || resolve_by_name(line_user_id, String.trim(display_name))
+  end
+
+  # Cases 1-3, or nil when the member has never been resolved.
+  defp lookup_line_member(line_user_id) do
+    case find_by_line_user_id(line_user_id) do
+      %Student{} = student ->
+        {:known, student}
+
+      nil ->
+        case get_line_member(line_user_id) do
+          %LineMember{state: "not_student"} -> :not_student
+          %LineMember{state: "unsure"} -> :pending
+          nil -> nil
+        end
+    end
+  end
+
+  # Cases 4-6.
+  defp resolve_by_name(line_user_id, name) do
+    result =
+      Repo.transaction(fn ->
+        case apply_name_match(line_user_id, name, matching_students(name)) do
+          {:ok, resolution} -> resolution
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, resolution} -> resolution
+      {:error, reason} -> resolve_race(line_user_id, reason)
+    end
+  end
+
+  # A concurrent event for the same member got there first; its outcome stands.
+  defp resolve_race(line_user_id, reason) do
+    with true <- line_user_id_taken?(reason),
+         resolution when resolution != nil <- lookup_line_member(line_user_id) do
+      resolution
+    else
+      _ -> raise "could not resolve LINE member #{line_user_id}: #{inspect(reason)}"
+    end
+  end
+
+  defp apply_name_match(line_user_id, name, []) do
+    %{display_name: name, line_user_id: line_user_id}
+    |> create_student()
+    |> tag(:created)
+  end
+
+  defp apply_name_match(line_user_id, _name, [%Student{active: true, line_user_id: nil} = student]) do
+    student |> link_line_user_id(line_user_id) |> tag(:linked)
+  end
+
+  defp apply_name_match(line_user_id, name, candidates) do
+    %LineMember{}
+    |> LineMember.changeset(%{line_user_id: line_user_id, display_name: name, state: "unsure"})
+    |> Repo.insert()
+    |> case do
+      {:ok, _member} -> {:ok, {:unsure, candidates}}
+      error -> error
+    end
+  end
+
+  defp tag({:ok, student}, outcome), do: {:ok, {outcome, student}}
+  defp tag({:error, reason}, _outcome), do: {:error, reason}
+
+  defp line_user_id_taken?(:line_user_id_taken), do: true
+
+  defp line_user_id_taken?(%Ecto.Changeset{errors: errors}) do
+    case errors[:line_user_id] do
+      {_message, opts} -> opts[:constraint] == :unique
+      nil -> false
+    end
+  end
+
+  defp line_user_id_taken?(_reason), do: false
+
+  defp normalize_name(name),
+    do: name |> String.normalize(:nfkc) |> String.trim() |> String.downcase()
 end
