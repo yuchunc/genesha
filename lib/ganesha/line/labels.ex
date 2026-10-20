@@ -49,7 +49,25 @@ defmodule Ganesha.Line.Labels do
     student_drafts_push_intro: {"私訊有人想報名：", "Someone asked to sign up in a private chat:"},
     pending_drafts_section: {"待確認草稿", "Pending drafts"},
     pending_drafts_empty: {"目前沒有待確認的草稿。", "No drafts are waiting."},
-    pending_drafts_student_link: {"學生", "Student"}
+    pending_drafts_student_link: {"學生", "Student"},
+    member_created:
+      {"新增學生 %{name}（LINE：%{line_name}）", "Added student %{name} (LINE: %{line_name})"},
+    member_linked:
+      {"已把 LINE %{line_name} 連到學生 %{name}", "Linked LINE %{line_name} to student %{name}"},
+    member_unsure: {"LINE %{line_name} 是哪位學生？", "Which student is LINE %{line_name}?"},
+    member_more: {"還有 %{count} 位同名，請到網頁處理", "%{count} more with this name; fix it on the web"},
+    member_not_student: {"不是學生", "Not a student"},
+    member_wrong_link: {"連錯了", "Wrong student"},
+    member_new: {"新學生", "New student"},
+    member_marked_not_student:
+      {"好，LINE %{line_name} 不是學生。", "OK, LINE %{line_name} is not a student."},
+    member_kept_records:
+      {"好，LINE %{line_name} 不是學生。學生 %{name} 已有記錄，所以保留並取消連結，請到網頁整理。",
+       "OK, LINE %{line_name} is not a student. Student %{name} has records, so they were kept and unlinked; tidy them up on the web."},
+    member_unlinked:
+      {"好，已取消 LINE %{line_name} 的連結，請在下一則訊息選擇。",
+       "OK, LINE %{line_name} is unlinked; choose in the next message."},
+    member_already_handled: {"這位成員已經處理過了。", "This member was already handled."}
   }
 
   @spec t(atom(), String.t() | nil, keyword()) :: String.t()

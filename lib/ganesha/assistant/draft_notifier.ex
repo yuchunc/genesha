@@ -100,7 +100,7 @@ defmodule Ganesha.Assistant.DraftNotifier do
       Enum.map(Ganesha.Line.teacher_ids(), fn teacher_id ->
         line_client().push(
           teacher_id,
-          messages(thread, shown, length(hidden), teacher_locale(teacher_id))
+          messages(thread, shown, length(hidden), Assistant.teacher_locale(teacher_id))
         )
       end)
 
@@ -139,14 +139,6 @@ defmodule Ganesha.Assistant.DraftNotifier do
   defp schedule_remainder(_hidden, thread) do
     {:ok, _} = %{thread_id: thread.id} |> new(schedule_in: 60, unique: false) |> Oban.insert()
     :ok
-  end
-
-  defp teacher_locale(teacher_id) do
-    Repo.one(
-      from t in Thread,
-        where: t.source_type == "teacher" and t.source_id == ^teacher_id,
-        select: t.locale
-    ) || "zh-TW"
   end
 
   defp line_client, do: Application.get_env(:ganesha, :line_client, Ganesha.Line.Client)

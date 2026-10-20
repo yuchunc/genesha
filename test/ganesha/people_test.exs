@@ -172,6 +172,39 @@ defmodule Ganesha.PeopleTest do
       assert {:known, %{id: id}} = People.resolve_line_member("U1", "Amy")
       assert id == winner.id
     end
+
+    test "a lost race inside an outer transaction re-reads the member instead of raising" do
+      # Each case gets the candidates matched before a concurrent event wrote,
+      # so its first write fails; the outer transaction must stay usable.
+      winner = student!(%{display_name: "小美", line_user_id: "U1"})
+      unlinked = student!(%{display_name: "Amy"})
+      linked_meanwhile = student!(%{display_name: "Bo"})
+      {:ok, _} = People.update_student(linked_meanwhile, %{line_user_id: "U9"})
+      Repo.insert!(%LineMember{line_user_id: "U3", display_name: "Cy", state: "unsure"})
+
+      assert {:ok, results} =
+               Repo.transaction(fn ->
+                 [
+                   People.resolve_matches("U1", "小美", []),
+                   People.resolve_matches("U1", "Amy", [unlinked]),
+                   People.resolve_matches("U2", "Bo", [linked_meanwhile]),
+                   People.resolve_matches("U3", "Cy", [unlinked, linked_meanwhile])
+                 ]
+               end)
+
+      winner_id = winner.id
+      bo_id = linked_meanwhile.id
+
+      assert [
+               {:known, %{id: ^winner_id}},
+               {:known, %{id: ^winner_id}},
+               {:unsure, [%{id: ^bo_id}]},
+               :pending
+             ] = results
+
+      assert People.get_student(unlinked.id).line_user_id == nil
+      assert %LineMember{state: "unsure"} = People.get_line_member("U2")
+    end
   end
 
   defp student!(attrs) do

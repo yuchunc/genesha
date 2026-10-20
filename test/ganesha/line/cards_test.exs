@@ -87,4 +87,124 @@ defmodule Ganesha.Line.CardsTest do
     assert %{type: "carousel", contents: bubbles} = carousel
     assert length(bubbles) == 12
   end
+
+  describe "member_notice/2" do
+    test "member notice postback data fits LINE's 300-character limit" do
+      name = String.duplicate("瑜", 20)
+
+      args = %{
+        "kind" => "unsure",
+        "line_user_id" => "U" <> String.duplicate("a", 32),
+        "display_name" => name,
+        "candidates" => [%{"id" => 123_456, "name" => name}],
+        "more" => 0
+      }
+
+      for %{action: %{data: data}} <- footer_buttons(Cards.member_notice(args, "zh-TW")),
+          do: assert(String.length(data) <= 300)
+    end
+
+    test "unsure card lists candidates, then new student, then not a student" do
+      args = %{
+        "kind" => "unsure",
+        "line_user_id" => "U1",
+        "display_name" => "Amy",
+        "candidates" => [%{"id" => 1, "name" => "Amy"}, %{"id" => 2, "name" => "amy"}],
+        "more" => 0
+      }
+
+      bubble = Cards.member_notice(args, "zh-TW")
+
+      assert Enum.map(
+               footer_buttons(bubble),
+               &{&1.action.label, URI.decode_query(&1.action.data)}
+             ) ==
+               [
+                 {"Amy",
+                  %{"action" => "member_pick", "uid" => "U1", "name" => "Amy", "sid" => "1"}},
+                 {"amy",
+                  %{"action" => "member_pick", "uid" => "U1", "name" => "Amy", "sid" => "2"}},
+                 {"新學生", %{"action" => "member_new", "uid" => "U1", "name" => "Amy"}},
+                 {"不是學生",
+                  %{
+                    "action" => "member_not_student",
+                    "uid" => "U1",
+                    "name" => "Amy",
+                    "from" => "unsure"
+                  }}
+               ]
+
+      assert bubble.footer.layout == "vertical"
+      assert [%{text: "LINE Amy 是哪位學生？"}] = bubble.body.contents
+
+      assert [_, %{text: "還有 2 位同名，請到網頁處理"}] =
+               Cards.member_notice(%{args | "more" => 2}, "zh-TW").body.contents
+    end
+
+    test "created and linked cards offer their undo buttons" do
+      created = %{
+        "kind" => "created",
+        "line_user_id" => "U1",
+        "display_name" => "小美",
+        "student_id" => 7,
+        "student_name" => "小美"
+      }
+
+      bubble = Cards.member_notice(created, "en")
+      assert [%{text: "Added student 小美 (LINE: 小美)"}] = bubble.body.contents
+
+      assert Enum.map(
+               footer_buttons(bubble),
+               &{&1.action.label, URI.decode_query(&1.action.data)}
+             ) ==
+               [
+                 {"Not a student",
+                  %{
+                    "action" => "member_not_student",
+                    "uid" => "U1",
+                    "name" => "小美",
+                    "from" => "created",
+                    "sid" => "7"
+                  }}
+               ]
+
+      linked = %{created | "kind" => "linked", "display_name" => "美"}
+      bubble = Cards.member_notice(linked, "zh-TW")
+      assert [%{text: "已把 LINE 美 連到學生 小美"}] = bubble.body.contents
+      assert bubble.footer.layout == "horizontal"
+
+      assert Enum.map(
+               footer_buttons(bubble),
+               &{&1.action.label, URI.decode_query(&1.action.data)}
+             ) ==
+               [
+                 {"不是學生",
+                  %{
+                    "action" => "member_not_student",
+                    "uid" => "U1",
+                    "name" => "美",
+                    "from" => "linked",
+                    "sid" => "7"
+                  }},
+                 {"連錯了",
+                  %{"action" => "member_wrong_link", "uid" => "U1", "name" => "美", "sid" => "7"}}
+               ]
+    end
+
+    test "member_postback/3 truncates the LINE name to 20 graphemes" do
+      data =
+        Cards.member_postback("member_new", %{
+          "line_user_id" => "U1",
+          "display_name" => String.duplicate("瑜", 25)
+        })
+
+      assert URI.decode_query(data) == %{
+               "action" => "member_new",
+               "uid" => "U1",
+               "name" => String.duplicate("瑜", 20)
+             }
+    end
+  end
+
+  defp footer_buttons(bubble), do: bubble.footer.contents
 end

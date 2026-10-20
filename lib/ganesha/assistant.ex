@@ -40,6 +40,16 @@ defmodule Ganesha.Assistant do
 
   def set_locale(_thread, _locale), do: {:error, :invalid_locale}
 
+  @doc "The locale of a teacher's Teacher chat thread, `\"zh-TW\"` when she has none yet."
+  @spec teacher_locale(String.t()) :: String.t()
+  def teacher_locale(teacher_id) do
+    Repo.one(
+      from t in Thread,
+        where: t.source_type == "teacher" and t.source_id == ^teacher_id,
+        select: t.locale
+    ) || "zh-TW"
+  end
+
   def list_messages(%Thread{} = thread) do
     Repo.all(from m in Message, where: m.thread_id == ^thread.id, order_by: m.id)
   end

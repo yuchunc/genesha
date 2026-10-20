@@ -142,19 +142,27 @@ defmodule Ganesha.People do
   end
 
   # Cases 4-6.
-  defp resolve_by_name(line_user_id, name) do
-    result =
+  defp resolve_by_name(line_user_id, name),
+    do: resolve_matches(line_user_id, name, matching_students(name))
+
+  @doc false
+  # Cases 4-6 for the Students `name` matched; public so tests can pass a
+  # match list a concurrent event has since made stale.
+  #
+  # A lost race never calls `Repo.rollback/1`: inside a caller's transaction
+  # that would abort the caller's too. Each case's failed write is its only
+  # write, and SQLite keeps the transaction usable after a failed statement,
+  # so the outcome is re-read in the same transaction.
+  def resolve_matches(line_user_id, name, candidates) do
+    {:ok, resolution} =
       Repo.transaction(fn ->
-        case apply_name_match(line_user_id, name, matching_students(name)) do
+        case apply_name_match(line_user_id, name, candidates) do
           {:ok, resolution} -> resolution
-          {:error, reason} -> Repo.rollback(reason)
+          {:error, reason} -> resolve_lost_race(line_user_id, name, reason)
         end
       end)
 
-    case result do
-      {:ok, resolution} -> resolution
-      {:error, reason} -> resolve_lost_race(line_user_id, name, reason)
-    end
+    resolution
   end
 
   # A concurrent event got there first. If it resolved this member, its outcome

@@ -15,7 +15,7 @@ defmodule Ganesha.Line.Client.Mock do
   @impl true
   def push(to, messages) do
     record(:push, {to, messages})
-    :ok
+    Process.get(:line_client_mock_push, :ok)
   end
 
   @impl true
