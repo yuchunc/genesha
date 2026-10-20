@@ -116,7 +116,9 @@ defmodule Ganesha.People do
     6. anything else: `{:unsure, candidates}`, recorded as an `unsure` member
 
   Cases 4-6 run in one transaction. If a concurrent event for the same member
-  wins the race on `line_user_id`, its outcome is re-read and returned.
+  wins the race on `line_user_id`, its outcome is re-read and returned. If the
+  one matching Student is claimed by another LINE id meanwhile, the name is
+  matched again and lands in case 6.
   """
   @spec resolve_line_member(String.t(), String.t()) :: resolution()
   def resolve_line_member(line_user_id, display_name)
@@ -151,17 +153,19 @@ defmodule Ganesha.People do
 
     case result do
       {:ok, resolution} -> resolution
-      {:error, reason} -> resolve_race(line_user_id, reason)
+      {:error, reason} -> resolve_lost_race(line_user_id, name, reason)
     end
   end
 
-  # A concurrent event for the same member got there first; its outcome stands.
-  defp resolve_race(line_user_id, reason) do
-    with true <- line_user_id_taken?(reason),
-         resolution when resolution != nil <- lookup_line_member(line_user_id) do
-      resolution
-    else
-      _ -> raise "could not resolve LINE member #{line_user_id}: #{inspect(reason)}"
+  # A concurrent event got there first. If it resolved this member, its outcome
+  # stands; if it claimed the matched Student for another member, match again.
+  defp resolve_lost_race(line_user_id, name, reason) do
+    resolution = if lost_race?(reason), do: lookup_line_member(line_user_id)
+
+    cond do
+      resolution -> resolution
+      reason == :already_linked -> resolve_by_name(line_user_id, name)
+      true -> raise "could not resolve LINE member #{line_user_id}: #{inspect(reason)}"
     end
   end
 
@@ -172,7 +176,7 @@ defmodule Ganesha.People do
   end
 
   defp apply_name_match(line_user_id, _name, [%Student{active: true, line_user_id: nil} = student]) do
-    student |> link_line_user_id(line_user_id) |> tag(:linked)
+    student |> claim_unlinked_student(line_user_id) |> tag(:linked)
   end
 
   defp apply_name_match(line_user_id, name, candidates) do
@@ -188,16 +192,32 @@ defmodule Ganesha.People do
   defp tag({:ok, student}, outcome), do: {:ok, {outcome, student}}
   defp tag({:error, reason}, _outcome), do: {:error, reason}
 
-  defp line_user_id_taken?(:line_user_id_taken), do: true
+  defp lost_race?(:already_linked), do: true
 
-  defp line_user_id_taken?(%Ecto.Changeset{errors: errors}) do
+  defp lost_race?(%Ecto.Changeset{errors: errors}) do
     case errors[:line_user_id] do
       {_message, opts} -> opts[:constraint] == :unique
       nil -> false
     end
   end
 
-  defp line_user_id_taken?(_reason), do: false
+  defp lost_race?(_reason), do: false
+
+  @doc """
+  Links `line_user_id` to `student` only while the stored row is still
+  unlinked (compare-and-set), so a stale struct cannot overwrite a link made
+  meanwhile. `{:error, :already_linked}` when it was.
+  """
+  def claim_unlinked_student(%Student{id: id}, line_user_id) when is_binary(line_user_id) do
+    stamp = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    from(s in Student, where: s.id == ^id and is_nil(s.line_user_id), select: s)
+    |> Repo.update_all(set: [line_user_id: line_user_id, updated_at: stamp])
+    |> case do
+      {1, [student]} -> {:ok, student}
+      {0, []} -> {:error, :already_linked}
+    end
+  end
 
   defp normalize_name(name),
     do: name |> String.normalize(:nfkc) |> String.trim() |> String.downcase()

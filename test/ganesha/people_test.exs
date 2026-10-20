@@ -152,6 +152,16 @@ defmodule Ganesha.PeopleTest do
       student!(%{display_name: "Amy", line_user_id: "U9"})
       assert {:unsure, [_]} = People.resolve_line_member("U1", "Amy")
     end
+
+    test "a Student linked meanwhile cannot be claimed by another LINE id" do
+      stale = student!(%{display_name: "Amy"})
+      {:ok, _} = People.update_student(stale, %{line_user_id: "U9"})
+
+      assert {:error, :already_linked} = People.claim_unlinked_student(stale, "U1")
+      assert People.get_student(stale.id).line_user_id == "U9"
+      assert {:unsure, [%{id: id}]} = People.resolve_line_member("U1", "Amy")
+      assert id == stale.id
+    end
   end
 
   defp student!(attrs) do
