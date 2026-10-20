@@ -131,12 +131,24 @@ defmodule Ganesha.Line.Cards do
 
   @doc """
   A member notice button's postback data: `action`, the LINE user id as
-  `uid`, the LINE name as `name` (cut to 20 graphemes so the data stays under
-  LINE's 300 characters), then `extra` (`from`, `sid`) as given.
+  `uid`, the LINE name as `name`, then `extra` (`from`, `sid`) as given. The
+  name is cut to 20 graphemes, then by whole graphemes from the end until the
+  percent-encoded data fits LINE's 300 characters (one emoji grapheme can
+  encode to dozens).
   """
   @spec member_postback(String.t(), map(), keyword()) :: String.t()
   def member_postback(action, %{"line_user_id" => uid, "display_name" => name}, extra \\ []) do
-    URI.encode_query([action: action, uid: uid, name: String.slice(name, 0, 20)] ++ extra)
+    encode = &URI.encode_query([action: action, uid: uid, name: &1] ++ extra)
+    name |> String.graphemes() |> Enum.take(20) |> fit_postback(encode)
+  end
+
+  @max_postback 300
+  defp fit_postback(graphemes, encode) do
+    data = encode.(Enum.join(graphemes))
+
+    if byte_size(data) <= @max_postback or graphemes == [],
+      do: data,
+      else: fit_postback(Enum.drop(graphemes, -1), encode)
   end
 
   defp bubble(texts, buttons) do

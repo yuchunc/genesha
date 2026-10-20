@@ -89,19 +89,42 @@ defmodule Ganesha.Line.CardsTest do
   end
 
   describe "member_notice/2" do
-    test "member notice postback data fits LINE's 300-character limit" do
-      name = String.duplicate("瑜", 20)
+    test "every member notice button's postback data fits LINE's 300 characters" do
+      uid = "U" <> String.duplicate("a", 32)
 
+      for name <- [
+            String.duplicate("瑜", 20),
+            String.duplicate("🧘", 20),
+            String.duplicate("👨‍👩‍👧‍👦", 20)
+          ],
+          args <- [
+            %{
+              "kind" => "unsure",
+              "candidates" => [%{"id" => 1_234_567, "name" => name}],
+              "more" => 0
+            },
+            %{"kind" => "created", "student_id" => 1_234_567, "student_name" => name},
+            %{"kind" => "linked", "student_id" => 1_234_567, "student_name" => name}
+          ],
+          args = Map.merge(args, %{"line_user_id" => uid, "display_name" => name}),
+          %{action: %{data: data}} <- footer_buttons(Cards.member_notice(args, "zh-TW")) do
+        assert String.length(data) <= 300, "#{byte_size(data)} chars: #{data}"
+        assert String.starts_with?(name, URI.decode_query(data)["name"])
+      end
+    end
+
+    test "member_postback/3 drops whole graphemes until the data fits" do
       args = %{
-        "kind" => "unsure",
         "line_user_id" => "U" <> String.duplicate("a", 32),
-        "display_name" => name,
-        "candidates" => [%{"id" => 123_456, "name" => name}],
-        "more" => 0
+        "display_name" => String.duplicate("👨‍👩‍👧‍👦", 20)
       }
 
-      for %{action: %{data: data}} <- footer_buttons(Cards.member_notice(args, "zh-TW")),
-          do: assert(String.length(data) <= 300)
+      data = Cards.member_postback("member_not_student", args, from: "created", sid: 1_234_567)
+      name = URI.decode_query(data)["name"]
+
+      assert String.length(data) <= 300
+      assert name == String.duplicate("👨‍👩‍👧‍👦", String.length(name))
+      assert String.length(name) >= 1
     end
 
     test "unsure card lists candidates, then new student, then not a student" do
