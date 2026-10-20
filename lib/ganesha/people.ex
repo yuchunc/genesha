@@ -19,12 +19,16 @@ defmodule Ganesha.People do
 
   def get_student(id), do: Repo.get(Student, id)
 
+  # Every way a Student gets a LINE id (here, `update_student/2` via
+  # `link_line_user_id/2`, and `claim_unlinked_student/2`) closes any open
+  # `unsure` question about that id, so a stale unsure notice cannot answer
+  # it (spec 2026-10-19 §2). A `not_student` answer is left alone.
   def create_student(attrs) do
-    %Student{} |> Student.changeset(attrs) |> Repo.insert()
+    %Student{} |> Student.changeset(attrs) |> Repo.insert() |> close_open_question()
   end
 
   def update_student(%Student{} = student, attrs) do
-    student |> Student.changeset(attrs) |> Repo.update()
+    student |> Student.changeset(attrs) |> Repo.update() |> close_open_question()
   end
 
   def change_student(%Student{} = student, attrs \\ %{}) do
@@ -223,7 +227,7 @@ defmodule Ganesha.People do
     from(s in Student, where: s.id == ^id and is_nil(s.line_user_id), select: s)
     |> Repo.update_all(set: [line_user_id: line_user_id, updated_at: now()])
     |> case do
-      {1, [student]} -> {:ok, student}
+      {1, [student]} -> close_open_question({:ok, student})
       {0, []} -> {:error, :already_linked}
     end
   rescue
@@ -247,12 +251,18 @@ defmodule Ganesha.People do
   link is cleared and the member recorded as `not_student`. A Student made
   for them (`created`) is then deleted, unless they have purchases,
   attendances or credits (payments hang off purchases): such a Student is
-  kept and returned. From `unsure`, the open question becomes `not_student`.
+  kept and returned. From `unsure`, the open question becomes `not_student`,
+  unless a Student holds `line_user_id` (linked on the web meanwhile).
   """
   @spec member_not_student(String.t(), String.t(), String.t(), integer() | nil) ::
           {:ok, :marked} | {:ok, {:kept, Student.t()}} | {:error, :already_handled}
   def member_not_student(line_user_id, _display_name, "unsure", _student_id) do
-    from(m in LineMember, where: m.line_user_id == ^line_user_id and m.state == "unsure")
+    from(m in LineMember,
+      as: :member,
+      where: m.line_user_id == ^line_user_id and m.state == "unsure",
+      where:
+        not exists(from s in Student, where: s.line_user_id == parent_as(:member).line_user_id)
+    )
     |> Repo.update_all(set: [state: "not_student", updated_at: now()])
     |> case do
       {1, _} -> {:ok, :marked}
@@ -362,6 +372,17 @@ defmodule Ganesha.People do
       {0, _} -> {:error, :already_handled}
     end
   end
+
+  # Keeps the invariant at `create_student/1` once a Student holds a LINE id.
+  # A plain delete, never a rollback, so a caller's transaction survives a
+  # lost race (see `resolve_matches/3`).
+  defp close_open_question({:ok, %Student{line_user_id: line_user_id}} = ok)
+       when is_binary(line_user_id) do
+    _open_or_not = close_question(line_user_id)
+    ok
+  end
+
+  defp close_open_question(result), do: result
 
   # A leftover row for the member (one made before a web link) is overwritten.
   defp put_line_member(line_user_id, display_name, state) do

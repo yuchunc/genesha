@@ -356,6 +356,48 @@ defmodule Ganesha.PeopleTest do
       assert People.get_line_member("U1") == nil
       assert People.get_student(s.id).line_user_id == "U1"
     end
+
+    test "a stale not-student tap from unsure is refused once enrollment links the member" do
+      a = student!(%{display_name: "Amy"})
+      student!(%{display_name: "amy"})
+      {:unsure, _} = People.resolve_line_member("U1", "Amy")
+
+      # The sign-up / enroll path links through link_line_user_id/2.
+      {:ok, _} = People.link_line_user_id(a, "U1")
+
+      assert People.get_line_member("U1") == nil
+      assert {:error, :already_handled} = People.member_not_student("U1", "Amy", "unsure", nil)
+      assert People.get_student(a.id).line_user_id == "U1"
+      assert People.get_line_member("U1") == nil
+    end
+
+    test "every way a Student gets a LINE id closes an open question about it" do
+      for id <- ~w(U1 U2 U3) do
+        Repo.insert!(%LineMember{line_user_id: id, display_name: "Amy", state: "unsure"})
+      end
+
+      {:ok, _} = People.create_student(%{display_name: "Amy", line_user_id: "U1"})
+      {:ok, _} = People.claim_unlinked_student(student!(%{display_name: "Bo"}), "U2")
+      {:ok, _} = People.update_student(student!(%{display_name: "Cy"}), %{line_user_id: "U3"})
+
+      assert Repo.aggregate(LineMember, :count) == 0
+    end
+
+    test "linking a Student leaves a not-student answer alone" do
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "not_student"})
+      student!(%{display_name: "Amy", line_user_id: "U1"})
+
+      assert %LineMember{state: "not_student"} = People.get_line_member("U1")
+    end
+
+    test "the not-student answer from unsure is refused while a Student holds the LINE id" do
+      s = student!(%{display_name: "Amy", line_user_id: "U1"})
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+
+      assert {:error, :already_handled} = People.member_not_student("U1", "Amy", "unsure", nil)
+      assert %LineMember{state: "unsure"} = People.get_line_member("U1")
+      assert People.get_student(s.id).line_user_id == "U1"
+    end
   end
 
   defp purchase_for!(student) do
