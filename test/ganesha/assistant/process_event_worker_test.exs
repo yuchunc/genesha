@@ -3,7 +3,16 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
   use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
 
   alias Ganesha.{Assistant, Catalog, Line, People, Sales}
-  alias Ganesha.Assistant.{Conversation, Digest, DraftNotifier, ProcessEventWorker}
+
+  alias Ganesha.Assistant.{
+    Conversation,
+    Digest,
+    DraftNotifier,
+    MemberNoticeWorker,
+    ProcessEventWorker
+  }
+
+  alias Ganesha.People.LineMember
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Line.Client.Mock, as: LineMock
   alias Ganesha.Line.Labels
@@ -79,6 +88,14 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
 
   defp group_source(sender_id),
     do: %{"type" => "group", "groupId" => "Cabc", "userId" => sender_id}
+
+  defp member_joined(group_id, user_ids) do
+    %{
+      "type" => "memberJoined",
+      "source" => %{"type" => "group", "groupId" => group_id},
+      "joined" => %{"members" => Enum.map(user_ids, &%{"type" => "user", "userId" => &1})}
+    }
+  end
 
   defp teacher_thread do
     {:ok, thread} = Assistant.get_or_create_thread("teacher", @teacher)
@@ -465,21 +482,111 @@ defmodule Ganesha.Assistant.ProcessEventWorkerTest do
     end
 
     @tag :capture_log
-    test "a failed member lookup still runs the agent, with no sender name" do
+    test "a failed member lookup resolves nothing and still runs the agent" do
       Process.put(:line_client_mock_group_member, {:error, {404, %{}}})
 
-      Mock.stub(fn _messages, _tools, _opts ->
-        Process.put(:agent_ran, true)
+      Mock.stub(fn messages, _tools, _opts ->
+        send(self(), {:wire, messages})
         {:ok, %{text: "ok", tool_calls: []}}
       end)
 
       {:ok, _} = deliver(group_text("Ustudent1", "大家好"))
 
-      assert Process.get(:agent_ran)
+      assert_received {:wire, [%{role: "user", content: "[LINE unknown, unmatched] 大家好"} | _]}
       {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
 
       assert [%{sender_id: "Ustudent1", sender_name: nil}, _] =
                Assistant.list_messages(thread)
+
+      assert Repo.aggregate(People.Student, :count) == 0
+      refute_enqueued(worker: MemberNoticeWorker)
+    end
+
+    test "an unknown sender becomes a student before the turn, and the turn sees the tag" do
+      Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "小美"}})
+
+      Mock.stub(fn messages, _tools, _opts ->
+        send(self(), {:wire, messages})
+        {:ok, %{text: "ok", tool_calls: []}}
+      end)
+
+      {:ok, _} = deliver(group_text("Ustudent1", "已轉帳1600"))
+
+      s = People.find_by_line_user_id("Ustudent1")
+      assert s.display_name == "小美"
+      assert_received {:wire, [%{role: "user", content: content} | _]}
+      assert content == "[student #{s.id} 小美] 已轉帳1600"
+      assert_enqueued(worker: MemberNoticeWorker, args: %{"kind" => "created"})
+      {:ok, thread} = Assistant.get_or_create_thread("group", "Cabc")
+      assert [%{content: "已轉帳1600"} | _] = Assistant.list_messages(thread)
+      assert LineMock.calls() == []
+    end
+
+    test "memberJoined then a message creates one student and one notice" do
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "ok", tool_calls: []}} end)
+
+      {:ok, _} = deliver(member_joined("Cabc", ["Unew"]))
+      assert %People.Student{display_name: "測試學生"} = People.find_by_line_user_id("Unew")
+
+      {:ok, _} = deliver(group_text("Unew", "大家好"))
+
+      assert Repo.aggregate(People.Student, :count) == 1
+      assert length(all_enqueued(worker: MemberNoticeWorker)) == 1
+      assert LineMock.calls() == []
+    end
+
+    test "a not_student member is never created and is tagged as such" do
+      Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "老公"}})
+
+      Repo.insert!(%LineMember{
+        line_user_id: "Uhusband",
+        display_name: "老公",
+        state: "not_student"
+      })
+
+      Mock.stub(fn messages, _tools, _opts ->
+        send(self(), {:wire, messages})
+        {:ok, %{text: "ok", tool_calls: []}}
+      end)
+
+      {:ok, _} = deliver(group_text("Uhusband", "我幫她付了"))
+
+      assert Repo.aggregate(People.Student, :count) == 0
+      refute_enqueued(worker: MemberNoticeWorker)
+      assert_received {:wire, [%{role: "user", content: "[LINE 老公, not a student] 我幫她付了"} | _]}
+    end
+
+    # TEMPORARY, DEV ONLY: see `dev_teacher_posts_in_groups` in config/runtime.exs.
+    test "a teacher posting with dev_teacher_posts_in_groups on is not resolved" do
+      line_config = Application.fetch_env!(:ganesha, :line)
+      on_exit(fn -> Application.put_env(:ganesha, :line, line_config) end)
+
+      Application.put_env(
+        :ganesha,
+        :line,
+        Keyword.put(line_config, :dev_teacher_posts_in_groups, true)
+      )
+
+      Mock.stub(fn _messages, _tools, _opts -> {:ok, %{text: "ok", tool_calls: []}} end)
+
+      {:ok, _} = deliver(group_text(@teacher, "大家好"))
+
+      assert Repo.aggregate(People.Student, :count) == 0
+      refute_enqueued(worker: MemberNoticeWorker)
+    end
+
+    test "memberJoined in a blocked group, or of a blocked sender, resolves nothing" do
+      {:ok, _} = Line.block_account(%{kind: "group", line_id: "Cblocked", label: "別的群組"})
+      {:ok, _} = Line.block_account(%{kind: "sender", line_id: "Uspam", label: "廣告"})
+
+      {:ok, _} = deliver(member_joined("Cblocked", ["Unew"]))
+      {:ok, _} = deliver(member_joined("Cabc", ["Uspam"]))
+
+      assert Repo.aggregate(People.Student, :count) == 0
+      assert Repo.aggregate(LineMember, :count) == 0
+      refute_enqueued(worker: MemberNoticeWorker)
+      assert LineMock.lookups() == []
+      assert LineMock.calls() == []
     end
 
     test "a blocked group is dropped before anything is stored or looked up" do

@@ -7,8 +7,10 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   1:1 text messages go to `Ganesha.Assistant.Conversation` once the sender
   has picked a language (the first-contact picker lives here); any other 1:1
   message gets one "text only" reply and is not stored; 1:1 postbacks go to
-  `Conversation.handle_postback/3`. Group chat text messages run the agent
-  with the Group chat's tasks and are never answered. Unsend and
+  `Conversation.handle_postback/3`. Group chat text messages resolve their
+  sender to a Student (`Ganesha.Assistant.GroupMembers`), then run the agent
+  with the Group chat's tasks and are never answered; memberJoined resolves
+  each joined member and does nothing else. Unsend and
   messageEdited correct the stored text, discard the message's pending
   Drafts and, in the Teacher chat, drop the digests covering its day; an
   edited 1:1 message re-runs the turn and delivers it. A failed agent run is
@@ -27,6 +29,7 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
     Agent,
     Conversation,
     DraftNotifier,
+    GroupMembers,
     Memory,
     Prompts,
     Snapshot,
@@ -74,6 +77,19 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
       Line.blocked?("sender", sender_id) -> :ok
       true -> handle_group_message(event, group_id, sender_id)
     end
+  end
+
+  # Spec 2026-10-19 §1: a joined member is resolved with the same skips as a
+  # sender; `GroupMembers.resolve/2` skips teachers. Nothing else happens on join.
+  defp route(%{source_type: "group", source_id: group_id, raw_type: "memberJoined"} = event) do
+    if not Line.blocked?("group", group_id) do
+      for %{"userId" => user_id} <- get_in(event.payload, ["joined", "members"]) || [],
+          not Line.blocked?("sender", user_id) do
+        resolve_member(user_id, sender_name(group_id, user_id))
+      end
+    end
+
+    :ok
   end
 
   defp route(%{raw_type: "unsend"} = event), do: handle_unsend(event)
@@ -130,20 +146,23 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
 
   defp handle_simple_reply(_event), do: :ok
 
-  # Nothing on this path sends to LINE, and `Line.Client` refuses group
-  # targets anyway (spec 2026-10-05 §4): the Group chat never hears from the bot.
+  # Nothing on this path sends to LINE (a member notice is a job that pushes
+  # to the teachers), and `Line.Client` refuses group targets anyway (spec
+  # 2026-10-05 §4): the Group chat never hears from the bot.
   defp handle_group_message(
          %{payload: %{"message" => %{"id" => line_message_id, "text" => text}}},
          group_id,
          sender_id
        ) do
     {:ok, thread} = Assistant.get_or_create_thread("group", group_id)
+    name = sender_name(group_id, sender_id)
+    resolve_member(sender_id, name)
 
     {:ok, _} =
       Assistant.append_message(thread, "user", text, nil,
         line_message_id: line_message_id,
         sender_id: sender_id,
-        sender_name: sender_name(group_id, sender_id)
+        sender_name: name
       )
 
     thread |> run_group_agent() |> log_failure(thread, "group message")
@@ -152,7 +171,15 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
 
   defp handle_group_message(_event, _group_id, _sender_id), do: :ok
 
-  # Read-only: the display name the teacher blocks by (spec 2026-10-05 §1).
+  # A failed lookup leaves the name nil and the member unresolved; the next
+  # event tries again (spec 2026-10-19 §1).
+  defp resolve_member(sender_id, name) when is_binary(sender_id) and is_binary(name),
+    do: GroupMembers.resolve(sender_id, name)
+
+  defp resolve_member(_sender_id, _name), do: :ok
+
+  # Read-only: the display name the teacher blocks by (spec 2026-10-05 §1)
+  # and that a member is resolved by.
   defp sender_name(_group_id, nil), do: nil
 
   defp sender_name(group_id, sender_id) do
@@ -167,10 +194,11 @@ defmodule Ganesha.Assistant.ProcessEventWorker do
   end
 
   # The Group chat's tasks, the snapshot their ids come from, and its full
-  # history; never summaries (ADR 0003).
+  # history, each message tagged with its sender; never summaries (ADR 0003).
   defp run_group_agent(thread) do
     system = Prompts.group() <> "\n\n" <> Prompts.snapshot_section(Snapshot.build(Clock.today()))
-    Agent.run(thread, Tasks.for_chat(:group), system, Assistant.list_messages(thread))
+    history = thread |> Assistant.list_messages() |> GroupMembers.tag_history()
+    Agent.run(thread, Tasks.for_chat(:group), system, history)
   end
 
   defp handle_unsend(%{payload: %{"unsend" => %{"messageId" => line_message_id}}}) do

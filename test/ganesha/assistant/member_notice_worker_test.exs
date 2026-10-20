@@ -117,4 +117,35 @@ defmodule Ganesha.Assistant.MemberNoticeWorkerTest do
 
     refute_enqueued(worker: MemberNoticeWorker)
   end
+
+  test "GroupMembers.tag_history tags each user message's sender from current data" do
+    {:ok, s} = People.create_student(%{display_name: "小美", line_user_id: "U1"})
+    Repo.insert!(%LineMember{line_user_id: "U2", display_name: "老公", state: "not_student"})
+    Repo.insert!(%LineMember{line_user_id: "U3", display_name: "Amy", state: "unsure"})
+
+    user = fn id, name, content ->
+      %Assistant.Message{role: "user", sender_id: id, sender_name: name, content: content}
+    end
+
+    reply = %Assistant.Message{role: "assistant", content: "ok"}
+
+    assert GroupMembers.tag_history([
+             user.("U1", "LINE 小美", "已轉帳"),
+             reply,
+             user.("U2", "老公", "幫她付"),
+             user.("U3", "Amy", "hi"),
+             user.("U4", nil, "hello"),
+             user.("U1", "小美", nil),
+             user.(nil, nil, "舊訊息")
+           ])
+           |> Enum.map(& &1.content) == [
+             "[student #{s.id} 小美] 已轉帳",
+             "ok",
+             "[LINE 老公, not a student] 幫她付",
+             "[LINE Amy, unmatched] hi",
+             "[LINE unknown, unmatched] hello",
+             nil,
+             "舊訊息"
+           ]
+  end
 end

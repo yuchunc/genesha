@@ -50,8 +50,11 @@ defmodule Ganesha.Assistant.Prompts do
     Your only job: when a student's message reports a payment, asks for a single class \
     (單堂) or a trial (體驗), or asks for a makeup class, propose the matching Draft for the \
     teacher to confirm later — record_payment, book_one_off or makeup_request. Use the ids \
-    in the studio snapshot. If you cannot tell which student or which Session it is, \
-    propose nothing; never guess. When someone asks to sign up for a regular class (報名, \
+    in the studio snapshot. Each student message starts with a tag naming who sent it. When \
+    the message is about the sender, use the student id in the tag. A tag without a student \
+    id means the sender is not a known student: propose nothing for them unless the message \
+    names a student in the snapshot. If you cannot tell which Session it is, propose \
+    nothing; never guess. When someone asks to sign up for a regular class (報名, \
     joining a weekly class or a month) rather than one single class or trial, call \
     signup_request with their own words; it needs no ids and records who sent the message. \
     Ignore everything else.

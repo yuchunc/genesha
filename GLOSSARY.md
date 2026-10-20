@@ -40,6 +40,10 @@ _Avoid_: admin chat, owner chat
 The teacher's LINE group with her students, which the assistant reads but never speaks in.
 _Avoid_: class group, student group
 
+**Group member**:
+A LINE user seen in the Group chat, resolved to a Student, marked not a student, or waiting for the teacher.
+_Avoid_: group user, participant
+
 **Student chat**:
 A 1:1 LINE conversation between a student, or someone asking about classes, and the studio account.
 _Avoid_: user chat, customer chat
