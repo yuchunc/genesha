@@ -191,6 +191,23 @@ defmodule Ganesha.Line.CardsTest do
                ]
     end
 
+    test "a long candidate name still fits LINE's 40-character button label" do
+      name = String.duplicate("瑜", 50)
+
+      args = %{
+        "kind" => "unsure",
+        "line_user_id" => "U1",
+        "display_name" => "Amy",
+        "candidates" => [%{"id" => 1, "name" => name}],
+        "more" => 0
+      }
+
+      labels = Enum.map(footer_buttons(Cards.member_notice(args, "zh-TW")), & &1.action.label)
+
+      assert Enum.all?(labels, &(String.length(&1) <= 40))
+      assert hd(labels) == String.duplicate("瑜", 39) <> "…"
+    end
+
     test "member_postback/3 truncates the LINE name to 20 graphemes" do
       data =
         Cards.member_postback("member_new", %{

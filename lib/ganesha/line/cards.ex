@@ -99,7 +99,7 @@ defmodule Ganesha.Line.Cards do
       for %{"id" => sid, "name" => name} <- candidates do
         button("primary", %{
           type: "postback",
-          label: name,
+          label: button_label(name),
           data: member_postback("member_pick", args, sid: sid)
         })
       end
@@ -111,6 +111,14 @@ defmodule Ganesha.Line.Cards do
           from: "unsure"
         )
       ]
+  end
+
+  # LINE rejects a Flex button label over 40 characters; Student names are unbounded.
+  @max_label 40
+  defp button_label(name) do
+    if String.length(name) > @max_label,
+      do: String.slice(name, 0, @max_label - 1) <> "…",
+      else: name
   end
 
   defp member_button(style, label, locale, action, args, extra) do
