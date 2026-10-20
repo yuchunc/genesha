@@ -192,7 +192,7 @@ defmodule Ganesha.People do
   defp tag({:ok, student}, outcome), do: {:ok, {outcome, student}}
   defp tag({:error, reason}, _outcome), do: {:error, reason}
 
-  defp lost_race?(:already_linked), do: true
+  defp lost_race?(reason) when reason in [:already_linked, :line_user_id_taken], do: true
 
   defp lost_race?(%Ecto.Changeset{errors: errors}) do
     case errors[:line_user_id] do
@@ -206,7 +206,8 @@ defmodule Ganesha.People do
   @doc """
   Links `line_user_id` to `student` only while the stored row is still
   unlinked (compare-and-set), so a stale struct cannot overwrite a link made
-  meanwhile. `{:error, :already_linked}` when it was.
+  meanwhile. `{:error, :already_linked}` when it was, `{:error,
+  :line_user_id_taken}` when another Student holds `line_user_id`.
   """
   def claim_unlinked_student(%Student{id: id}, line_user_id) when is_binary(line_user_id) do
     stamp = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -217,6 +218,12 @@ defmodule Ganesha.People do
       {1, [student]} -> {:ok, student}
       {0, []} -> {:error, :already_linked}
     end
+  rescue
+    error in Exqlite.Error ->
+      case Ecto.Adapters.SQLite3.Connection.to_constraints(error, []) do
+        [unique: "students_line_user_id_index"] -> {:error, :line_user_id_taken}
+        _other -> reraise error, __STACKTRACE__
+      end
   end
 
   defp normalize_name(name),
