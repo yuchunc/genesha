@@ -13,8 +13,11 @@
 # writing to the real dev DB.
 #
 # Rows created here are prefixed SMOKE / smoke- and deleted again at the end,
-# as are the Students, line_members rows and member notice jobs of the smoke
-# LINE ids below, since group senders become Students as they post.
+# as are the line_members rows and member notice jobs of the smoke LINE ids
+# below. Group senders become Students as they post, so every smoke member
+# posts under a SMOKE name, and only Students a `created` member notice says
+# the run made are deleted: a smoke LINE id can also be linked to an existing
+# Student by name, and that Student is not the run's.
 
 import Ecto.Query
 
@@ -46,6 +49,10 @@ secret = "smoke_channel_secret"
 smoke_sources = [teacher_id, group_id, newcomer_id]
 # Every LINE id that posts in the smoke group (spec 2026-10-19 §1).
 smoke_members = ["Usmokestudent000", blocked_sender_id, group_joiner_id, member_id]
+
+# Each sender's LINE name, unless a step sets its own; SMOKE so no smoke member
+# is matched to, and linked with, a real Student.
+Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "SMOKE 測試學生"}})
 
 # Only the PASS/FAIL lines matter here; Ecto's debug SQL would bury them.
 Logger.configure(level: :warning)
@@ -92,9 +99,22 @@ cleanup = fn ->
   smoke_thread_ids =
     Repo.all(from t in Thread, where: t.source_id in ^smoke_sources, select: t.id)
 
+  # The Students the smoke members were created as. Matched by id and LINE
+  # id both, so neither a reused id nor a linked real Student qualifies.
+  created_member_ids =
+    Repo.all(
+      from j in Oban.Job,
+        where: j.worker == "Ganesha.Assistant.MemberNoticeWorker",
+        where: fragment("json_extract(?, '$.kind')", j.args) == "created",
+        where: fragment("json_extract(?, '$.line_user_id')", j.args) in ^smoke_members,
+        select: fragment("json_extract(?, '$.student_id')", j.args)
+    )
+
   student_ids =
     from(s in People.Student,
-      where: like(s.display_name, "SMOKE%") or s.line_user_id in ^smoke_members,
+      where:
+        like(s.display_name, "SMOKE%") or
+          (s.id in ^created_member_ids and s.line_user_id in ^smoke_members),
       select: s.id
     )
 
@@ -136,6 +156,13 @@ cleanup = fn ->
   Repo.delete_all(from(m in Message, where: m.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(t in Thread, where: t.source_id in ^smoke_sources))
   Repo.delete_all(from(s in People.Student, where: s.id in subquery(student_ids)))
+
+  # Any other Student still on a smoke LINE id was linked to it by the run:
+  # kept, only unlinked.
+  Repo.update_all(from(s in People.Student, where: s.line_user_id in ^smoke_members),
+    set: [line_user_id: nil]
+  )
+
   Repo.delete_all(from(m in People.LineMember, where: m.line_user_id in ^smoke_members))
 
   Repo.delete_all(
@@ -1436,7 +1463,8 @@ Smoke.check(
 # ---------------------------------------------------------------- Step 14
 Smoke.step(14, "a new group member posts: they become a Student and the teachers are told")
 
-Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "小新"}})
+member_name = "SMOKE 小新"
+Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => member_name}})
 
 ProviderMock.stub(fn _messages, _tools, _opts ->
   {:ok, %{text: "（僅記錄，無需建立草稿）", tool_calls: []}}
@@ -1464,8 +1492,8 @@ member_posts.("smoke-group-6", "smoke-msg-12")
 member = People.find_by_line_user_id(member_id)
 
 Smoke.check(
-  "the first message creates Student 小新 with the member's LINE id",
-  member != nil and member.display_name == "小新"
+  "the first message creates Student #{member_name} with the member's LINE id",
+  member != nil and member.display_name == member_name
 )
 
 Smoke.check("NOTHING sent to LINE from the group path", LineMock.calls() == [])
@@ -1492,9 +1520,11 @@ member_notice =
 member_alt_texts = Enum.map(member_notice, & &1.altText)
 IO.puts("        pushed alt text: #{Enum.join(member_alt_texts, " | ")}")
 
+member_alt_text = "新增學生 #{member_name}（LINE：#{member_name}）"
+
 Smoke.check(
-  "the notice pushed to the teacher reads 新增學生 小新（LINE：小新）",
-  member_alt_texts == ["新增學生 小新（LINE：小新）"]
+  "the notice pushed to the teacher reads #{member_alt_text}",
+  member_alt_texts == [member_alt_text]
 )
 
 # ---------------------------------------------------------------- Step 15
@@ -1512,7 +1542,7 @@ Smoke.check(
     not_student_data ==
       Cards.member_postback(
         "member_not_student",
-        %{"line_user_id" => member_id, "display_name" => "小新"},
+        %{"line_user_id" => member_id, "display_name" => member_name},
         from: "created",
         sid: member.id
       )
@@ -1535,7 +1565,7 @@ Process.delete(:line_client_mock_calls)
   ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => not_student_line_event.id}})
 
 Smoke.check(
-  "Student 小新 is deleted",
+  "Student #{member_name} is deleted",
   member != nil and Repo.get(People.Student, member.id) == nil
 )
 
@@ -1545,9 +1575,9 @@ Smoke.check(
 )
 
 Smoke.check(
-  "the teacher is told 小新 is not a student",
+  "the teacher is told #{member_name} is not a student",
   for({:reply, {"smoke-reply-16", [message]}} <- LineMock.calls(), do: message.text) ==
-    [Line.Labels.t(:member_marked_not_student, "zh-TW", line_name: "小新")]
+    [Line.Labels.t(:member_marked_not_student, "zh-TW", line_name: member_name)]
 )
 
 # ---------------------------------------------------------------- Step 16
