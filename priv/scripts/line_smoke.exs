@@ -12,7 +12,9 @@
 # Draft card, postback confirm and the retention sweep — is production code
 # writing to the real dev DB.
 #
-# Rows created here are prefixed SMOKE / smoke- and deleted again at the end.
+# Rows created here are prefixed SMOKE / smoke- and deleted again at the end,
+# as are the Students, line_members rows and member notice jobs of the smoke
+# LINE ids below, since group senders become Students as they post.
 
 import Ecto.Query
 
@@ -23,6 +25,7 @@ alias Ganesha.Assistant.{
   Digest,
   Draft,
   DraftNotifier,
+  MemberNoticeWorker,
   Message,
   ProcessEventWorker,
   PurgeGroupRawTextWorker,
@@ -31,14 +34,18 @@ alias Ganesha.Assistant.{
 
 alias Ganesha.Assistant.Provider.Mock, as: ProviderMock
 alias Ganesha.Line.Client.Mock, as: LineMock
-alias Ganesha.Line.{LineEvent, VerifySignaturePlug}
+alias Ganesha.Line.{Cards, LineEvent, VerifySignaturePlug}
 
 teacher_id = "Usmoketeacher000000000000000"
 group_id = "Csmokegroup00000000000000000"
 blocked_sender_id = "Usmokeblocked0000000000000000"
 newcomer_id = "Usmokenewcomer00000000000000000"
+group_joiner_id = "Usmokegroupjoiner00000000000000"
+member_id = "U_smoke_member"
 secret = "smoke_channel_secret"
 smoke_sources = [teacher_id, group_id, newcomer_id]
+# Every LINE id that posts in the smoke group (spec 2026-10-19 §1).
+smoke_members = ["Usmokestudent000", blocked_sender_id, group_joiner_id, member_id]
 
 # Only the PASS/FAIL lines matter here; Ecto's debug SQL would bury them.
 Logger.configure(level: :warning)
@@ -85,7 +92,11 @@ cleanup = fn ->
   smoke_thread_ids =
     Repo.all(from t in Thread, where: t.source_id in ^smoke_sources, select: t.id)
 
-  student_ids = from(s in People.Student, where: like(s.display_name, "SMOKE%"), select: s.id)
+  student_ids =
+    from(s in People.Student,
+      where: like(s.display_name, "SMOKE%") or s.line_user_id in ^smoke_members,
+      select: s.id
+    )
 
   purchase_ids =
     from(p in Sales.Purchase, where: p.student_id in subquery(student_ids), select: p.id)
@@ -124,7 +135,8 @@ cleanup = fn ->
   Repo.delete_all(from(d in Draft, where: d.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(m in Message, where: m.thread_id in subquery(thread_ids)))
   Repo.delete_all(from(t in Thread, where: t.source_id in ^smoke_sources))
-  Repo.delete_all(from(s in People.Student, where: like(s.display_name, "SMOKE%")))
+  Repo.delete_all(from(s in People.Student, where: s.id in subquery(student_ids)))
+  Repo.delete_all(from(m in People.LineMember, where: m.line_user_id in ^smoke_members))
 
   Repo.delete_all(
     from(b in Line.BlockedAccount, where: b.line_id in ^[group_id, blocked_sender_id])
@@ -144,6 +156,14 @@ cleanup = fn ->
     from(j in Oban.Job,
       where: j.worker == "Ganesha.Assistant.DraftNotifier",
       where: fragment("json_extract(?, '$.thread_id')", j.args) in ^smoke_thread_ids
+    )
+  )
+
+  # A leftover notice would push to the real teachers once dev Oban resumes.
+  Repo.delete_all(
+    from(j in Oban.Job,
+      where: j.worker == "Ganesha.Assistant.MemberNoticeWorker",
+      where: fragment("json_extract(?, '$.line_user_id')", j.args) in ^smoke_members
     )
   )
 end
@@ -1173,8 +1193,9 @@ Smoke.check(
 )
 
 # 幫他報名 runs a Teacher-chat turn; it proposes one enroll that carries the
-# request and adds the newcomer as a new student (spec 2026-10-07 §2).
-request_enroll_stub = fn request, name, call_id ->
+# request and names who is enrolled: `who` holds new_student_name for a
+# newcomer, or the student_id of an existing Student (spec 2026-10-07 §2).
+request_enroll_stub = fn request, who, call_id ->
   ProviderMock.stub(fn messages, _tools, _opts ->
     case List.last(messages) do
       %{role: "tool"} ->
@@ -1188,13 +1209,13 @@ request_enroll_stub = fn request, name, call_id ->
              %{
                id: call_id,
                name: "enroll",
-               input: %{
-                 "signup_request_id" => request && request.id,
-                 "new_student_name" => name,
-                 "slot_id" => enroll_slot.id,
-                 "month" => "2026-10",
-                 "package_id" => enroll_package.id
-               }
+               input:
+                 Map.merge(who, %{
+                   "signup_request_id" => request && request.id,
+                   "slot_id" => enroll_slot.id,
+                   "month" => "2026-10",
+                   "package_id" => enroll_package.id
+                 })
              }
            ]
          }}
@@ -1232,7 +1253,7 @@ confirm_request_enroll = fn draft, request, event_id ->
   {draft && Repo.reload!(draft), request && Repo.reload!(request)}
 end
 
-request_enroll_stub.(signup_draft, "SMOKE 新朋友", "smoke-call-9")
+request_enroll_stub.(signup_draft, %{"new_student_name" => "SMOKE 新朋友"}, "smoke-call-9")
 
 enroll_tap_event = %{
   "webhookEventId" => "smoke-postback-6",
@@ -1282,9 +1303,18 @@ Smoke.check(
 )
 
 # ---------------------------------------------------------------- Step 13
-Smoke.step(13, "a group sender asks to sign up; 幫他報名 proposes one enroll that adds them")
+Smoke.step(13, "a group sender, now a Student, asks to sign up; 幫他報名 enrolls that Student")
 
-group_joiner_id = "Usmokegroupjoiner00000000000000"
+# The member notice jobs queued for a LINE id, oldest first.
+member_notice_jobs = fn line_user_id ->
+  Repo.all(
+    from j in Oban.Job,
+      where: j.worker == "Ganesha.Assistant.MemberNoticeWorker",
+      where: fragment("json_extract(?, '$.line_user_id')", j.args) == ^line_user_id,
+      order_by: j.id
+  )
+end
+
 Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "SMOKE 群組新朋友"}})
 
 # The Group chat proposes signup_request.
@@ -1329,10 +1359,20 @@ group_signup_draft =
         d.thread_id == ^group_thread.id and d.kind == "signup_request" and d.state == "pending"
   )
 
+joiner = People.find_by_line_user_id(group_joiner_id)
+
 Smoke.check(
-  "the group sender's sign-up request is a pending draft for that sender",
-  group_signup_draft != nil and group_signup_draft.parsed["line_user_id"] == group_joiner_id and
-    group_signup_draft.parsed["line_name"] == "SMOKE 群組新朋友"
+  "posting makes the group sender a Student, with one created notice queued",
+  joiner != nil and joiner.display_name == "SMOKE 群組新朋友" and
+    match?([%{args: %{"kind" => "created"}}], member_notice_jobs.(group_joiner_id))
+)
+
+Smoke.check(
+  "the group sender's sign-up request is a pending draft for that Student",
+  group_signup_draft != nil and joiner != nil and
+    group_signup_draft.parsed["line_user_id"] == group_joiner_id and
+    group_signup_draft.parsed["student_id"] == joiner.id and
+    group_signup_draft.parsed["new"] == false
 )
 
 Smoke.check("NOTHING sent to LINE from the group sign-up", LineMock.calls() == [])
@@ -1348,7 +1388,7 @@ Smoke.check(
   end)
 )
 
-request_enroll_stub.(group_signup_draft, "SMOKE 群組新朋友", "smoke-call-11")
+request_enroll_stub.(group_signup_draft, %{"student_id" => joiner && joiner.id}, "smoke-call-11")
 
 group_tap_event = %{
   "webhookEventId" => "smoke-postback-7",
@@ -1374,21 +1414,165 @@ Smoke.check(
 joiner_enroll_draft = request_enroll_draft.(group_signup_draft)
 
 Smoke.check(
-  "the teacher's turn proposes one enroll adding the group sender with their LINE ID",
-  joiner_enroll_draft != nil and
-    joiner_enroll_draft.parsed["new_student"]["line_user_id"] == group_joiner_id
+  "the teacher's turn proposes one enroll for that Student",
+  joiner_enroll_draft != nil and joiner != nil and joiner_enroll_draft.student_id == joiner.id and
+    joiner_enroll_draft.parsed["new_student"] == nil
 )
 
 {applied_joiner_enroll, settled_group_signup} =
   confirm_request_enroll.(joiner_enroll_draft, group_signup_draft, "smoke-postback-9")
 
+joiner_purchase =
+  applied_joiner_enroll && Repo.get(Sales.Purchase, applied_joiner_enroll.applied_record_id)
+
 Smoke.check(
-  "Confirm adds the group sender as a student and settles the request",
-  People.find_by_line_user_id(group_joiner_id) != nil and
-    applied_joiner_enroll != nil and applied_joiner_enroll.state == "applied" and
+  "Confirm enrolls the group sender's Student and settles the request",
+  joiner != nil and joiner_purchase != nil and joiner_purchase.student_id == joiner.id and
+    applied_joiner_enroll.state == "applied" and
     settled_group_signup != nil and settled_group_signup.state == "applied" and
     settled_group_signup.applied_record_id == applied_joiner_enroll.applied_record_id
 )
+
+# ---------------------------------------------------------------- Step 14
+Smoke.step(14, "a new group member posts: they become a Student and the teachers are told")
+
+Process.put(:line_client_mock_group_member, {:ok, %{"displayName" => "小新"}})
+
+ProviderMock.stub(fn _messages, _tools, _opts ->
+  {:ok, %{text: "（僅記錄，無需建立草稿）", tool_calls: []}}
+end)
+
+# Records and processes one group message from the smoke member.
+member_posts = fn event_id, message_id ->
+  :ok =
+    Line.record_event(%{
+      "webhookEventId" => event_id,
+      "mode" => "active",
+      "type" => "message",
+      "replyToken" => "#{event_id}-reply",
+      "source" => %{"type" => "group", "groupId" => group_id, "userId" => member_id},
+      "message" => %{"id" => message_id, "type" => "text", "text" => "大家好，我是小新"}
+    })
+
+  line_event = Repo.get_by!(LineEvent, webhook_event_id: event_id)
+  Process.delete(:line_client_mock_calls)
+  :ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => line_event.id}})
+end
+
+member_posts.("smoke-group-6", "smoke-msg-12")
+
+member = People.find_by_line_user_id(member_id)
+
+Smoke.check(
+  "the first message creates Student 小新 with the member's LINE id",
+  member != nil and member.display_name == "小新"
+)
+
+Smoke.check("NOTHING sent to LINE from the group path", LineMock.calls() == [])
+
+member_jobs = member_notice_jobs.(member_id)
+
+Smoke.check(
+  "exactly one MemberNoticeWorker job enqueued, for a created Student",
+  match?([%{args: %{"kind" => "created"}}], member_jobs)
+)
+
+Process.delete(:line_client_mock_calls)
+
+member_notice =
+  case member_jobs do
+    [job] ->
+      :ok = MemberNoticeWorker.perform(job)
+      for {:push, {^teacher_id, [message]}} <- LineMock.calls(), do: message
+
+    _ ->
+      []
+  end
+
+member_alt_texts = Enum.map(member_notice, & &1.altText)
+IO.puts("        pushed alt text: #{Enum.join(member_alt_texts, " | ")}")
+
+Smoke.check(
+  "the notice pushed to the teacher reads 新增學生 小新（LINE：小新）",
+  member_alt_texts == ["新增學生 小新（LINE：小新）"]
+)
+
+# ---------------------------------------------------------------- Step 15
+Smoke.step(15, "不是學生 on the created notice deletes the Student and records not_student")
+
+not_student_data =
+  case member_notice do
+    [%{contents: %{footer: %{contents: [%{action: %{data: data}}]}}}] -> data
+    _ -> nil
+  end
+
+Smoke.check(
+  "the notice's only button is 不是學生 for this created Student",
+  member != nil and
+    not_student_data ==
+      Cards.member_postback(
+        "member_not_student",
+        %{"line_user_id" => member_id, "display_name" => "小新"},
+        from: "created",
+        sid: member.id
+      )
+)
+
+:ok =
+  Line.record_event(%{
+    "webhookEventId" => "smoke-postback-10",
+    "mode" => "active",
+    "type" => "postback",
+    "replyToken" => "smoke-reply-16",
+    "source" => %{"type" => "user", "userId" => teacher_id},
+    "postback" => %{"data" => not_student_data}
+  })
+
+not_student_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-postback-10")
+Process.delete(:line_client_mock_calls)
+
+:ok =
+  ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => not_student_line_event.id}})
+
+Smoke.check(
+  "Student 小新 is deleted",
+  member != nil and Repo.get(People.Student, member.id) == nil
+)
+
+Smoke.check(
+  "the member is recorded as not_student",
+  match?(%{state: "not_student"}, People.get_line_member(member_id))
+)
+
+Smoke.check(
+  "the teacher is told 小新 is not a student",
+  for({:reply, {"smoke-reply-16", [message]}} <- LineMock.calls(), do: message.text) ==
+    [Line.Labels.t(:member_marked_not_student, "zh-TW", line_name: "小新")]
+)
+
+# ---------------------------------------------------------------- Step 16
+Smoke.step(16, "the same LINE id posting again creates nothing")
+
+students_before = Repo.aggregate(People.Student, :count)
+member_posts.("smoke-group-7", "smoke-msg-13")
+
+Smoke.check(
+  "no Student is created",
+  People.find_by_line_user_id(member_id) == nil and
+    Repo.aggregate(People.Student, :count) == students_before
+)
+
+Smoke.check(
+  "no new notice is queued",
+  Enum.map(member_notice_jobs.(member_id), & &1.id) == Enum.map(member_jobs, & &1.id)
+)
+
+Smoke.check(
+  "the member stays not_student",
+  match?(%{state: "not_student"}, People.get_line_member(member_id))
+)
+
+Smoke.check("NOTHING sent to LINE", LineMock.calls() == [])
 
 # ---------------------------------------------------------------- teardown
 cleanup.()
