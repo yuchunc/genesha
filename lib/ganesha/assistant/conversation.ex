@@ -9,17 +9,20 @@ defmodule Ganesha.Assistant.Conversation do
   version when LINE rejects the messages), and appends the cards it sent to
   the model's own reply. Confirm and Discard answer with one text message and
   leave the outcome in the Teacher chat's history; a request card's shortcut
-  runs a Teacher-chat turn instead (spec 2026-10-07 §4).
+  runs a Teacher-chat turn instead (spec 2026-10-07 §4). An answer on a member
+  notice replies with one text message and leaves no history (spec
+  2026-10-19-november-launch-design.md §2).
   """
 
   require Logger
 
-  alias Ganesha.{Assistant, Clock}
+  alias Ganesha.{Assistant, Clock, People, Repo}
 
   alias Ganesha.Assistant.{
     Agent,
     Draft,
     DraftNotifier,
+    MemberNoticeWorker,
     Memory,
     Prompts,
     Snapshot,
@@ -38,6 +41,9 @@ defmodule Ganesha.Assistant.Conversation do
     "enroll_from_request" => SignupRequest,
     "book_from_request" => MakeupRequest
   }
+
+  # Spec 2026-10-19-november-launch-design.md §2: a teacher's answer on a member notice.
+  @member_actions ~w(member_not_student member_wrong_link member_pick member_new)
 
   @doc """
   Runs one turn and delivers it. A nil `reply_token` (a re-run after an
@@ -140,6 +146,13 @@ defmodule Ganesha.Assistant.Conversation do
     end
   end
 
+  def handle_postback(%{"action" => action} = params, reply_token, source_id)
+      when action in @member_actions do
+    if Ganesha.Line.teacher?(source_id),
+      do: answer_member_notice(action, params, reply_token, source_id),
+      else: unknown_action(reply_token, source_id)
+  end
+
   def handle_postback(_params, reply_token, source_id), do: unknown_action(reply_token, source_id)
 
   @doc """
@@ -178,6 +191,77 @@ defmodule Ganesha.Assistant.Conversation do
         deliver_outcome(thread, reply_token, source_id, {Labels.t(:not_found, locale), nil})
     end
   end
+
+  defp answer_member_notice(
+         action,
+         %{"uid" => uid, "name" => name} = params,
+         reply_token,
+         source_id
+       )
+       when is_binary(uid) and is_binary(name) do
+    case member_tap(action, uid, name, params["from"], parse_id(params["sid"])) do
+      :malformed ->
+        unknown_action(reply_token, source_id)
+
+      result ->
+        locale = source_id |> thread_for() |> locale()
+        text = member_reply(result, name, locale)
+        deliver(reply_token, source_id, [Client.text_message(text)], nil)
+    end
+  end
+
+  defp answer_member_notice(_action, _params, reply_token, source_id),
+    do: unknown_action(reply_token, source_id)
+
+  defp member_tap("member_not_student", uid, name, "unsure", _sid),
+    do: People.member_not_student(uid, name, "unsure", nil)
+
+  defp member_tap("member_not_student", uid, name, from, sid)
+       when from in ["created", "linked"] and is_integer(sid),
+       do: People.member_not_student(uid, name, from, sid)
+
+  # The fresh unsure notice is enqueued in the same transaction as the unlink.
+  defp member_tap("member_wrong_link", uid, name, _from, sid) when is_integer(sid) do
+    Repo.transact(fn ->
+      with {:ok, candidates} <- People.member_wrong_link(uid, name, sid) do
+        {:ok, _job} =
+          {:unsure, candidates}
+          |> MemberNoticeWorker.args(uid, name)
+          |> MemberNoticeWorker.new()
+          |> Oban.insert()
+
+        {:ok, :unlinked}
+      end
+    end)
+  end
+
+  defp member_tap("member_pick", uid, _name, _from, sid) when is_integer(sid) do
+    with {:ok, student} <- People.member_pick(uid, sid), do: {:ok, {:linked, student}}
+  end
+
+  defp member_tap("member_new", uid, name, _from, _sid) do
+    with {:ok, student} <- People.member_new(uid, name), do: {:ok, {:created, student}}
+  end
+
+  defp member_tap(_action, _uid, _name, _from, _sid), do: :malformed
+
+  defp member_reply({:ok, :marked}, line_name, locale),
+    do: Labels.t(:member_marked_not_student, locale, line_name: line_name)
+
+  defp member_reply({:ok, {:kept, student}}, line_name, locale),
+    do: Labels.t(:member_kept_records, locale, name: student.display_name, line_name: line_name)
+
+  defp member_reply({:ok, :unlinked}, line_name, locale),
+    do: Labels.t(:member_unlinked, locale, line_name: line_name)
+
+  defp member_reply({:ok, {:linked, student}}, line_name, locale),
+    do: Labels.t(:member_linked, locale, name: student.display_name, line_name: line_name)
+
+  defp member_reply({:ok, {:created, student}}, line_name, locale),
+    do: Labels.t(:member_created, locale, name: student.display_name, line_name: line_name)
+
+  defp member_reply({:error, :already_handled}, _line_name, locale),
+    do: Labels.t(:member_already_handled, locale)
 
   defp deliver_outcome(thread, reply_token, source_id, {text, history_line}) do
     deliver(reply_token, source_id, [Client.text_message(text)], nil)

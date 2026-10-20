@@ -1,15 +1,18 @@
 defmodule Ganesha.Assistant.ConversationTest do
   use Ganesha.DataCase
+  use Oban.Testing, repo: Ganesha.Repo, engine: Oban.Engines.Lite
 
   alias Ganesha.{Assistant, Catalog, Clock, People, Sales, Studio}
-  alias Ganesha.Assistant.{Conversation, Draft, Tasks}
+  alias Ganesha.Assistant.{Conversation, Draft, MemberNoticeWorker, Tasks}
   alias Ganesha.Assistant.Provider.Mock
   alias Ganesha.Assistant.Tasks.{BookOneOff, MakeupRequest, RecordPayment, SignupRequest}
   alias Ganesha.Line.{Cards, Labels}
   alias Ganesha.Line.Client.Mock, as: LineMock
+  alias Ganesha.People.LineMember
   alias Ganesha.Sales.Payment
 
   @teacher "Uteacher0000000000000000000000"
+  @teacher2 "Uteacher2000000000000000000000"
 
   defmodule ExpiredTokenLine do
     @behaviour Ganesha.Line.ClientBehaviour
@@ -160,6 +163,12 @@ defmodule Ganesha.Assistant.ConversationTest do
   end
 
   defp postback(action, id), do: %{"action" => action, "draft_id" => to_string(id)}
+
+  defp member_tap(action, uid, name, extra \\ %{}),
+    do: Map.merge(%{"action" => action, "uid" => uid, "name" => name}, extra)
+
+  defp unsure!(uid, name),
+    do: Repo.insert!(%LineMember{line_user_id: uid, display_name: name, state: "unsure"})
 
   defp last_message(thread), do: thread |> Assistant.list_messages() |> List.last()
 
@@ -686,6 +695,172 @@ defmodule Ganesha.Assistant.ConversationTest do
                {:reply, {"rt-x", [%{text: ^unknown}]}},
                {:reply, {"rt-y", [%{text: ^unknown}]}}
              ] = LineMock.calls()
+    end
+  end
+
+  describe "member notice taps" do
+    test "a teacher's member_new tap creates the student and replies" do
+      unsure!("U1", "Amy")
+
+      :ok = Conversation.handle_postback(member_tap("member_new", "U1", "Amy"), "rt", @teacher)
+
+      assert %{display_name: "Amy"} = People.find_by_line_user_id("U1")
+      assert People.get_line_member("U1") == nil
+      created = Labels.t(:member_created, "zh-TW", name: "Amy", line_name: "Amy")
+      assert [{:reply, {"rt", [%{type: "text", text: ^created}]}}] = LineMock.calls()
+    end
+
+    test "a pick replies with the Student's own name and adds no history", %{thread: thread} do
+      {:ok, amy} = People.create_student(%{display_name: "Amy Chen"})
+      unsure!("U1", "Amy")
+      before = Assistant.list_messages(thread)
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_pick", "U1", "Amy", %{"sid" => to_string(amy.id)}),
+          "rt",
+          @teacher
+        )
+
+      assert People.find_by_line_user_id("U1").id == amy.id
+      linked = Labels.t(:member_linked, "zh-TW", name: "Amy Chen", line_name: "Amy")
+      assert [{:reply, {"rt", [%{text: ^linked}]}}] = LineMock.calls()
+      assert Assistant.list_messages(thread) == before
+    end
+
+    test "不是學生 replies marked, or kept when the created Student has records", %{
+      student: lulu
+    } do
+      {:ok, _} = People.update_student(lulu, %{line_user_id: "U1"})
+      {:ok, amy} = People.create_student(%{display_name: "Amy", line_user_id: "U2"})
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_not_student", "U1", "露露", %{
+            "from" => "created",
+            "sid" => to_string(lulu.id)
+          }),
+          "rt-1",
+          @teacher
+        )
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_not_student", "U2", "Amy", %{
+            "from" => "created",
+            "sid" => to_string(amy.id)
+          }),
+          "rt-2",
+          @teacher
+        )
+
+      kept = Labels.t(:member_kept_records, "zh-TW", name: "Lulu", line_name: "露露")
+      marked = Labels.t(:member_marked_not_student, "zh-TW", line_name: "Amy")
+
+      assert [{:reply, {"rt-1", [%{text: ^kept}]}}, {:reply, {"rt-2", [%{text: ^marked}]}}] =
+               LineMock.calls()
+
+      assert People.get_student(lulu.id).line_user_id == nil
+      assert People.get_student(amy.id) == nil
+    end
+
+    test "a non-teacher's member tap is refused" do
+      unsure!("U1", "Amy")
+
+      :ok =
+        Conversation.handle_postback(member_tap("member_new", "U1", "Amy"), "rt", "Ustranger")
+
+      assert People.find_by_line_user_id("U1") == nil
+      assert %LineMember{state: "unsure"} = People.get_line_member("U1")
+      unknown = Labels.t(:unknown_action, "zh-TW")
+      assert [{:reply, {"rt", [%{text: ^unknown}]}}] = LineMock.calls()
+    end
+
+    test "a malformed member tap is refused" do
+      unsure!("U1", "Amy")
+
+      :ok = Conversation.handle_postback(%{"action" => "member_new"}, "rt-1", @teacher)
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_pick", "U1", "Amy", %{"sid" => "abc"}),
+          "rt-2",
+          @teacher
+        )
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_not_student", "U1", "Amy", %{"from" => "elsewhere"}),
+          "rt-3",
+          @teacher
+        )
+
+      assert %LineMember{state: "unsure"} = People.get_line_member("U1")
+      unknown = Labels.t(:unknown_action, "zh-TW")
+
+      assert [
+               {:reply, {"rt-1", [%{text: ^unknown}]}},
+               {:reply, {"rt-2", [%{text: ^unknown}]}},
+               {:reply, {"rt-3", [%{text: ^unknown}]}}
+             ] = LineMock.calls()
+    end
+
+    test "member_wrong_link replies and enqueues a fresh unsure notice" do
+      {:ok, amy} = People.create_student(%{display_name: "Amy", line_user_id: "U1"})
+      {:ok, other} = People.create_student(%{display_name: "amy"})
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_wrong_link", "U1", "Amy", %{"sid" => to_string(amy.id)}),
+          "rt",
+          @teacher
+        )
+
+      unlinked = Labels.t(:member_unlinked, "zh-TW", line_name: "Amy")
+      assert [{:reply, {"rt", [%{text: ^unlinked}]}}] = LineMock.calls()
+      assert People.get_student(amy.id).line_user_id == nil
+      assert %LineMember{state: "unsure"} = People.get_line_member("U1")
+
+      assert_enqueued(
+        worker: MemberNoticeWorker,
+        args: %{
+          "kind" => "unsure",
+          "line_user_id" => "U1",
+          "display_name" => "Amy",
+          "candidates" => [
+            %{"id" => amy.id, "name" => "Amy"},
+            %{"id" => other.id, "name" => "amy"}
+          ]
+        }
+      )
+    end
+
+    test "the second teacher's tap gets member_already_handled" do
+      {:ok, amy} = People.create_student(%{display_name: "Amy", line_user_id: "U1"})
+      sid = to_string(amy.id)
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_not_student", "U1", "Amy", %{"from" => "linked", "sid" => sid}),
+          "rt-1",
+          @teacher
+        )
+
+      :ok =
+        Conversation.handle_postback(
+          member_tap("member_wrong_link", "U1", "Amy", %{"sid" => sid}),
+          "rt-2",
+          @teacher2
+        )
+
+      marked = Labels.t(:member_marked_not_student, "zh-TW", line_name: "Amy")
+      handled = Labels.t(:member_already_handled, "zh-TW")
+
+      assert [{:reply, {"rt-1", [%{text: ^marked}]}}, {:reply, {"rt-2", [%{text: ^handled}]}}] =
+               LineMock.calls()
+
+      assert %LineMember{state: "not_student"} = People.get_line_member("U1")
+      refute_enqueued(worker: MemberNoticeWorker)
     end
   end
 end

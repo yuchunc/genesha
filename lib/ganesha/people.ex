@@ -3,6 +3,8 @@ defmodule Ganesha.People do
 
   import Ecto.Query, warn: false
   alias Ganesha.People.{LineMember, Student, StudentAlias}
+  alias Ganesha.Roster.{Attendance, Credit}
+  alias Ganesha.Sales.Purchase
   alias Ganesha.Repo
 
   def list_students do
@@ -218,10 +220,8 @@ defmodule Ganesha.People do
   :line_user_id_taken}` when another Student holds `line_user_id`.
   """
   def claim_unlinked_student(%Student{id: id}, line_user_id) when is_binary(line_user_id) do
-    stamp = DateTime.utc_now() |> DateTime.truncate(:second)
-
     from(s in Student, where: s.id == ^id and is_nil(s.line_user_id), select: s)
-    |> Repo.update_all(set: [line_user_id: line_user_id, updated_at: stamp])
+    |> Repo.update_all(set: [line_user_id: line_user_id, updated_at: now()])
     |> case do
       {1, [student]} -> {:ok, student}
       {0, []} -> {:error, :already_linked}
@@ -233,6 +233,157 @@ defmodule Ganesha.People do
         _other -> reraise error, __STACKTRACE__
       end
   end
+
+  # --- The teacher's taps on a member notice (spec 2026-10-19 §2 "Postbacks") ---
+  #
+  # Each tap re-checks, by compare-and-set, that the member is still in the
+  # state its notice showed, so of two teachers tapping at once only the first
+  # changes anything. The first write takes SQLite's write lock, so the rest
+  # of the transaction sees no concurrent change.
+
+  @doc """
+  不是學生 on a member notice; `from` names the notice. From `created` or
+  `linked`, Student `student_id` must still be linked to `line_user_id`: the
+  link is cleared and the member recorded as `not_student`. A Student made
+  for them (`created`) is then deleted, unless they have purchases,
+  attendances or credits (payments hang off purchases): such a Student is
+  kept and returned. From `unsure`, the open question becomes `not_student`.
+  """
+  @spec member_not_student(String.t(), String.t(), String.t(), integer() | nil) ::
+          {:ok, :marked} | {:ok, {:kept, Student.t()}} | {:error, :already_handled}
+  def member_not_student(line_user_id, _display_name, "unsure", _student_id) do
+    from(m in LineMember, where: m.line_user_id == ^line_user_id and m.state == "unsure")
+    |> Repo.update_all(set: [state: "not_student", updated_at: now()])
+    |> case do
+      {1, _} -> {:ok, :marked}
+      {0, _} -> {:error, :already_handled}
+    end
+  end
+
+  def member_not_student(line_user_id, display_name, notice, student_id)
+      when notice in ["created", "linked"] and is_integer(student_id) do
+    Repo.transact(fn ->
+      with {:ok, student} <- unlink_student(student_id, line_user_id) do
+        put_line_member(line_user_id, display_name, "not_student")
+
+        cond do
+          notice == "linked" ->
+            {:ok, :marked}
+
+          has_records?(student_id) ->
+            {:ok, {:kept, student}}
+
+          true ->
+            {1, _} = Repo.delete_all(from s in Student, where: s.id == ^student_id)
+            {:ok, :marked}
+        end
+      end
+    end)
+  end
+
+  @doc """
+  連錯了 on a `linked` notice: Student `student_id` must still be linked to
+  `line_user_id`. Clears the link, opens an `unsure` question, and returns
+  the Students `display_name` now matches for a fresh unsure notice.
+  """
+  @spec member_wrong_link(String.t(), String.t(), integer()) ::
+          {:ok, [Student.t()]} | {:error, :already_handled}
+  def member_wrong_link(line_user_id, display_name, student_id) when is_integer(student_id) do
+    Repo.transact(fn ->
+      with {:ok, _student} <- unlink_student(student_id, line_user_id) do
+        put_line_member(line_user_id, display_name, "unsure")
+        {:ok, matching_students(display_name)}
+      end
+    end)
+  end
+
+  @doc """
+  A candidate tapped on an `unsure` notice: the question must still be open
+  and `student_id` active and unlinked. Links them and closes the question.
+  """
+  @spec member_pick(String.t(), integer()) :: {:ok, Student.t()} | {:error, :already_handled}
+  def member_pick(line_user_id, student_id) when is_integer(student_id) do
+    Repo.transact(fn ->
+      with :ok <- close_question(line_user_id),
+           %Student{active: true, line_user_id: nil} = student <- get_student(student_id),
+           {:ok, student} <- claim_unlinked_student(student, line_user_id) do
+        {:ok, student}
+      else
+        _stale -> {:error, :already_handled}
+      end
+    end)
+  end
+
+  @doc """
+  新學生 on an `unsure` notice: the question must still be open. Creates a
+  Student named `display_name`, linked to `line_user_id`, and closes the
+  question. A Student linked to `line_user_id` meanwhile (on the web) also
+  answered it.
+  """
+  @spec member_new(String.t(), String.t()) :: {:ok, Student.t()} | {:error, :already_handled}
+  def member_new(line_user_id, display_name) do
+    Repo.transact(fn ->
+      with :ok <- close_question(line_user_id) do
+        case create_student(%{display_name: display_name, line_user_id: line_user_id}) do
+          {:ok, student} ->
+            {:ok, student}
+
+          {:error, reason} ->
+            if lost_race?(reason),
+              do: {:error, :already_handled},
+              else:
+                raise(
+                  "could not create a Student for LINE member #{line_user_id}: #{inspect(reason)}"
+                )
+        end
+      end
+    end)
+  end
+
+  # Clears the link only while `student_id` still holds `line_user_id`.
+  defp unlink_student(student_id, line_user_id) do
+    from(s in Student,
+      where: s.id == ^student_id and s.line_user_id == ^line_user_id,
+      select: s
+    )
+    |> Repo.update_all(set: [line_user_id: nil, updated_at: now()])
+    |> case do
+      {1, [student]} -> {:ok, student}
+      {0, []} -> {:error, :already_handled}
+    end
+  end
+
+  # Deletes the `unsure` row only while the question is still open.
+  defp close_question(line_user_id) do
+    from(m in LineMember, where: m.line_user_id == ^line_user_id and m.state == "unsure")
+    |> Repo.delete_all()
+    |> case do
+      {1, _} -> :ok
+      {0, _} -> {:error, :already_handled}
+    end
+  end
+
+  # A leftover row for the member (one made before a web link) is overwritten.
+  defp put_line_member(line_user_id, display_name, state) do
+    %LineMember{}
+    |> LineMember.changeset(%{
+      line_user_id: line_user_id,
+      display_name: display_name,
+      state: state
+    })
+    |> Repo.insert!(
+      on_conflict: {:replace, [:display_name, :state, :updated_at]},
+      conflict_target: :line_user_id
+    )
+  end
+
+  defp has_records?(student_id) do
+    Enum.any?([Purchase, Attendance, Credit], fn schema ->
+      Repo.exists?(from r in schema, where: r.student_id == ^student_id)
+    end)
+  end
+
+  defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   defp normalize_name(name),
     do: name |> String.normalize(:nfkc) |> String.trim() |> String.downcase()

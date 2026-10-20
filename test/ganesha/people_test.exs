@@ -1,7 +1,9 @@
 defmodule Ganesha.PeopleTest do
   use Ganesha.DataCase
-  alias Ganesha.People
-  alias Ganesha.People.{LineMember, Student}
+  alias Ganesha.{Assistant, Catalog, People, Roster, Sales, Studio}
+  alias Ganesha.Assistant.Draft
+  alias Ganesha.People.{LineMember, Student, StudentAlias}
+  alias Ganesha.Roster.Credit
 
   test "creates a student with only a display name" do
     assert {:ok, student} = People.create_student(%{display_name: "Lulu"})
@@ -205,6 +207,180 @@ defmodule Ganesha.PeopleTest do
       assert People.get_student(unlinked.id).line_user_id == nil
       assert %LineMember{state: "unsure"} = People.get_line_member("U2")
     end
+  end
+
+  describe "member taps" do
+    test "not a student from created deletes a student without records" do
+      {:created, s} = People.resolve_line_member("U1", "小美")
+      {:ok, _} = People.add_alias(s, "美美")
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", "Uteacher")
+
+      draft =
+        Repo.insert!(%Draft{
+          thread_id: thread.id,
+          kind: "record_payment",
+          parsed: %{},
+          student_id: s.id
+        })
+
+      assert {:ok, :marked} = People.member_not_student("U1", "小美", "created", s.id)
+      assert People.get_student(s.id) == nil
+      assert Repo.aggregate(StudentAlias, :count) == 0
+      assert Repo.reload!(draft).student_id == nil
+
+      assert %LineMember{state: "not_student", display_name: "小美"} =
+               People.get_line_member("U1")
+    end
+
+    test "not a student from created keeps a student who has records" do
+      {:created, s} = People.resolve_line_member("U1", "小美")
+      purchase_for!(s)
+
+      assert {:ok, {:kept, %{id: id, line_user_id: nil}}} =
+               People.member_not_student("U1", "小美", "created", s.id)
+
+      assert id == s.id
+      assert %LineMember{state: "not_student"} = People.get_line_member("U1")
+    end
+
+    test "an attendance or a credit alone also keeps the student" do
+      {:created, attended} = People.resolve_line_member("U1", "小美")
+      {:created, credited} = People.resolve_line_member("U2", "小華")
+      session = session!()
+
+      {:ok, _} =
+        Roster.create_attendance(%{
+          session_id: session.id,
+          student_id: attended.id,
+          kind: "drop_in"
+        })
+
+      Repo.insert!(
+        Credit.changeset(%Credit{}, %{student_id: credited.id, source: "cancellation"})
+      )
+
+      assert {:ok, {:kept, _}} = People.member_not_student("U1", "小美", "created", attended.id)
+      assert {:ok, {:kept, _}} = People.member_not_student("U2", "小華", "created", credited.id)
+      assert People.get_student(attended.id).line_user_id == nil
+      assert People.get_student(credited.id).line_user_id == nil
+    end
+
+    test "not a student from linked unlinks and keeps the student" do
+      s = student!(%{display_name: "Amy"})
+      {:linked, _} = People.resolve_line_member("U1", "Amy")
+
+      assert {:ok, :marked} = People.member_not_student("U1", "Amy", "linked", s.id)
+      assert %Student{line_user_id: nil} = People.get_student(s.id)
+      assert %LineMember{state: "not_student", display_name: "Amy"} = People.get_line_member("U1")
+    end
+
+    test "not a student from unsure answers the open question" do
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+
+      assert {:ok, :marked} = People.member_not_student("U1", "Amy", "unsure", nil)
+      assert %LineMember{state: "not_student"} = People.get_line_member("U1")
+      assert :not_student = People.resolve_line_member("U1", "Amy")
+    end
+
+    test "wrong link unlinks, opens a question and returns fresh candidates" do
+      a = student!(%{display_name: "Amy"})
+      {:linked, _} = People.resolve_line_member("U1", "Amy")
+      b = student!(%{display_name: "amy"})
+
+      assert {:ok, candidates} = People.member_wrong_link("U1", "Amy", a.id)
+      assert Enum.map(candidates, & &1.id) == [a.id, b.id]
+      assert People.get_student(a.id).line_user_id == nil
+      assert %LineMember{state: "unsure", display_name: "Amy"} = People.get_line_member("U1")
+      assert :pending = People.resolve_line_member("U1", "Amy")
+    end
+
+    test "pick links the candidate and closes the question" do
+      s = student!(%{display_name: "Amy"})
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+
+      assert {:ok, %Student{id: id, line_user_id: "U1"}} = People.member_pick("U1", s.id)
+      assert id == s.id
+      assert People.get_line_member("U1") == nil
+    end
+
+    test "pick refuses an inactive or already linked candidate and changes nothing" do
+      inactive = student!(%{display_name: "Amy", active: false})
+      linked = student!(%{display_name: "Amy", line_user_id: "U9"})
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+
+      assert {:error, :already_handled} = People.member_pick("U1", inactive.id)
+      assert {:error, :already_handled} = People.member_pick("U1", linked.id)
+      assert {:error, :already_handled} = People.member_pick("U1", -1)
+      assert People.get_student(inactive.id).line_user_id == nil
+      assert People.get_student(linked.id).line_user_id == "U9"
+      assert %LineMember{state: "unsure"} = People.get_line_member("U1")
+    end
+
+    test "new creates a linked student named after LINE and closes the question" do
+      student!(%{display_name: "Amy"})
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+
+      assert {:ok, %Student{display_name: "Amy", line_user_id: "U1"} = s} =
+               People.member_new("U1", "Amy")
+
+      assert People.find_by_line_user_id("U1").id == s.id
+      assert People.get_line_member("U1") == nil
+    end
+
+    test "a tap on a member already handled changes nothing" do
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+      {:ok, _} = People.member_new("U1", "Amy")
+      assert {:error, :already_handled} = People.member_pick("U1", 1)
+      assert {:error, :already_handled} = People.member_new("U1", "Amy")
+    end
+
+    test "a tap on a link that no longer holds changes nothing" do
+      s = student!(%{display_name: "Amy"})
+      {:linked, _} = People.resolve_line_member("U1", "Amy")
+      {:ok, :marked} = People.member_not_student("U1", "Amy", "linked", s.id)
+
+      assert {:error, :already_handled} = People.member_wrong_link("U1", "Amy", s.id)
+      assert {:error, :already_handled} = People.member_not_student("U1", "Amy", "linked", s.id)
+      assert {:error, :already_handled} = People.member_not_student("U1", "Amy", "created", s.id)
+      assert {:error, :already_handled} = People.member_not_student("U1", "Amy", "unsure", nil)
+      assert People.get_student(s.id).line_user_id == nil
+      assert %LineMember{state: "not_student"} = People.get_line_member("U1")
+    end
+
+    test "the not-student answer from unsure is refused once the question is closed" do
+      s = student!(%{display_name: "Amy"})
+      Repo.insert!(%LineMember{line_user_id: "U1", display_name: "Amy", state: "unsure"})
+      {:ok, _} = People.member_pick("U1", s.id)
+
+      assert {:error, :already_handled} = People.member_not_student("U1", "Amy", "unsure", nil)
+      assert People.get_line_member("U1") == nil
+      assert People.get_student(s.id).line_user_id == "U1"
+    end
+  end
+
+  defp purchase_for!(student) do
+    {:ok, package} = Catalog.create_package(%{name: "單堂", kind: "drop_in", price_per_class: 400})
+
+    {:ok, purchase} =
+      Sales.create_purchase(%{student_id: student.id, package_id: package.id, list_price: 400})
+
+    purchase
+  end
+
+  defp session! do
+    {:ok, slot} =
+      Studio.create_slot(%{
+        weekday: 3,
+        start_time: ~T[19:00:00],
+        end_time: ~T[20:15:00],
+        default_style: "Hatha",
+        label: "基礎"
+      })
+
+    {:ok, session} =
+      Studio.create_session(%{slot_id: slot.id, date: ~D[2026-10-07], style: "Hatha"})
+
+    session
   end
 
   defp student!(attrs) do
