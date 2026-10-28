@@ -396,11 +396,26 @@ defmodule Ganesha.Assistant.Conversation do
   defp outcome_text(:replaced, _draft, _title, locale), do: Labels.t(:replaced, locale)
   defp outcome_text(:exception, _draft, _title, locale), do: Labels.t(:exception, locale)
 
-  # What the model reads next turn, e.g. "[已確認] 草稿 #41 收款 Amy NT$3,200".
+  # What the model reads next turn, e.g. "[已確認] 草稿 #41 收款 Amy NT$3,200 → payment 7".
+  # Naming the record keeps the model from mistaking what it just made for a
+  # duplicate (2026-10-29: it told her to discard an applied add_student).
   defp history_line(status, draft, title, locale) do
     line = "[#{Labels.t(tag(status), locale)}] #{Labels.t(:draft, locale)} ##{draft.id} #{title}"
-    if status == :failed, do: "#{line} — #{draft.failure_reason}", else: line
+
+    case status do
+      :failed -> "#{line} — #{draft.failure_reason}"
+      :applied -> line <> applied_record(draft)
+      _other -> line
+    end
   end
+
+  defp applied_record(%Draft{applied_record_type: type, applied_record_id: id})
+       when is_binary(type) and is_integer(id) do
+    name = type |> String.split(".") |> List.last() |> String.downcase()
+    " → #{name} #{id}"
+  end
+
+  defp applied_record(_draft), do: ""
 
   defp tag(:applied), do: :tag_confirmed
   defp tag(:discarded), do: :tag_discarded

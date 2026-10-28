@@ -389,7 +389,7 @@ defmodule Ganesha.Assistant.ConversationTest do
   end
 
   describe "handle_postback/4" do
-    test "Confirm applies the Draft, says so, and tells the model", %{
+    test "Confirm applies the Draft, says so, and tells the model which record it made", %{
       thread: thread,
       student: student
     } do
@@ -401,7 +401,10 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert Repo.reload!(draft).state == "applied"
       confirmed = Labels.t(:confirmed, "zh-TW", title: title(draft, "zh-TW"))
       assert [{:reply, {"rt-p", [%{type: "text", text: ^confirmed}]}}] = LineMock.calls()
-      assert last_message(thread).content == outcome_line(:tag_confirmed, draft, "zh-TW")
+      [payment] = Repo.all(Payment)
+
+      assert last_message(thread).content ==
+               outcome_line(:tag_confirmed, draft, "zh-TW") <> " → payment #{payment.id}"
     end
 
     test "Confirm records which teacher confirmed", %{thread: thread, student: student} do
@@ -579,7 +582,10 @@ defmodule Ganesha.Assistant.ConversationTest do
 
       confirmed = Labels.t(:confirmed, "en", title: title(draft, "en"))
       assert [{:reply, {"rt-p", [%{text: ^confirmed}]}}] = LineMock.calls()
-      assert last_message(thread).content == outcome_line(:tag_confirmed, draft, "en")
+      [payment] = Repo.all(Payment)
+
+      assert last_message(thread).content ==
+               outcome_line(:tag_confirmed, draft, "en") <> " → payment #{payment.id}"
     end
 
     test "choosing a language with nothing waiting welcomes the sender" do
