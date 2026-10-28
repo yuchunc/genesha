@@ -36,6 +36,8 @@ defmodule Ganesha.Line.Labels do
     tag_already_handled: {"已處理過", "Already handled"},
     tag_replaced: {"已被取代", "Replaced"},
     tag_exception: {"確認失敗", "Confirm failed"},
+    tag_notice: {"通知", "Notice"},
+    tag_notice_answer: {"通知回覆", "Notice answer"},
     apology:
       {"抱歉，我現在無法處理這則訊息，請稍後再試一次。",
        "Sorry, I couldn't process that message. Please try again later."},
@@ -56,9 +58,11 @@ defmodule Ganesha.Line.Labels do
       {"已把 LINE %{line_name} 連到學生 %{name}", "Linked LINE %{line_name} to student %{name}"},
     member_unsure: {"LINE %{line_name} 是哪位學生？", "Which student is LINE %{line_name}?"},
     member_more: {"還有 %{count} 位同名，請到網頁處理", "%{count} more with this name; fix it on the web"},
+    member_ok: {"是學生", "Is a student"},
     member_not_student: {"不是學生", "Not a student"},
     member_wrong_link: {"連錯了", "Wrong student"},
     member_new: {"新學生", "New student"},
+    member_confirmed: {"好，%{name} 是學生。", "OK, %{name} is a student."},
     member_marked_not_student:
       {"好，LINE %{line_name} 不是學生。", "OK, LINE %{line_name} is not a student."},
     member_kept_records:
