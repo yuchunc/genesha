@@ -6,8 +6,8 @@ defmodule Ganesha.Line.Cards do
   it only acknowledges (spec 2026-10-07 §4).
 
   The member notice (spec 2026-10-19-november-launch-design.md §2) tells the
-  teachers a LINE group member became, or might be, a Student, with undo
-  buttons.
+  teachers a LINE group member became, or might be, a Student. Every group
+  member is expected to be a Student, so 是學生 leads; the undo buttons follow.
   """
 
   alias Ganesha.Assistant
@@ -78,6 +78,7 @@ defmodule Ganesha.Line.Cards do
 
   defp member_buttons("created", %{"student_id" => sid} = args, locale),
     do: [
+      member_button("primary", :member_ok, locale, "member_ok", args, sid: sid),
       member_button("secondary", :member_not_student, locale, "member_not_student", args,
         from: "created",
         sid: sid
@@ -86,6 +87,7 @@ defmodule Ganesha.Line.Cards do
 
   defp member_buttons("linked", %{"student_id" => sid} = args, locale) do
     [
+      member_button("primary", :member_ok, locale, "member_ok", args, sid: sid),
       member_button("secondary", :member_not_student, locale, "member_not_student", args,
         from: "linked",
         sid: sid

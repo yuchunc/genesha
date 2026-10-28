@@ -164,7 +164,7 @@ defmodule Ganesha.Line.CardsTest do
                Cards.member_notice(%{args | "more" => 2}, "zh-TW").body.contents
     end
 
-    test "created and linked cards offer their undo buttons" do
+    test "created and linked cards lead with 是學生, then their undo buttons" do
       created = %{
         "kind" => "created",
         "line_user_id" => "U1",
@@ -175,12 +175,15 @@ defmodule Ganesha.Line.CardsTest do
 
       bubble = Cards.member_notice(created, "en")
       assert [%{text: "Added student 小美 (LINE: 小美)"}] = bubble.body.contents
+      assert [%{style: "primary"}, %{style: "secondary"}] = footer_buttons(bubble)
 
       assert Enum.map(
                footer_buttons(bubble),
                &{&1.action.label, URI.decode_query(&1.action.data)}
              ) ==
                [
+                 {"Is a student",
+                  %{"action" => "member_ok", "uid" => "U1", "name" => "小美", "sid" => "7"}},
                  {"Not a student",
                   %{
                     "action" => "member_not_student",
@@ -194,13 +197,14 @@ defmodule Ganesha.Line.CardsTest do
       linked = %{created | "kind" => "linked", "display_name" => "美"}
       bubble = Cards.member_notice(linked, "zh-TW")
       assert [%{text: "已把 LINE 美 連到學生 小美"}] = bubble.body.contents
-      assert bubble.footer.layout == "horizontal"
+      assert bubble.footer.layout == "vertical"
 
       assert Enum.map(
                footer_buttons(bubble),
                &{&1.action.label, URI.decode_query(&1.action.data)}
              ) ==
                [
+                 {"是學生", %{"action" => "member_ok", "uid" => "U1", "name" => "美", "sid" => "7"}},
                  {"不是學生",
                   %{
                     "action" => "member_not_student",
