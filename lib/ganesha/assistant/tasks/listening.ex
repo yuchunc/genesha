@@ -1,13 +1,14 @@
 defmodule Ganesha.Assistant.Tasks.Listening do
   @moduledoc """
   Lookup task `listening` (spec 2026-10-05-line-group-blocklist-design.md §3):
-  the groups the bot reads, who has posted in each recently, and the
-  blocklist. Teacher chat only; the ids it returns are what `block_account`
-  and `unblock_account` take.
+  the groups the bot reads, who has posted in each recently and which
+  Student each one is, and the blocklist. Teacher chat only; the ids it
+  returns are what `block_account` and `unblock_account` take.
   """
   @behaviour Ganesha.Assistant.Task
 
   alias Ganesha.{Assistant, Clock, Line}
+  alias Ganesha.Assistant.GroupMembers
 
   @senders_per_group 30
 
@@ -21,9 +22,11 @@ defmodule Ganesha.Assistant.Tasks.Listening do
   def tool do
     %{
       description: """
-      The LINE groups you read, who has posted in each recently, and who is blocked. \
-      Call it before block_account or unblock_account to get the exact group or sender \
-      id, and when the teacher asks which groups or people you listen to.\
+      The LINE groups you read, who has posted in each recently and which Student each \
+      one is, and who is blocked. Call it when the teacher asks who is in a group (LINE \
+      gives no full member list; this is everyone who has posted since you joined), \
+      which groups or people you listen to, and before block_account or unblock_account \
+      to get the exact group or sender id.\
       """,
       input_schema: %{type: "object", properties: %{}}
     }
@@ -50,18 +53,33 @@ defmodule Ganesha.Assistant.Tasks.Listening do
 
     senders =
       case Assistant.group_senders(thread, @senders_per_group) do
-        [] -> ["- none"]
-        senders -> Enum.map(senders, &sender_line(&1, blocked_ids))
+        [] ->
+          ["- none"]
+
+        senders ->
+          statuses = senders |> Enum.map(& &1.sender_id) |> GroupMembers.statuses()
+          Enum.map(senders, &sender_line(&1, statuses, blocked_ids))
       end
 
     Enum.join([header, "Recent senders:" | senders], "\n")
   end
 
-  defp sender_line(sender, blocked_ids) do
+  defp sender_line(sender, statuses, blocked_ids) do
     blocked = if {"sender", sender.sender_id} in blocked_ids, do: ", blocked", else: ""
     name = sender.sender_name || "(name unknown)"
+    status = sender_status(sender.sender_id, statuses)
 
-    "- #{name} (id #{sender.sender_id}), last seen #{taipei_minute(sender.last_seen_at)}#{blocked}"
+    "- #{name} (id #{sender.sender_id}), last seen #{taipei_minute(sender.last_seen_at)}, " <>
+      "#{status}#{blocked}"
+  end
+
+  defp sender_status(id, statuses) do
+    case statuses do
+      %{^id => {:student, student}} -> "student #{student.id} #{student.display_name}"
+      %{^id => :not_student} -> "not a student"
+      %{^id => :unsure} -> "waiting for the teacher to pick the student"
+      _none -> if Line.teacher?(id), do: "teacher", else: "no student yet"
+    end
   end
 
   defp blocked_section([]), do: "Blocked: nobody."

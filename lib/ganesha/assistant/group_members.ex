@@ -48,38 +48,49 @@ defmodule Ganesha.Assistant.GroupMembers do
           uniq: true,
           do: id
 
-    students =
-      from(s in Student, where: s.line_user_id in ^sender_ids)
-      |> Repo.all()
-      |> Map.new(&{&1.line_user_id, &1})
+    statuses = statuses(sender_ids)
+    Enum.map(messages, &tag(&1, statuses))
+  end
 
-    not_students =
+  @doc """
+  What each LINE user id is now: `{:student, student}`, `:not_student`, or
+  `:unsure` (waiting for a teacher's pick). Ids that are none of these are
+  absent.
+  """
+  @spec statuses([String.t()]) :: %{
+          String.t() => {:student, Student.t()} | :not_student | :unsure
+        }
+  def statuses(line_user_ids) do
+    members =
       from(m in LineMember,
-        where: m.line_user_id in ^sender_ids and m.state == "not_student",
-        select: m.line_user_id
+        where: m.line_user_id in ^line_user_ids,
+        select: {m.line_user_id, m.state}
       )
       |> Repo.all()
-      |> MapSet.new()
+      |> Map.new(fn {id, state} -> {id, member_state(state)} end)
 
-    Enum.map(messages, &tag(&1, students, not_students))
+    # A linked Student wins over a leftover member row.
+    from(s in Student, where: s.line_user_id in ^line_user_ids)
+    |> Repo.all()
+    |> Map.new(&{&1.line_user_id, {:student, &1}})
+    |> then(&Map.merge(members, &1))
   end
 
-  defp tag(%{role: "user", sender_id: id, content: content} = message, students, not_students)
+  defp member_state("not_student"), do: :not_student
+  defp member_state("unsure"), do: :unsure
+
+  defp tag(%{role: "user", sender_id: id, content: content} = message, statuses)
        when is_binary(id) and is_binary(content) do
-    %{message | content: sender_tag(message, students, not_students) <> " " <> content}
+    %{message | content: sender_tag(message, statuses) <> " " <> content}
   end
 
-  defp tag(message, _students, _not_students), do: message
+  defp tag(message, _statuses), do: message
 
-  defp sender_tag(%{sender_id: id, sender_name: name}, students, not_students) do
-    case students do
-      %{^id => student} ->
-        "[student #{student.id} #{student.display_name}]"
-
-      _ ->
-        if MapSet.member?(not_students, id),
-          do: "[LINE #{name || "unknown"}, not a student]",
-          else: "[LINE #{name || "unknown"}, unmatched]"
+  defp sender_tag(%{sender_id: id, sender_name: name}, statuses) do
+    case statuses do
+      %{^id => {:student, student}} -> "[student #{student.id} #{student.display_name}]"
+      %{^id => :not_student} -> "[LINE #{name || "unknown"}, not a student]"
+      _other -> "[LINE #{name || "unknown"}, unmatched]"
     end
   end
 

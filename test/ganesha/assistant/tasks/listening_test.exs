@@ -1,7 +1,8 @@
 defmodule Ganesha.Assistant.Tasks.ListeningTest do
   use Ganesha.DataCase
 
-  alias Ganesha.{Assistant, Line}
+  alias Ganesha.{Assistant, Line, People}
+  alias Ganesha.People.LineMember
   alias Ganesha.Assistant.Tasks.Listening
 
   setup do
@@ -48,6 +49,30 @@ defmodule Ganesha.Assistant.Tasks.ListeningTest do
 
     {:ok, %{data: data}} = Listening.answer(%{}, c.ctx)
     assert data =~ "(id Cabc), blocked"
+  end
+
+  test "says which Student each sender is, or why they are none", c do
+    {:ok, group} = Assistant.get_or_create_thread("group", "Cabc")
+    {:ok, connie} = People.create_student(%{display_name: "Connie Lin", line_user_id: "Uconnie"})
+    Repo.insert!(%LineMember{line_user_id: "Uhusband", display_name: "老公", state: "not_student"})
+    Repo.insert!(%LineMember{line_user_id: "Uamy", display_name: "Amy", state: "unsure"})
+
+    post(group, "Uconnie", "connie")
+    post(group, "Uhusband", "老公")
+    post(group, "Uamy", "Amy")
+    post(group, "Unew", "新人")
+    post(group, "Uteacher0000000000000000000000", "老師")
+
+    {:ok, %{data: data}} = Listening.answer(%{}, c.ctx)
+
+    assert data =~ ~r/connie \(id Uconnie\), last seen [^\n]*, student #{connie.id} Connie Lin\n/
+    assert data =~ ~r/老公 \(id Uhusband\), last seen [^\n]*, not a student\n/
+
+    assert data =~
+             ~r/Amy \(id Uamy\), last seen [^\n]*, waiting for the teacher to pick the student\n/
+
+    assert data =~ ~r/新人 \(id Unew\), last seen [^\n]*, no student yet\n/
+    assert data =~ ~r/老師 \(id Uteacher0+\), last seen [^\n]*, teacher\n/
   end
 
   test "find_group_sender/1 finds a sender from any group, nil otherwise" do
