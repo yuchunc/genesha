@@ -710,10 +710,11 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert [{:reply, {"rt", [%{type: "text", text: ^created}]}}] = LineMock.calls()
     end
 
-    test "a pick replies with the Student's own name and adds no history", %{thread: thread} do
+    test "a pick replies with the Student's own name and records it in her chat", %{
+      thread: thread
+    } do
       {:ok, amy} = People.create_student(%{display_name: "Amy Chen"})
       unsure!("U1", "Amy")
-      before = Assistant.list_messages(thread)
 
       :ok =
         Conversation.handle_postback(
@@ -725,7 +726,26 @@ defmodule Ganesha.Assistant.ConversationTest do
       assert People.find_by_line_user_id("U1").id == amy.id
       linked = Labels.t(:member_linked, "zh-TW", name: "Amy Chen", line_name: "Amy")
       assert [{:reply, {"rt", [%{text: ^linked}]}}] = LineMock.calls()
-      assert Assistant.list_messages(thread) == before
+      assert last_message(thread).content == "[通知回覆] " <> linked
+    end
+
+    test "是學生 keeps the Student; once undone it is already handled", %{thread: thread} do
+      {:ok, amy} = People.create_student(%{display_name: "Amy Chen", line_user_id: "U1"})
+      tap = member_tap("member_ok", "U1", "Amy", %{"sid" => to_string(amy.id)})
+
+      :ok = Conversation.handle_postback(tap, "rt-1", @teacher)
+
+      kept = Labels.t(:member_confirmed, "zh-TW", name: "Amy Chen")
+      assert People.find_by_line_user_id("U1").id == amy.id
+      assert last_message(thread).content == "[通知回覆] " <> kept
+
+      {:ok, _} = People.update_student(amy, %{line_user_id: nil})
+      :ok = Conversation.handle_postback(tap, "rt-2", @teacher)
+
+      handled = Labels.t(:member_already_handled, "zh-TW")
+
+      assert [{:reply, {"rt-1", [%{text: ^kept}]}}, {:reply, {"rt-2", [%{text: ^handled}]}}] =
+               LineMock.calls()
     end
 
     test "不是學生 replies marked, or kept when the created Student has records", %{

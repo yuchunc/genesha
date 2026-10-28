@@ -10,7 +10,8 @@ defmodule Ganesha.Assistant.Conversation do
   the model's own reply. Confirm and Discard answer with one text message and
   leave the outcome in the Teacher chat's history; a request card's shortcut
   runs a Teacher-chat turn instead (spec 2026-10-07 §4). An answer on a member
-  notice replies with one text message and leaves no history (spec
+  notice replies with one text message and leaves it in the tapping teacher's
+  history as 「[通知回覆] …」, so the model knows what she chose (spec
   2026-10-19-november-launch-design.md §2).
   """
 
@@ -43,7 +44,7 @@ defmodule Ganesha.Assistant.Conversation do
   }
 
   # Spec 2026-10-19-november-launch-design.md §2: a teacher's answer on a member notice.
-  @member_actions ~w(member_not_student member_wrong_link member_pick member_new)
+  @member_actions ~w(member_ok member_not_student member_wrong_link member_pick member_new)
 
   @doc """
   Runs one turn and delivers it. A nil `reply_token` (a re-run after an
@@ -204,14 +205,29 @@ defmodule Ganesha.Assistant.Conversation do
         unknown_action(reply_token, source_id)
 
       result ->
-        locale = source_id |> thread_for() |> locale()
+        thread = thread_for(source_id)
+        locale = locale(thread)
         text = member_reply(result, name, locale)
-        deliver(reply_token, source_id, [Client.text_message(text)], nil)
+
+        deliver_outcome(
+          thread,
+          reply_token,
+          source_id,
+          {text, member_history(result, text, locale)}
+        )
     end
   end
 
   defp answer_member_notice(_action, _params, reply_token, source_id),
     do: unknown_action(reply_token, source_id)
+
+  # 是學生 changes nothing; it only checks the Student still has this LINE id.
+  defp member_tap("member_ok", uid, _name, _from, sid) when is_integer(sid) do
+    case People.get_student(sid) do
+      %{line_user_id: ^uid} = student -> {:ok, {:confirmed, student}}
+      _other -> {:error, :already_handled}
+    end
+  end
 
   defp member_tap("member_not_student", uid, name, "unsure", _sid),
     do: People.member_not_student(uid, name, "unsure", nil)
@@ -245,6 +261,9 @@ defmodule Ganesha.Assistant.Conversation do
 
   defp member_tap(_action, _uid, _name, _from, _sid), do: :malformed
 
+  defp member_reply({:ok, {:confirmed, student}}, _line_name, locale),
+    do: Labels.t(:member_confirmed, locale, name: student.display_name)
+
   defp member_reply({:ok, :marked}, line_name, locale),
     do: Labels.t(:member_marked_not_student, locale, line_name: line_name)
 
@@ -262,6 +281,12 @@ defmodule Ganesha.Assistant.Conversation do
 
   defp member_reply({:error, :already_handled}, _line_name, locale),
     do: Labels.t(:member_already_handled, locale)
+
+  # A tap that changed nothing leaves no history.
+  defp member_history({:error, :already_handled}, _text, _locale), do: nil
+
+  defp member_history(_result, text, locale),
+    do: "[#{Labels.t(:tag_notice_answer, locale)}] #{text}"
 
   defp deliver_outcome(thread, reply_token, source_id, {text, history_line}) do
     deliver(reply_token, source_id, [Client.text_message(text)], nil)
