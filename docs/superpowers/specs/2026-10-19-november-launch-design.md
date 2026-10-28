@@ -122,18 +122,26 @@ Oban worker, `queue: :default`, `max_attempts: 3`. Args: kind (`created`, `linke
 `unsure`), `line_user_id`, `display_name`, student id or candidate ids. Pushes one
 message to every id in `Line.teacher_ids()`, in that teacher's locale (the lookup
 `DraftNotifier` uses). As in `DraftNotifier`, the job fails and retries only when no
-teacher's push succeeded; it never fails the group event.
+teacher's push succeeded; it never fails the group event. Each teacher whose push
+succeeded also gets 「[通知] {text}」 / "[Notice] {text}" appended to her Teacher chat as
+an assistant message, so the model knows what she saw (added 2026-10-29: she tapped
+不是學生 on connie's card, then typed 「她是學生」, and the model had no idea what card
+she meant).
 
 | kind | text (zh-TW) | buttons |
 |---|---|---|
-| created | 「新增學生 小美（LINE：小美）」 | 不是學生 |
-| linked | 「已把 LINE 小美 連到學生 小美」 | 不是學生 · 連錯了 |
+| created | 「新增學生 小美（LINE：小美）」 | **是學生** · 不是學生 |
+| linked | 「已把 LINE 小美 連到學生 小美」 | **是學生** · 不是學生 · 連錯了 |
 | unsure | 「LINE 小美 是哪位學生？」 | up to 3 candidates · 新學生 · 不是學生 |
 
 English text follows the existing `Labels` pattern. With more than 3 candidates the
 unsure card adds 「還有 N 位同名，請到網頁處理」 / "N more with this name; fix it on
 the web". Cards are fixed layouts in `Ganesha.Line.Cards`; text goes through
 `Ganesha.Line.Labels`.
+
+Every group member is expected to be a Student, so 是學生 (primary) leads; the undo
+buttons are secondary. A card's lone 不是學生 button read as "OK" and was tapped by
+mistake (2026-10-28).
 
 ### Postbacks
 
@@ -145,6 +153,7 @@ state; a member no longer in the state the button expects gets the existing
 
 | action | expects | effect |
 |---|---|---|
+| `member_ok` | Student `sid` linked to `uid` | nothing; replies 「好，{name} 是學生。」 |
 | `member_not_student` (from created) | Student `sid` linked to `uid` | insert `not_student` row; delete the Student if they have no purchases, attendances, payments or credits, else clear `line_user_id` and keep them |
 | `member_not_student` (from linked) | Student `sid` linked to `uid` | insert `not_student` row; clear `line_user_id` |
 | `member_not_student` (from unsure) | `unsure` row | row state → `not_student` |
@@ -155,6 +164,21 @@ state; a member no longer in the state the button expects gets the existing
 The postback data says which notice it came from (`from=created|linked|unsure`),
 which decides between deleting and unlinking. Two teachers tapping different
 answers: the first tap wins; the second gets "already handled".
+
+Every answer that changed or confirmed something is appended to the tapping
+teacher's chat as 「[通知回覆] {reply}」 / "[Notice answer] {reply}"; an "already
+handled" reply leaves no line.
+
+### What the model is told
+
+The Teacher prompt (rule 15) says everyone in the studio group is a Student, that the
+system adds them as they post or join, and that LINE gives no full member list, so the
+bot only knows members who posted or joined since it arrived. `listening` shows each
+sender's Student (`student 12 Connie`, `not a student`, `waiting for the teacher to
+pick the student`, `no student yet`, or `teacher`) and is the lookup for "who is in
+the group". A confirmed Draft's history line names the record it made
+(「[已確認] 草稿 #1 新增學生 connie → student 2」), so the model doesn't take its own new
+Student for a duplicate.
 
 ### Push quota
 
