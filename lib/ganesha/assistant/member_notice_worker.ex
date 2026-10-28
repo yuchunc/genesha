@@ -2,28 +2,38 @@ defmodule Ganesha.Assistant.MemberNoticeWorker do
   @moduledoc """
   Tells every teacher, in her own language, that a LINE group member became a
   Student (`created`, `linked`) or might be one (`unsure`), with undo buttons
-  (spec 2026-10-19-november-launch-design.md §2). As in
-  `Ganesha.Assistant.DraftNotifier`, the job fails, and Oban retries it, only
-  when no teacher's push succeeded.
+  (spec 2026-10-19-november-launch-design.md §2). Each teacher whose push
+  succeeded also gets 「[通知] …」 in her Teacher chat history, so the model
+  knows what she saw. As in `Ganesha.Assistant.DraftNotifier`, the job fails,
+  and Oban retries it, only when no teacher's push succeeded.
   """
   use Oban.Worker, queue: :default, max_attempts: 3
 
   alias Ganesha.Assistant
-  alias Ganesha.Line.{Cards, Client}
+  alias Ganesha.Line.{Cards, Client, Labels}
   alias Ganesha.People.Student
 
   @max_candidates 3
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: args}) do
-    results =
-      Enum.map(Ganesha.Line.teacher_ids(), fn teacher_id ->
-        line_client().push(teacher_id, [message(args, Assistant.teacher_locale(teacher_id))])
-      end)
+    results = Enum.map(Ganesha.Line.teacher_ids(), &notify(&1, args))
 
     if :ok in results,
       do: :ok,
       else: Enum.find(results, {:error, :no_teachers}, &match?({:error, _}, &1))
+  end
+
+  defp notify(teacher_id, args) do
+    locale = Assistant.teacher_locale(teacher_id)
+    {alt_text, message} = message(args, locale)
+
+    with :ok <- line_client().push(teacher_id, [message]) do
+      {:ok, thread} = Assistant.get_or_create_thread("teacher", teacher_id)
+      line = "[#{Labels.t(:tag_notice, locale)}] #{alt_text}"
+      {:ok, _} = Assistant.append_message(thread, "assistant", line, nil)
+      :ok
+    end
   end
 
   @doc """
@@ -66,7 +76,7 @@ defmodule Ganesha.Assistant.MemberNoticeWorker do
   defp message(args, locale) do
     bubble = Cards.member_notice(args, locale)
     [%{text: alt_text} | _] = bubble.body.contents
-    Client.flex_message(alt_text, bubble)
+    {alt_text, Client.flex_message(alt_text, bubble)}
   end
 
   defp line_client, do: Application.get_env(:ganesha, :line_client, Ganesha.Line.Client)

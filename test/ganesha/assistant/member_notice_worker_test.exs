@@ -33,6 +33,29 @@ defmodule Ganesha.Assistant.MemberNoticeWorkerTest do
     assert en.altText == "Added student 小美 (LINE: 小美)"
   end
 
+  test "records the notice in each teacher's chat, in her locale, so the model knows" do
+    assert :ok = perform_job(MemberNoticeWorker, @created)
+
+    assert last_content(@teacher) == "[通知] 新增學生 小美（LINE：小美）"
+    assert last_content(@other_teacher) == "[Notice] Added student 小美 (LINE: 小美)"
+  end
+
+  test "records nothing for a teacher whose push failed" do
+    defmodule OtherPushFails do
+      def push(to, messages) do
+        Ganesha.Line.Client.Mock.push(to, messages)
+        if to == "Uteacher2000000000000000000000", do: {:error, :api_error}, else: :ok
+      end
+    end
+
+    Application.put_env(:ganesha, :line_client, OtherPushFails)
+    assert :ok = perform_job(MemberNoticeWorker, @created)
+    Application.put_env(:ganesha, :line_client, LineMock)
+
+    assert last_content(@teacher) == "[通知] 新增學生 小美（LINE：小美）"
+    assert last_content(@other_teacher) == nil
+  end
+
   test "fails only when every push failed" do
     Process.put(:line_client_mock_push, {:error, :api_error})
     assert {:error, :api_error} = perform_job(MemberNoticeWorker, @created)
@@ -147,5 +170,14 @@ defmodule Ganesha.Assistant.MemberNoticeWorkerTest do
              nil,
              "舊訊息"
            ]
+  end
+
+  defp last_content(teacher_id) do
+    {:ok, thread} = Assistant.get_or_create_thread("teacher", teacher_id)
+
+    case Assistant.list_messages(thread) do
+      [] -> nil
+      messages -> List.last(messages).content
+    end
   end
 end
