@@ -457,9 +457,9 @@ Smoke.check(
 )
 
 Smoke.check(
-  "the outcome is in the model's history",
+  "the outcome, and the payment it made, is in the model's history",
   List.last(Assistant.list_messages(teacher_thread)).content ==
-    "[已確認] 草稿 ##{draft.id} #{summary}"
+    "[已確認] 草稿 ##{draft.id} #{summary} → payment #{payment.id}"
 )
 
 replay = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => postback_line_event.id}})
@@ -1527,42 +1527,74 @@ Smoke.check(
   member_alt_texts == [member_alt_text]
 )
 
-# ---------------------------------------------------------------- Step 15
-Smoke.step(15, "不是學生 on the created notice deletes the Student and records not_student")
+Smoke.check(
+  "the notice is recorded in the teacher's chat as [通知] for the model",
+  List.last(Assistant.list_messages(teacher_thread)).content == "[通知] " <> member_alt_text
+)
 
-not_student_data =
+# ---------------------------------------------------------------- Step 15
+Smoke.step(15, "是學生 keeps the Student; 不是學生 then deletes it and records not_student")
+
+member_args = %{"line_user_id" => member_id, "display_name" => member_name}
+
+member_buttons =
   case member_notice do
-    [%{contents: %{footer: %{contents: [%{action: %{data: data}}]}}}] -> data
-    _ -> nil
+    [%{contents: %{footer: %{contents: buttons}}}] ->
+      Enum.map(buttons, &{&1.action.label, &1.action.data})
+
+    _ ->
+      []
   end
 
 Smoke.check(
-  "the notice's only button is 不是學生 for this created Student",
+  "the notice offers 是學生, then 不是學生, for this created Student",
   member != nil and
-    not_student_data ==
-      Cards.member_postback(
-        "member_not_student",
-        %{"line_user_id" => member_id, "display_name" => member_name},
-        from: "created",
-        sid: member.id
-      )
+    member_buttons == [
+      {"是學生", Cards.member_postback("member_ok", member_args, sid: member.id)},
+      {"不是學生",
+       Cards.member_postback("member_not_student", member_args, from: "created", sid: member.id)}
+    ]
 )
 
-:ok =
-  Line.record_event(%{
-    "webhookEventId" => "smoke-postback-10",
-    "mode" => "active",
-    "type" => "postback",
-    "replyToken" => "smoke-reply-16",
-    "source" => %{"type" => "user", "userId" => teacher_id},
-    "postback" => %{"data" => not_student_data}
-  })
+# Records and processes one postback from the teacher.
+teacher_taps = fn event_id, reply_token, data ->
+  :ok =
+    Line.record_event(%{
+      "webhookEventId" => event_id,
+      "mode" => "active",
+      "type" => "postback",
+      "replyToken" => reply_token,
+      "source" => %{"type" => "user", "userId" => teacher_id},
+      "postback" => %{"data" => data}
+    })
 
-not_student_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-postback-10")
-Process.delete(:line_client_mock_calls)
+  line_event = Repo.get_by!(LineEvent, webhook_event_id: event_id)
+  Process.delete(:line_client_mock_calls)
+  :ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => line_event.id}})
+end
 
-:ok =
-  ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => not_student_line_event.id}})
+tap_data = fn label -> Enum.find_value(member_buttons, fn {l, d} -> l == label && d end) end
+
+teacher_taps.("smoke-postback-11", "smoke-reply-17", tap_data.("是學生"))
+kept_text = Line.Labels.t(:member_confirmed, "zh-TW", name: member_name)
+
+Smoke.check(
+  "是學生 keeps Student #{member_name} linked",
+  member != nil and People.find_by_line_user_id(member_id).id == member.id
+)
+
+Smoke.check(
+  "the teacher is told #{member_name} is a student",
+  for({:reply, {"smoke-reply-17", [message]}} <- LineMock.calls(), do: message.text) ==
+    [kept_text]
+)
+
+Smoke.check(
+  "her answer is recorded as [通知回覆] for the model",
+  List.last(Assistant.list_messages(teacher_thread)).content == "[通知回覆] " <> kept_text
+)
+
+teacher_taps.("smoke-postback-10", "smoke-reply-16", tap_data.("不是學生"))
 
 Smoke.check(
   "Student #{member_name} is deleted",
@@ -1603,6 +1635,70 @@ Smoke.check(
 )
 
 Smoke.check("NOTHING sent to LINE", LineMock.calls() == [])
+
+# ---------------------------------------------------------------- Step 17
+Smoke.step(17, "the teacher asks for the group list: listening names each member's Student")
+
+:ok =
+  Line.record_event(%{
+    "webhookEventId" => "smoke-teacher-6",
+    "mode" => "active",
+    "type" => "message",
+    "replyToken" => "smoke-reply-18",
+    "source" => %{"type" => "user", "userId" => teacher_id},
+    "message" => %{"id" => "smoke-msg-14", "type" => "text", "text" => "給我群組的名單"}
+  })
+
+list_line_event = Repo.get_by!(LineEvent, webhook_event_id: "smoke-teacher-6")
+
+ProviderMock.stub(fn messages, _tools, opts ->
+  case List.last(messages) do
+    %{role: "tool"} ->
+      {:ok, %{text: "群組裡目前知道的成員如上。", tool_calls: []}}
+
+    _ ->
+      Process.put(:smoke_list_turn, {messages, opts})
+      {:ok, %{text: nil, tool_calls: [%{id: "smoke-call-list", name: "listening", input: %{}}]}}
+  end
+end)
+
+Process.delete(:line_client_mock_calls)
+:ok = ProcessEventWorker.perform(%Oban.Job{args: %{"line_event_id" => list_line_event.id}})
+
+{list_messages, list_opts} = Process.get(:smoke_list_turn, {[], []})
+seen = inspect(list_messages, limit: :infinity, printable_limit: :infinity)
+
+Smoke.check(
+  "the model sees the notice and her 是學生 / 不是學生 answers in its history",
+  seen =~ "[通知] " <> member_alt_text and seen =~ "[通知回覆] " <> kept_text and
+    seen =~ "[通知回覆] " <> Line.Labels.t(:member_marked_not_student, "zh-TW", line_name: member_name)
+)
+
+Smoke.check(
+  "the system prompt says everyone in the group is a Student",
+  Keyword.get(list_opts, :system, "") =~ "everyone in the studio's LINE group is a Student"
+)
+
+listening_result =
+  teacher_thread
+  |> Assistant.list_messages()
+  |> Enum.filter(&(&1.role == "tool"))
+  |> List.last()
+  |> Map.fetch!(:tool_calls)
+  |> hd()
+  |> Map.fetch!("content")
+
+IO.puts("        listening: " <> String.replace(listening_result, "\n", "\n                   "))
+
+Smoke.check(
+  "listening says #{member_name} is not a student",
+  listening_result =~ ~r/#{member_name} \(id #{member_id}\), last seen [^\n]*, not a student/
+)
+
+Smoke.check(
+  "the reply goes back to the teacher",
+  Enum.any?(LineMock.calls(), &match?({:reply, {"smoke-reply-18", _}}, &1))
+)
 
 # ---------------------------------------------------------------- teardown
 cleanup.()
